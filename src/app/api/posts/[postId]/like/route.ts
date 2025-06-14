@@ -40,8 +40,8 @@ async function getPopulatedPost(db: any, postId: ObjectId, currentUserId?: Objec
             return {
                 ...commentDoc,
                 id: commentDoc._id.toHexString(),
-                postId: commentDoc.postId, // Keep as ObjectId
-                authorId: commentDoc.authorId, // Keep as ObjectId
+                postId: commentDoc.postId, 
+                authorId: commentDoc.authorId, 
                 author: commentAuthorDoc ? { ...commentAuthorDoc, id: commentAuthorDoc._id.toHexString() } : undefined,
             } as Comment;
         })
@@ -52,21 +52,24 @@ async function getPopulatedPost(db: any, postId: ObjectId, currentUserId?: Objec
         currentUser = await usersCollection.findOne({ _id: currentUserId });
     }
     
-    const isLikedByCurrentUser = currentUser ? postDoc.likedBy.some(id => id.equals(currentUser!._id!)) : false;
-    const isBookmarkedByCurrentUser = currentUser ? currentUser.bookmarkedPostIds?.some(id => id.equals(postDoc._id)) : false;
+    const postLikedBy = Array.isArray(postDoc.likedBy) ? postDoc.likedBy : [];
+    const userBookmarkedPostIds = currentUser && Array.isArray(currentUser.bookmarkedPostIds) ? currentUser.bookmarkedPostIds : [];
+
+    const isLikedByCurrentUser = currentUser ? postLikedBy.some(id => id.equals(currentUser!._id!)) : false;
+    const isBookmarkedByCurrentUser = currentUser ? userBookmarkedPostIds.some(id => id.equals(postDoc._id)) : false;
 
     return {
         ...postDoc,
         id: postDoc._id.toHexString(),
         author: authorForClient || { id: 'unknown', name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString() } as User,
-        likedBy: postDoc.likedBy, 
-        likeCount: postDoc.likeCount,
+        likedBy: postLikedBy, 
+        likeCount: postDoc.likeCount || 0, // Ensure likeCount has a default
         isLikedByCurrentUser,
-        commentIds: postDoc.commentIds,
+        commentIds: postDoc.commentIds || [],
         comments: recentCommentsPopulated.reverse(),
-        commentCount: postDoc.commentCount,
+        commentCount: postDoc.commentCount || 0,
         isBookmarkedByCurrentUser,
-        authorId: postDoc.authorId, // ensure this is passed
+        authorId: postDoc.authorId, 
     } as Post;
 }
 
@@ -92,9 +95,10 @@ export async function POST(request: NextRequest, { params }: LikeParams) { // LI
     if (!post) {
       return NextResponse.json({ message: 'Post not found.' }, { status: 404 });
     }
+    
+    const postLikedBy = Array.isArray(post.likedBy) ? post.likedBy : [];
 
-    if (post.likedBy.some(id => id.equals(userObjectId))) {
-      // Already liked, consider this a successful state or return a specific message
+    if (postLikedBy.some(id => id.equals(userObjectId))) {
       const populatedPost = await getPopulatedPost(db, postObjectId, userObjectId);
       return NextResponse.json({ message: 'Post already liked.', post: populatedPost }, { status: 200 });
     }
@@ -108,7 +112,6 @@ export async function POST(request: NextRequest, { params }: LikeParams) { // LI
     );
 
     if (updateResult.modifiedCount === 0) {
-      // This might happen if $addToSet didn't add (already there, caught above) or other issue
       return NextResponse.json({ message: 'Failed to like post or post already liked.' }, { status: 409 });
     }
     
@@ -129,8 +132,6 @@ export async function DELETE(request: NextRequest, { params }: LikeParams) { // 
   }
 
   try {
-    // For DELETE, userId usually comes from query params or auth token, not body.
-    // Let's assume it's a query parameter for this example or taken from auth session in a real app.
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
 
@@ -148,7 +149,9 @@ export async function DELETE(request: NextRequest, { params }: LikeParams) { // 
       return NextResponse.json({ message: 'Post not found.' }, { status: 404 });
     }
 
-    if (!post.likedBy.some(id => id.equals(userObjectId))) {
+    const postLikedBy = Array.isArray(post.likedBy) ? post.likedBy : [];
+
+    if (!postLikedBy.some(id => id.equals(userObjectId))) {
       const populatedPost = await getPopulatedPost(db, postObjectId, userObjectId);
       return NextResponse.json({ message: 'Post not liked by this user.', post: populatedPost }, { status: 200 });
     }
