@@ -30,13 +30,13 @@ const eventUpdateSchema = z.object({
   endTime: z.string().datetime({ message: "Invalid end date format. Expected ISO string."}).optional(),
   location: z.string().optional().nullable(),
   category: z.string().optional().nullable(),
-  tags: z.string().optional().nullable(), 
+  tags: z.string().optional().nullable(),
   maxAttendees: z.preprocess(
     (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
     z.number().int().positive().optional().nullable()
   ),
   imageUrl: z.string().url({message: "Please enter a valid image URL e.g. https://placehold.co/image.png"}).optional().nullable().or(z.literal('')),
-  communityId: z.string().optional().nullable().refine(val => !val || ObjectId.isValid(val), { message: "Invalid Community ID format." }),
+  communityId: z.string().optional().nullable().refine(val => !val || ObjectId.isValid(val) || val === "__NONE__", { message: "Invalid Community ID format." }),
   price: z.preprocess(
     (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
     z.number().nonnegative("Price must be a positive number or zero.").optional().nullable()
@@ -49,7 +49,7 @@ const eventUpdateSchema = z.object({
     return true; // Pass if one or both are undefined (not being updated or validated against each other)
 }, {
   message: "End date and time must be after start date and time if both are provided.",
-  path: ["endTime"], 
+  path: ["endTime"],
 });
 
 
@@ -73,10 +73,10 @@ export async function GET(request: NextRequest, { params }: EventParams) {
     }
 
     const organizerDoc = await usersCollection.findOne({ _id: eventDoc.organizerId }, { projection: { passwordHash: 0 } });
-    const organizerForClient: User | undefined = organizerDoc ? { 
-        ...organizerDoc, 
+    const organizerForClient: User | undefined = organizerDoc ? {
+        ...organizerDoc,
         id: organizerDoc._id!.toHexString(),
-        _id: organizerDoc._id 
+        _id: organizerDoc._id
     } : undefined;
 
     const rsvpUserDocs = await usersCollection.find({ _id: { $in: eventDoc.rsvpIds } }, { projection: { passwordHash: 0 } }).toArray();
@@ -103,6 +103,7 @@ export async function GET(request: NextRequest, { params }: EventParams) {
       communityName: communityName,
       price: eventDoc.price,
       currency: eventDoc.currency,
+      updatedAt: eventDoc.updatedAt,
     };
 
     return NextResponse.json(enrichedEvent, { status: 200 });
@@ -143,17 +144,19 @@ export async function PUT(request: NextRequest, { params }: EventParams) {
       return NextResponse.json({ message: 'Unauthorized: Only the event organizer can update this event.' }, { status: 403 });
     }
 
-    const updatePayload: Partial<DbEvent> = {};
+    const updatePayload: Partial<DbEvent> & { updatedAt: string } = {
+        updatedAt: new Date().toISOString()
+    };
 
-    // Construct payload carefully to handle undefined vs null vs actual values
+
     if (updateData.title !== undefined) updatePayload.title = updateData.title;
     if (updateData.description !== undefined) updatePayload.description = updateData.description;
     if (updateData.startTime !== undefined) updatePayload.startTime = new Date(updateData.startTime).toISOString();
     if (updateData.endTime !== undefined) updatePayload.endTime = new Date(updateData.endTime).toISOString();
-    
-    updatePayload.location = updateData.location === null ? undefined : updateData.location; // Clear if null
+
+    updatePayload.location = updateData.location === null ? undefined : updateData.location;
     updatePayload.category = updateData.category === null ? undefined : updateData.category;
-    
+
     if (updateData.tags !== undefined) {
       updatePayload.tags = updateData.tags === null ? [] : updateData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
     }
@@ -167,7 +170,7 @@ export async function PUT(request: NextRequest, { params }: EventParams) {
         updatePayload.imageUrl = updateData.imageUrl;
       }
     }
-    
+
     if (updateData.communityId !== undefined) {
         updatePayload.communityId = updateData.communityId === null || updateData.communityId === "__NONE__" ? undefined : new ObjectId(updateData.communityId);
     }
@@ -176,17 +179,33 @@ export async function PUT(request: NextRequest, { params }: EventParams) {
         updatePayload.price = updateData.price === null ? undefined : updateData.price;
     }
     if (updateData.currency !== undefined) {
-        updatePayload.currency = updateData.price && updateData.price > 0 ? (updateData.currency === null ? undefined : (updateData.currency || 'USD')) : undefined;
+        // Only set currency if there's a price greater than 0
+        updatePayload.currency = (updatePayload.price !== undefined && updatePayload.price > 0) ? (updateData.currency === null ? undefined : (updateData.currency || 'USD')) : undefined;
+    } else if (updatePayload.price !== undefined && updatePayload.price <= 0) {
+        // If price is being set to 0 or less, ensure currency is cleared
+        updatePayload.currency = undefined;
     }
 
 
-    if (Object.keys(updatePayload).length === 0) {
+    const updateKeys = Object.keys(updatePayload);
+    if (updateKeys.length === 1 && updateKeys[0] === 'updatedAt' &&
+        updateData.title === undefined &&
+        updateData.description === undefined &&
+        updateData.startTime === undefined &&
+        updateData.endTime === undefined &&
+        updateData.location === undefined &&
+        updateData.category === undefined &&
+        updateData.tags === undefined &&
+        updateData.maxAttendees === undefined &&
+        updateData.imageUrl === undefined &&
+        updateData.communityId === undefined &&
+        updateData.price === undefined &&
+        updateData.currency === undefined
+    ) {
         // No actual fields to update, so we can just re-fetch the event and return it.
         const currentEventResponse = await GET(request, { params });
         return currentEventResponse;
     }
-    
-    updatePayload.updatedAt = new Date().toISOString();
 
 
     const result = await eventsCollection.findOneAndUpdate(
@@ -198,10 +217,10 @@ export async function PUT(request: NextRequest, { params }: EventParams) {
     if (!result.value) {
       return NextResponse.json({ message: 'Event update failed.' }, { status: 500 });
     }
-    
+
     // To return the fully populated event, re-use the GET logic
-    const getRequest = new NextRequest(request.url); // Create a new request based on original URL
-    return await GET(getRequest, { params }); // Pass params explicitly
+    const getRequest = new NextRequest(request.url);
+    return await GET(getRequest, { params });
 
   } catch (error) {
     console.error(`API Error updating event ${eventId}:`, error);
@@ -219,17 +238,17 @@ export async function DELETE(request: NextRequest, { params }: EventParams) {
 
   try {
     const body = await request.json();
-    const currentUserId = body.userId; 
-    
+    const currentUserId = body.userId;
+
     if (!currentUserId || !ObjectId.isValid(currentUserId)) {
       return NextResponse.json({ message: 'User ID is required for authorization.' }, { status: 401 });
     }
 
     const db = await getDb();
     const eventsCollection = db.collection<DbEvent>('events');
-    
+
     const eventObjectId = new ObjectId(eventId);
-    
+
     const eventToDelete = await eventsCollection.findOne({ _id: eventObjectId });
     if (!eventToDelete) {
       return NextResponse.json({ message: 'Event not found.' }, { status: 404 });

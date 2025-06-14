@@ -13,14 +13,21 @@ import toast from 'react-hot-toast';
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth-provider";
 import { useRouter } from "next/navigation";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+
 
 const profileFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters.").max(50, "Name cannot exceed 50 characters."),
-  bio: z.string().max(300, "Bio cannot exceed 300 characters.").optional().nullable(), // Allow null for bio
-  avatarUrl: z.string().url("Please enter a valid URL for your avatar.").optional().nullable().or(z.literal('')), // Allow null or empty for avatar
+  bio: z.string().max(300, "Bio cannot exceed 300 characters.").optional().nullable(),
+  avatarUrl: z.string().url("Please enter a valid URL for your avatar.").optional().nullable().or(z.literal('')),
+  notificationPreferences: z.object({
+    emailNewPosts: z.boolean().optional(),
+    eventReminders: z.boolean().optional(),
+    mentionNotifications: z.boolean().optional(),
+  }).optional(),
 });
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
@@ -28,8 +35,7 @@ type ProfileFormValues = z.infer<typeof profileFormSchema>;
 export default function SettingsPage() {
   const { user, loading: authLoading, isAuthenticated, refreshUser } = useAuth();
   const router = useRouter();
-  const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
-  const [isSubmittingPreferences, setIsSubmittingPreferences] = useState(false);
+  const [isSubmittingSettings, setIsSubmittingSettings] = useState(false);
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
@@ -37,35 +43,49 @@ export default function SettingsPage() {
       name: '',
       bio: '',
       avatarUrl: '',
+      notificationPreferences: {
+        emailNewPosts: true,
+        eventReminders: true,
+        mentionNotifications: false,
+      }
     }
   });
-  
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      router.push('/login?redirect=/settings'); 
+      router.push('/login?redirect=/settings');
     }
     if (user) {
         form.reset({
             name: user.name || '',
             bio: user.bio || '',
             avatarUrl: user.avatarUrl || '',
+            notificationPreferences: {
+                emailNewPosts: user.notificationPreferences?.emailNewPosts ?? true,
+                eventReminders: user.notificationPreferences?.eventReminders ?? true,
+                mentionNotifications: user.notificationPreferences?.mentionNotifications ?? false,
+            }
         });
     }
   }, [authLoading, isAuthenticated, router, user, form]);
 
 
-  const handleProfileSubmit = async (data: ProfileFormValues) => {
+  const handleSettingsSubmit = async (data: ProfileFormValues) => {
     if (!user || !user.id) {
         toast.error("User not authenticated. Please log in again.");
         return;
     }
-    setIsSubmittingProfile(true);
+    setIsSubmittingSettings(true);
     try {
-      // Ensure bio and avatarUrl are passed as null if empty or truly null
       const payload = {
         ...data,
         bio: data.bio === '' ? null : data.bio,
         avatarUrl: data.avatarUrl === '' ? null : data.avatarUrl,
+        notificationPreferences: { // Ensure we send the full object, even if some values are default
+            emailNewPosts: data.notificationPreferences?.emailNewPosts ?? true,
+            eventReminders: data.notificationPreferences?.eventReminders ?? true,
+            mentionNotifications: data.notificationPreferences?.mentionNotifications ?? false,
+        }
       };
 
       const response = await fetch(`/api/users/${user.id}`, {
@@ -75,26 +95,29 @@ export default function SettingsPage() {
       });
       const result = await response.json();
       if (!response.ok) {
-        throw new Error(result.message || "Failed to update profile.");
+        throw new Error(result.message || "Failed to update settings.");
       }
-      toast.success("Profile updated successfully!");
-      await refreshUser(); 
-      form.reset(result.user); // Reset form with new user data from response
+      toast.success("Settings updated successfully!");
+      await refreshUser();
+      if (result.user) { // API should return the updated user object
+         form.reset({ // Reset form with new user data from response
+            name: result.user.name || '',
+            bio: result.user.bio || '',
+            avatarUrl: result.user.avatarUrl || '',
+            notificationPreferences: {
+                emailNewPosts: result.user.notificationPreferences?.emailNewPosts ?? true,
+                eventReminders: result.user.notificationPreferences?.eventReminders ?? true,
+                mentionNotifications: result.user.notificationPreferences?.mentionNotifications ?? false,
+            }
+        });
+      }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "An unknown error occurred.");
     } finally {
-      setIsSubmittingProfile(false);
+      setIsSubmittingSettings(false);
     }
   };
 
-  const handlePreferencesSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    setIsSubmittingPreferences(true);
-    setTimeout(() => {
-        toast.success("Your preferences have been updated (UI only).");
-        setIsSubmittingPreferences(false);
-    }, 1000);
-  };
 
   if (authLoading || (!isAuthenticated && !authLoading)) {
     return (
@@ -111,8 +134,8 @@ export default function SettingsPage() {
       </div>
     );
   }
-  
-  const userEmail = user?.email || 'user@example.com'; 
+
+  const userEmail = user?.email || 'user@example.com';
 
 
   return (
@@ -121,78 +144,136 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-headline font-bold text-primary">Settings</h1>
       </div>
 
-      <div className="space-y-8">
-        <form onSubmit={form.handleSubmit(handleProfileSubmit)}>
-            <Card className="shadow-md">
-            <CardHeader>
-                <CardTitle className="flex items-center font-headline"><UserIcon className="mr-2 h-5 w-5 text-accent" /> Profile Settings</CardTitle>
-                <CardDescription>Manage your public profile information.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                    <Label htmlFor="name">Display Name</Label>
-                    <Input id="name" {...form.register("name")} />
-                    {form.formState.errors.name && <p className="text-xs text-destructive mt-1">{form.formState.errors.name.message}</p>}
-                </div>
-                <div>
-                    <Label htmlFor="email">Email Address</Label>
-                    <Input id="email" type="email" value={userEmail} disabled />
-                </div>
-                </div>
-                <div>
-                <Label htmlFor="bio">Bio</Label>
-                <Textarea
-                    id="bio"
-                    placeholder="Tell us a little about yourself..."
-                    {...form.register("bio")}
-                />
-                {form.formState.errors.bio && <p className="text-xs text-destructive mt-1">{form.formState.errors.bio.message}</p>}
-                </div>
-                <div>
-                    <Label htmlFor="avatarUrl">Avatar URL</Label>
-                    <Input 
-                        id="avatarUrl" 
-                        placeholder="https://example.com/avatar.png" 
-                        {...form.register("avatarUrl")}
+        <Form {...form}>
+            <form onSubmit={form.handleSubmit(handleSettingsSubmit)} className="space-y-8">
+                <Card className="shadow-md">
+                <CardHeader>
+                    <CardTitle className="flex items-center font-headline"><UserIcon className="mr-2 h-5 w-5 text-accent" /> Profile Settings</CardTitle>
+                    <CardDescription>Manage your public profile information.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <FormField
+                            control={form.control}
+                            name="name"
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel htmlFor="name">Display Name</FormLabel>
+                                <FormControl>
+                                    <Input id="name" {...field} />
+                                </FormControl>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <div>
+                            <Label htmlFor="email">Email Address</Label>
+                            <Input id="email" type="email" value={userEmail} disabled />
+                        </div>
+                    </div>
+                    <FormField
+                        control={form.control}
+                        name="bio"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel htmlFor="bio">Bio</FormLabel>
+                            <FormControl>
+                                <Textarea
+                                    id="bio"
+                                    placeholder="Tell us a little about yourself..."
+                                    {...field}
+                                    value={field.value ?? ''} // Ensure value is not null/undefined for textarea
+                                />
+                            </FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
                     />
-                    {form.formState.errors.avatarUrl && <p className="text-xs text-destructive mt-1">{form.formState.errors.avatarUrl.message}</p>}
-                </div>
-                <Button type="submit" disabled={isSubmittingProfile} className="mt-4">
-                  {isSubmittingProfile ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Save Profile Changes
-                </Button>
-            </CardContent>
-            </Card>
-        </form>
+                    <FormField
+                        control={form.control}
+                        name="avatarUrl"
+                        render={({ field }) => (
+                            <FormItem>
+                            <FormLabel htmlFor="avatarUrl">Avatar URL</FormLabel>
+                            <FormControl>
+                                <Input
+                                    id="avatarUrl"
+                                    placeholder="https://example.com/avatar.png"
+                                    {...field}
+                                    value={field.value ?? ''} // Ensure value is not null/undefined for input
+                                />
+                            </FormControl>
+                            <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                </CardContent>
+                </Card>
 
-        <form onSubmit={handlePreferencesSubmit}>
-            <Card className="shadow-md">
-            <CardHeader>
-                <CardTitle className="flex items-center font-headline"><Bell className="mr-2 h-5 w-5 text-accent" /> Notification Preferences</CardTitle>
-                <CardDescription>Control how you receive notifications. (UI only, not functional)</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-                <div className="flex items-center justify-between">
-                <Label htmlFor="emailNotifications" className="flex-grow">Email Notifications for New Posts</Label>
-                <Switch id="emailNotifications" defaultChecked />
-                </div>
-                <div className="flex items-center justify-between">
-                <Label htmlFor="eventReminders" className="flex-grow">Event Reminders</Label>
-                <Switch id="eventReminders" defaultChecked />
-                </div>
-                <div className="flex items-center justify-between">
-                <Label htmlFor="mentionNotifications" className="flex-grow">Notifications for Mentions</Label>
-                <Switch id="mentionNotifications" />
-                </div>
-                 <Button type="submit" disabled={isSubmittingPreferences} className="mt-4">
-                    {isSubmittingPreferences ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                    Save Preferences
+                <Card className="shadow-md">
+                    <CardHeader>
+                        <CardTitle className="flex items-center font-headline"><Bell className="mr-2 h-5 w-5 text-accent" /> Notification Preferences</CardTitle>
+                        <CardDescription>Control how you receive notifications.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <FormField
+                            control={form.control}
+                            name="notificationPreferences.emailNewPosts"
+                            render={({ field }) => (
+                                <FormItem className="flex items-center justify-between">
+                                <FormLabel htmlFor="emailNotificationsNewPosts" className="flex-grow">Email Notifications for New Posts</FormLabel>
+                                <FormControl>
+                                    <Switch
+                                    id="emailNotificationsNewPosts"
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name="notificationPreferences.eventReminders"
+                            render={({ field }) => (
+                                <FormItem className="flex items-center justify-between">
+                                <FormLabel htmlFor="eventReminders" className="flex-grow">Event Reminders</FormLabel>
+                                <FormControl>
+                                    <Switch
+                                    id="eventReminders"
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                            control={form.control}
+                            name="notificationPreferences.mentionNotifications"
+                            render={({ field }) => (
+                                <FormItem className="flex items-center justify-between">
+                                <FormLabel htmlFor="mentionNotifications" className="flex-grow">Notifications for Mentions</FormLabel>
+                                <FormControl>
+                                    <Switch
+                                    id="mentionNotifications"
+                                    checked={field.value}
+                                    onCheckedChange={field.onChange}
+                                    />
+                                </FormControl>
+                                </FormItem>
+                            )}
+                        />
+                    </CardContent>
+                </Card>
+
+                <Button type="submit" disabled={isSubmittingSettings} className="mt-6 w-full md:w-auto btn-gradient">
+                  {isSubmittingSettings ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Save All Settings
                 </Button>
-            </CardContent>
-            </Card>
-        </form>
-        
+            </form>
+        </Form>
+
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="item-1">
             <AccordionTrigger className="text-lg font-semibold flex items-center hover:no-underline p-4 bg-card rounded-t-lg border shadow-sm data-[state=open]:rounded-b-none data-[state=open]:border-b-0">
@@ -214,17 +295,15 @@ export default function SettingsPage() {
               <div className="flex items-center justify-between">
                 <Label htmlFor="darkMode" className="flex-grow">Dark Mode</Label>
                 <Switch id="darkMode" onCheckedChange={(checked) => {
-                    if (checked) document.documentElement.classList.add('dark');
-                    else document.documentElement.classList.remove('dark');
+                    document.documentElement.classList.toggle('dark', checked);
+                    localStorage.setItem('theme', checked ? 'dark' : 'light');
                     toast.success(`Dark mode ${checked ? 'enabled' : 'disabled'}.`);
-                    // Optionally persist this preference to localStorage or backend
-                }} defaultChecked={typeof window !== 'undefined' && window.localStorage.getItem('theme') === 'dark'} />
+                }} defaultChecked={typeof window !== 'undefined' && (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches))} />
               </div>
               <p className="text-xs text-muted-foreground mt-2">Toggle dark or light theme.</p>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
-      </div>
     </div>
   );
 }

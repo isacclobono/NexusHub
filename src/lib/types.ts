@@ -2,56 +2,62 @@
 import type { ObjectId } from 'mongodb';
 
 export interface User {
-  _id?: ObjectId; 
-  id?: string; 
+  _id?: ObjectId;
+  id?: string;
   name: string;
   email: string;
-  passwordHash?: string; 
+  passwordHash?: string;
   avatarUrl?: string;
   bio?: string;
   reputation: number;
-  joinedDate: string; 
-  bookmarkedPostIds?: ObjectId[]; 
+  joinedDate: string;
+  updatedAt?: string; // Added for tracking updates
+  bookmarkedPostIds?: ObjectId[];
   communityIds?: ObjectId[]; // Communities the user is a member of
+  notificationPreferences?: { // Added for notification settings
+    emailNewPosts?: boolean;
+    eventReminders?: boolean;
+    mentionNotifications?: boolean;
+  };
 }
 
 export interface Comment {
   _id?: ObjectId;
   id?: string;
-  postId: ObjectId; 
-  postTitle?: string; 
-  parentId?: ObjectId; 
-  authorId: ObjectId; 
-  author: User; 
+  postId: ObjectId;
+  postTitle?: string;
+  parentId?: ObjectId;
+  authorId: ObjectId;
+  author: User;
   content: string;
-  createdAt: string; 
-  replyIds?: ObjectId[]; 
-  replies?: Comment[]; 
+  createdAt: string;
+  replyIds?: ObjectId[];
+  replies?: Comment[];
 }
 
 export interface Post {
   _id?: ObjectId;
   id?: string;
-  authorId: ObjectId; 
-  author: User; 
+  authorId: ObjectId;
+  author: User;
   title?: string;
   content: string;
   media?: { type: 'image' | 'video' | 'document'; url: string; name?: string }[];
   category?: string;
   tags?: string[];
-  createdAt: string; 
-  updatedAt?: string; 
-  
-  likedBy: ObjectId[]; 
-  likeCount: number;
-  isLikedByCurrentUser?: boolean; 
+  createdAt: string;
+  updatedAt?: string;
 
-  commentIds: ObjectId[]; 
-  comments: Comment[]; 
+  likedBy: ObjectId[];
+  likeCount: number;
+  isLikedByCurrentUser?: boolean;
+
+  commentIds: ObjectId[];
+  comments: Comment[];
   commentCount: number;
 
-  isBookmarkedByCurrentUser?: boolean; 
-  scheduledAt?: string; 
+  isBookmarkedByCurrentUser?: boolean;
+  scheduledAt?: string;
   status?: 'published' | 'draft' | 'scheduled';
 
   communityId?: ObjectId; // ID of the community this post belongs to
@@ -64,13 +70,13 @@ export interface Event {
   title: string;
   description:string;
   imageUrl?: string;
-  startTime: string; 
-  endTime: string; 
+  startTime: string;
+  endTime: string;
   location?: string;
-  organizerId: ObjectId; 
-  organizer: User; 
-  rsvpIds: ObjectId[]; 
-  rsvps: User[]; 
+  organizerId: ObjectId;
+  organizer: User;
+  rsvpIds: ObjectId[];
+  rsvps: User[];
   waitlistIds?: ObjectId[];
   waitlist?: User[];
   maxAttendees?: number;
@@ -84,6 +90,7 @@ export interface Event {
 
   price?: number; // Price of the event ticket, 0 or undefined for free
   currency?: string; // e.g., "USD", "EUR", defaults to USD if price is set
+  updatedAt?: string; // Added for tracking updates
 }
 
 export interface EventFeedback {
@@ -92,13 +99,13 @@ export interface EventFeedback {
   eventId: ObjectId;
   userId: ObjectId;
   user?: User;
-  rating: number; 
+  rating: number;
   comment?: string;
-  createdAt: string; 
+  createdAt: string;
 }
 
 export interface Badge {
-  id: string; 
+  id: string;
   name: string;
   description: string;
   iconUrl: string;
@@ -118,17 +125,17 @@ export interface NavItem {
 export interface Notification {
   _id?: ObjectId;
   id?: string;
-  userId: ObjectId; 
+  userId: ObjectId;
   type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like' | 'community_join_request' | 'community_post_approved'; // Added community types
   title: string;
   message: string;
-  link?: string; 
+  link?: string;
   isRead: boolean;
-  createdAt: string; 
-  relatedEntityId?: ObjectId; 
-  actor?: { 
-    _id: ObjectId; 
-    id: string; 
+  createdAt: string;
+  relatedEntityId?: ObjectId;
+  actor?: {
+    _id: ObjectId;
+    id: string;
     name: string;
     avatarUrl?: string;
   }
