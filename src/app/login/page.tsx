@@ -97,12 +97,14 @@ export default function LoginPage() {
               />
             </div>
             <Button type="submit" className="w-full btn-gradient text-lg py-3" disabled={isLoading}>
-              {isLoading ? (
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              ) : (
-                <LogIn className="mr-2 h-5 w-5" />
-              )}
-              Sign In
+              <span className="inline-flex items-center justify-center gap-2">
+                {isLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                  <LogIn className="h-5 w-5" />
+                )}
+                Sign In
+              </span>
             </Button>
           </form>
         </CardContent>
