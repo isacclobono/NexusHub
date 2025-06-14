@@ -15,7 +15,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Sparkles, Lightbulb, UsersRound, Edit } from 'lucide-react';
 import React, { useState, useCallback, useEffect } from 'react';
@@ -34,13 +33,20 @@ import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
 import type { Community, Post } from '@/lib/types';
 import Link from 'next/link';
+import dynamic from 'next/dynamic';
+import { Skeleton } from '@/components/ui/skeleton';
+
+const ReactQuill = dynamic(() => import('react-quill'), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[150px] w-full rounded-md border border-input" />
+});
 
 const NO_COMMUNITY_VALUE = "__NONE__";
-const NO_CATEGORY_SELECTED_VALUE = "__NONE__"; // Using the same constant for "no selection"
+const NO_CATEGORY_SELECTED_VALUE = "__NONE__";
 
 const postEditSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(5000, "Content can't exceed 5000 characters."),
+  content: z.string().min(1, 'Content is required.').max(15000, "Content can't exceed 15000 characters."), // Increased for HTML
   category: z.string().optional().nullable(),
   tags: z.string().optional().nullable(),
   communityId: z.string().optional().nullable(),
@@ -116,14 +122,14 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
 
 
   const handleSuggestCategoryAndTags = useCallback(async () => {
-    const content = form.getValues('content');
-    if (!content || content.trim().length < 20) {
+    const contentValue = form.getValues('content');
+    if (!contentValue || contentValue.trim().length < 20) {
       toast.error("Content too short. Please write at least 20 characters to get suggestions.");
       return;
     }
     setIsCategorizing(true);
     try {
-      const result = await callCategorizeContentAI({ content });
+      const result = await callCategorizeContentAI({ content: contentValue });
       setSuggestedCategory(result.category);
       setSuggestedTags(result.tags);
       toast.success("AI has suggested a category and tags for your post.");
@@ -146,6 +152,17 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     }
   };
 
+  const quillModules = {
+    toolbar: [
+      [{ 'header': [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      [{ 'color': [] }, { 'background': [] }],
+      ['link'],
+      ['clean']
+    ],
+  };
+
   async function onSubmit(data: PostEditFormValues) {
     if (!user || !user.id) {
       toast.error('Authentication error. Please log in again.');
@@ -159,10 +176,10 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
 
     const updatePayload = {
       userId: user.id,
-      title: data.title || undefined, // Send undefined if empty to not change, or handle clearing explicitly
+      title: data.title || undefined,
       content: data.content,
-      category: data.category || null,
-      tags: data.tags || null,
+      category: data.category, // Send null if category is explicitly cleared
+      tags: data.tags, // Send null if tags are explicitly cleared
       communityId: data.communityId === NO_COMMUNITY_VALUE ? NO_COMMUNITY_VALUE : (data.communityId || null),
     };
 
@@ -196,7 +213,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
       setIsSubmitting(false);
     }
   }
-  
+
   if (authLoading) {
     return <div className="container mx-auto py-8 flex justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   }
@@ -230,20 +247,22 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                 <FormItem>
                   <FormLabel>Content</FormLabel>
                   <FormControl>
-                    <Textarea
+                    <ReactQuill
+                      theme="snow"
+                      value={field.value}
+                      onChange={(content) => field.onChange(content)}
                       placeholder="Share your thoughts with the community..."
-                      className="min-h-[150px]"
-                      {...field}
+                      modules={quillModules}
                     />
                   </FormControl>
                    <FormDescription>
-                    Note: A full rich text editor for advanced formatting is planned for a future update.
+                    Use the editor to format your post content.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            
+
             {memberCommunities.length > 0 && (
                 <FormField
                 control={form.control}
@@ -251,9 +270,9 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                 render={({ field }) => (
                     <FormItem>
                     <FormLabel className="flex items-center"><UsersRound className="mr-2 h-4 w-4 text-muted-foreground"/>Post to a Community (Optional)</FormLabel>
-                    <Select 
-                        onValueChange={(value) => field.onChange(value === NO_COMMUNITY_VALUE ? null : value)} 
-                        value={field.value === null ? NO_COMMUNITY_VALUE : (field.value || '')} 
+                    <Select
+                        onValueChange={(value) => field.onChange(value)}
+                        value={field.value === null ? NO_COMMUNITY_VALUE : (field.value || NO_COMMUNITY_VALUE)}
                         disabled={loadingCommunities}
                     >
                         <FormControl>
@@ -306,8 +325,8 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Category</FormLabel>
-                  <Select 
-                    onValueChange={(value) => field.onChange(value === NO_CATEGORY_SELECTED_VALUE ? null : value)} 
+                  <Select
+                    onValueChange={(value) => field.onChange(value === NO_CATEGORY_SELECTED_VALUE ? null : value)}
                     value={field.value === null ? NO_CATEGORY_SELECTED_VALUE : (field.value || '')}
                   >
                     <FormControl>
@@ -340,7 +359,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                 </FormItem>
               )}
             />
-            
+
             <div className="flex justify-end space-x-2 pt-4">
                <Button type="button" variant="outline" onClick={() => router.back()} disabled={isSubmitting}>
                 Cancel
@@ -356,5 +375,3 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     </Card>
   );
 }
-
-    

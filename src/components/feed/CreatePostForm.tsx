@@ -15,7 +15,6 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Loader2, UploadCloud, Sparkles, Lightbulb, Calendar as CalendarIcon, UsersRound } from 'lucide-react';
@@ -38,18 +37,25 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
 import type { Community } from '@/lib/types';
+import dynamic from 'next/dynamic';
+import { Skeleton } from '@/components/ui/skeleton';
 
-const NO_COMMUNITY_VALUE = "__NONE__"; 
+const ReactQuill = dynamic(() => import('react-quill'), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[150px] w-full rounded-md border border-input" />
+});
+
+const NO_COMMUNITY_VALUE = "__NONE__";
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(5000, "Content can't exceed 5000 characters."),
+  content: z.string().min(1, 'Content is required.').max(15000, "Content can't exceed 15000 characters."), // Increased max length for HTML
   category: z.string().optional(),
-  tags: z.string().optional(), 
-  media: z.any().optional(), 
+  tags: z.string().optional(),
+  media: z.any().optional(),
   isDraft: z.boolean().default(false),
   scheduledAt: z.date().optional(),
-  communityId: z.string().optional(), 
+  communityId: z.string().optional(),
 }).refine(data => !data.scheduledAt || data.scheduledAt > new Date(), {
     message: "Scheduled date must be in the future.",
     path: ["scheduledAt"],
@@ -136,14 +142,16 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
 
 
   const handleSuggestCategoryAndTags = useCallback(async () => {
-    const content = form.getValues('content');
-    if (!content || content.trim().length < 20) {
+    const contentValue = form.getValues('content');
+    // For HTML content, we might want to strip tags for AI analysis or send as is.
+    // For simplicity, sending as is. The AI should be robust enough or this can be refined.
+    if (!contentValue || contentValue.trim().length < 20) {
       toast.error("Content too short. Please write at least 20 characters to get suggestions.");
       return;
     }
     setIsCategorizing(true);
     try {
-      const result = await callCategorizeContentAI({ content });
+      const result = await callCategorizeContentAI({ content: contentValue });
       setSuggestedCategory(result.category);
       setSuggestedTags(result.tags);
       toast.success("AI has suggested a category and tags for your post.");
@@ -158,27 +166,38 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
   const applySuggestion = (type: 'category' | 'tags') => {
     if (type === 'category' && suggestedCategory) {
       form.setValue('category', suggestedCategory, { shouldValidate: true });
-      setSuggestedCategory(null); 
+      setSuggestedCategory(null);
     }
     if (type === 'tags' && suggestedTags.length > 0) {
       form.setValue('tags', suggestedTags.join(', '), { shouldValidate: true });
-      setSuggestedTags([]); 
+      setSuggestedTags([]);
     }
+  };
+
+  const quillModules = {
+    toolbar: [
+      [{ 'header': [1, 2, 3, false] }],
+      ['bold', 'italic', 'underline', 'strike'],
+      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+      [{ 'color': [] }, { 'background': [] }], // Added color pickers
+      ['link'],
+      ['clean']
+    ],
   };
 
 
   async function onSubmit(data: PostFormValues) {
-    if (!user || !user.id) { 
+    if (!user || !user.id) {
       toast.error('Authentication error or user ID is missing. Please log in again.');
       return;
     }
     setIsSubmitting(true);
 
-    const finalData = { 
+    const finalData = {
       ...data,
-      userId: user.id, 
+      userId: user.id,
       scheduledAt: (showSchedule && data.scheduledAt) ? data.scheduledAt.toISOString() : undefined,
-      communityId: data.communityId === NO_COMMUNITY_VALUE ? undefined : data.communityId, 
+      communityId: data.communityId === NO_COMMUNITY_VALUE ? undefined : data.communityId,
     };
 
     try {
@@ -203,7 +222,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
         }
       } else {
         toast.success(`Your post "${result.post?.title || 'Untitled'}" has been successfully created.`);
-        form.reset({ content: '', isDraft: false, communityId: preselectedCommunityId || NO_COMMUNITY_VALUE }); 
+        form.reset({ content: '', isDraft: false, communityId: preselectedCommunityId || NO_COMMUNITY_VALUE });
         setSuggestedCategory(null);
         setSuggestedTags([]);
         setShowSchedule(false);
@@ -221,11 +240,11 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
       setIsSubmitting(false);
     }
   }
-  
+
   if (authLoading || loadingCommunities) {
     return <div className="container mx-auto py-8 flex justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   }
-  if (!isAuthenticated && !authLoading) { 
+  if (!isAuthenticated && !authLoading) {
     return <div className="container mx-auto py-8 text-center"><p>Redirecting to login...</p></div>;
   }
 
@@ -258,20 +277,22 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 <FormItem>
                   <FormLabel>Content</FormLabel>
                   <FormControl>
-                    <Textarea
+                    <ReactQuill
+                      theme="snow"
+                      value={field.value}
+                      onChange={(content) => field.onChange(content)}
                       placeholder="Share your thoughts with the community..."
-                      className="min-h-[150px]"
-                      {...field}
+                      modules={quillModules}
                     />
                   </FormControl>
                   <FormDescription>
-                    Note: A full rich text editor for advanced formatting is planned for a future update.
+                    Use the editor above to format your post content.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            
+
             {memberCommunities.length > 0 && (
                 <FormField
                 control={form.control}
@@ -415,8 +436,8 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                         if (!checked) {
                             form.setValue("scheduledAt", undefined, {shouldValidate: true});
                         }
-                        if (checked) { 
-                            form.setValue("isDraft", false); 
+                        if (checked) {
+                            form.setValue("isDraft", false);
                         }
                     }}
                     disabled={isSubmitting}
@@ -456,29 +477,29 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                                 selected={field.value}
                                 onSelect={(date) => {
                                     const newDate = date ? new Date(date) : undefined;
-                                    if (newDate && field.value) { 
+                                    if (newDate && field.value) {
                                         newDate.setHours(field.value.getHours());
                                         newDate.setMinutes(field.value.getMinutes());
-                                    } else if (newDate) { 
-                                        newDate.setHours(9,0,0,0); 
+                                    } else if (newDate) {
+                                        newDate.setHours(9,0,0,0);
                                     }
                                     field.onChange(newDate);
-                                    if(newDate) form.setValue("isDraft", false); 
+                                    if(newDate) form.setValue("isDraft", false);
                                 }}
                                 initialFocus
-                                disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} 
+                                disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))}
                             />
                             <div className="p-2 border-t">
-                                <Input type="time" 
+                                <Input type="time"
                                     defaultValue={field.value ? format(field.value, "HH:mm") : "09:00"}
                                     onChange={(e) => {
                                         const time = e.target.value;
                                         const [hours, minutes] = time.split(':').map(Number);
-                                        const currentDate = field.value || new Date(); 
-                                        const newDate = new Date(currentDate); 
+                                        const currentDate = field.value || new Date();
+                                        const newDate = new Date(currentDate);
                                         newDate.setHours(hours, minutes);
                                         field.onChange(newDate);
-                                        if(newDate) form.setValue("isDraft", false); 
+                                        if(newDate) form.setValue("isDraft", false);
                                     }}
                                 />
                             </div>
@@ -506,5 +527,3 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
     </Card>
   );
 }
-
-    

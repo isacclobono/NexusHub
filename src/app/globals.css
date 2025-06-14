@@ -1,3 +1,6 @@
+/* Import Quill editor styles */
+@import 'react-quill/dist/quill.snow.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -101,4 +104,47 @@ body {
 }
 .btn-gradient:hover {
   @apply opacity-90;
+}
+
+/* Quill editor theme adjustments */
+.ql-toolbar.ql-snow {
+  @apply rounded-t-md border-input bg-card text-card-foreground;
+}
+.ql-container.ql-snow {
+  @apply rounded-b-md border-input bg-card text-card-foreground min-h-[150px];
+}
+.ql-editor {
+  @apply text-base focus:outline-none;
+  /* Ensure placeholder color matches theme */
+}
+.ql-editor.ql-blank::before {
+  @apply text-muted-foreground not-italic;
+}
+
+.dark .ql-toolbar.ql-snow {
+  @apply border-input bg-card text-card-foreground;
+}
+.dark .ql-toolbar.ql-snow .ql-picker-label,
+.dark .ql-toolbar.ql-snow .ql-picker-item,
+.dark .ql-toolbar.ql-snow .ql-stroke,
+.dark .ql-toolbar.ql-snow .ql-fill {
+  @apply text-card-foreground;
+}
+.dark .ql-toolbar.ql-snow .ql-picker-label:hover,
+.dark .ql-toolbar.ql-snow .ql-picker-item:hover,
+.dark .ql-toolbar.ql-snow .ql-stroke:hover,
+.dark .ql-toolbar.ql-snow .ql-fill:hover {
+  @apply text-primary;
+}
+.dark .ql-toolbar.ql-snow .ql-active .ql-stroke,
+.dark .ql-toolbar.ql-snow .ql-active .ql-fill {
+    @apply text-primary;
+}
+
+
+.dark .ql-container.ql-snow {
+  @apply border-input bg-card text-card-foreground;
+}
+.dark .ql-editor.ql-blank::before {
+  @apply text-muted-foreground;
 }
