@@ -36,6 +36,7 @@ import type { Community, Post } from '@/lib/types';
 import Link from 'next/link';
 
 const NO_COMMUNITY_VALUE = "__NONE__";
+const NO_CATEGORY_SELECTED_VALUE = "__NONE__"; // Using the same constant for "no selection"
 
 const postEditSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
@@ -250,7 +251,11 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                 render={({ field }) => (
                     <FormItem>
                     <FormLabel className="flex items-center"><UsersRound className="mr-2 h-4 w-4 text-muted-foreground"/>Post to a Community (Optional)</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || NO_COMMUNITY_VALUE} disabled={loadingCommunities}>
+                    <Select 
+                        onValueChange={(value) => field.onChange(value === NO_COMMUNITY_VALUE ? null : value)} 
+                        value={field.value === null ? NO_COMMUNITY_VALUE : (field.value || '')} 
+                        disabled={loadingCommunities}
+                    >
                         <FormControl>
                         <SelectTrigger>
                             <SelectValue placeholder={loadingCommunities ? "Loading communities..." : "Select a community (optional)"} />
@@ -301,14 +306,17 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Category</FormLabel>
-                  <Select onValueChange={(value) => field.onChange(value === "" ? null : value)} value={field.value || ''}>
+                  <Select 
+                    onValueChange={(value) => field.onChange(value === NO_CATEGORY_SELECTED_VALUE ? null : value)} 
+                    value={field.value === null ? NO_CATEGORY_SELECTED_VALUE : (field.value || '')}
+                  >
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a category" />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                       <SelectItem value="">(Clear Category)</SelectItem>
+                       <SelectItem value={NO_CATEGORY_SELECTED_VALUE}>(No Category)</SelectItem>
                       {CATEGORIES.map(cat => (
                         <SelectItem key={cat} value={cat}>{cat}</SelectItem>
                       ))}
