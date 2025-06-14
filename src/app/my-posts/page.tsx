@@ -101,16 +101,29 @@ export default function MyPostsPage() {
         draft: prev.draft.filter(p => p.id !== deletedPostId),
         scheduled: prev.scheduled.filter(p => p.id !== deletedPostId),
     }));
-    refreshUser(); // Refresh user context if needed (e.g., post counts)
+    // refreshUser(); // Not strictly needed unless post counts on user object change
   };
   
-  const handlePostUpdate = async () => {
+  const handlePostGenericUpdate = async () => { // Used for like/bookmark
     if (user && user.id) {
       await refreshUser(); 
+      // Re-fetch all to ensure isLiked/isBookmarked status is fresh, could be optimized
       fetchPosts('published');
       fetchPosts('draft');
       fetchPosts('scheduled');
     }
+  };
+
+  const handleDraftPublished = (updatedPost: Post) => {
+    // Remove from drafts
+    setPostsByStatus(prev => ({
+      ...prev,
+      draft: prev.draft.filter(p => p.id !== updatedPost.id),
+    }));
+    // Add to published (or simply refetch)
+    // For simplicity and to ensure data consistency (like comment counts, etc. if they change on publish)
+    fetchPosts('published');
+    fetchPosts('draft'); // Refetch drafts in case of any issues/reversions (though unlikely here)
   };
 
 
@@ -156,9 +169,10 @@ export default function MyPostsPage() {
           <div key={post.id} className="relative group">
             <PostCard 
                 post={post} 
-                onToggleBookmark={handlePostUpdate} 
-                onToggleLike={handlePostUpdate}
+                onToggleBookmark={handlePostGenericUpdate} 
+                onToggleLike={handlePostGenericUpdate}
                 onPostDeleted={handlePostDeleted}
+                onPostUpdated={status === 'draft' ? handleDraftPublished : handlePostGenericUpdate} // Specific handler for publishing drafts
             />
             {post.status === 'scheduled' && post.scheduledAt && (
                 <div className="text-xs text-center py-1 bg-blue-100 text-blue-700 border-t border-blue-200">
@@ -232,4 +246,3 @@ export default function MyPostsPage() {
     </div>
   );
 }
-

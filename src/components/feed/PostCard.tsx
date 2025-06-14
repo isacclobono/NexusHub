@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2, Send, Share2, Trash2, Edit } from 'lucide-react';
+import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2, Send, Share2, Trash2, Edit, SendHorizonal } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
@@ -35,6 +35,7 @@ interface PostCardProps {
   onToggleBookmark?: (postId: string, isCurrentlyBookmarked: boolean) => Promise<void> | void;
   onToggleLike?: (postId: string, isCurrentlyLiked: boolean, updatedPost: Post) => Promise<void> | void;
   onPostDeleted?: (postId: string) => void;
+  onPostUpdated?: (updatedPost: Post) => void; // For status changes like publishing a draft
 }
 
 
@@ -71,13 +72,14 @@ const CommentItem = ({ comment }: { comment: CommentType }) => {
   );
 };
 
-export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmarkProp, onToggleLike: onToggleLikeProp, onPostDeleted }: PostCardProps) {
+export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmarkProp, onToggleLike: onToggleLikeProp, onPostDeleted, onPostUpdated }: PostCardProps) {
   const { user, isAuthenticated } = useAuth();
   const [post, setPost] = useState<Post>(initialPost);
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
+  const [isPublishingDraft, setIsPublishingDraft] = useState(false);
 
 
   useEffect(() => {
@@ -338,6 +340,34 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
     }
   };
 
+  const handlePublishDraft = async () => {
+    if (!canCurrentUserManagePost || !post.id || post.status !== 'draft') {
+      toast.error("Cannot publish this post.");
+      return;
+    }
+    setIsPublishingDraft(true);
+    try {
+      const response = await fetch(`/api/posts/${post.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user!.id, status: 'published' }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.id) { // Check for result.id as GET returns the full post
+        throw new Error(result.message || "Failed to publish draft.");
+      }
+      toast.success(`Draft "${result.title || 'Post'}" published successfully!`);
+      if (onPostUpdated) {
+        onPostUpdated(result as Post);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not publish draft.");
+      console.error("Publish draft error:", err);
+    } finally {
+      setIsPublishingDraft(false);
+    }
+  };
+
 
   return (
     <>
@@ -354,6 +384,14 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
               <p className="text-xs text-muted-foreground">
                 {createdAt ? formatDistanceToNow(new Date(createdAt), { addSuffix: true }) : 'Recently'}
                 {category && ` · ${category}`}
+                 {post.communityName && (
+                    <>
+                        {' in '}
+                        <Link href={`/communities/${post.communityId}`} className="text-primary hover:underline">
+                            {post.communityName}
+                        </Link>
+                    </>
+                )}
               </p>
             </div>
           </Link>
@@ -366,16 +404,22 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
                     </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={handleShare} disabled={isDeletingPost}>
+                    <DropdownMenuItem onClick={handleShare} disabled={isDeletingPost || isPublishingDraft}>
                         <Share2 className="mr-2 h-4 w-4" /> Share
                     </DropdownMenuItem>
                     {canCurrentUserManagePost && (
                       <>
-                        <DropdownMenuItem onClick={() => toast.info("Edit post feature coming soon!")} disabled={isDeletingPost}>
+                        <DropdownMenuItem onClick={() => toast.info("Edit post feature coming soon!")} disabled={isDeletingPost || isPublishingDraft}>
                             <Edit className="mr-2 h-4 w-4" /> Edit Post
                         </DropdownMenuItem>
+                        {post.status === 'draft' && (
+                          <DropdownMenuItem onClick={handlePublishDraft} disabled={isPublishingDraft || isDeletingPost}>
+                            {isPublishingDraft ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SendHorizonal className="mr-2 h-4 w-4" />}
+                            Publish Draft
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => setShowDeleteDialog(true)} className="text-destructive focus:text-destructive" disabled={isDeletingPost}>
+                        <DropdownMenuItem onClick={() => setShowDeleteDialog(true)} className="text-destructive focus:text-destructive" disabled={isDeletingPost || isPublishingDraft}>
                             <Trash2 className="mr-2 h-4 w-4" /> Delete Post
                         </DropdownMenuItem>
                       </>
@@ -513,4 +557,3 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
     </>
   );
 }
-
