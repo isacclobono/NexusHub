@@ -436,7 +436,7 @@ export default function CreateEventPage() {
                     <FormItem>
                       <FormLabel>Currency (if priced)</FormLabel>
                       <FormControl>
-                        <Input placeholder="e.g., USD, EUR" {...field} defaultValue="USD" />
+                        <Input placeholder="e.g., USD, EUR" {...field} />
                       </FormControl>
                       <FormMessage />
                     </FormItem>
