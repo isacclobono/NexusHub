@@ -2,6 +2,8 @@
 export interface User {
   id: string;
   name: string;
+  email?: string; // Made email optional to align with users.json if some users don't have it
+  password?: string; // Added for login simulation
   avatarUrl?: string;
   bio?: string;
   reputation: number;
@@ -94,4 +96,5 @@ export interface NavItem {
   external?: boolean;
   label?: string;
   variant?: 'default' | 'ghost';
+  onClick?: () => void; // Added for logout
 }

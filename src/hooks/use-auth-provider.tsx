@@ -71,7 +71,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const allUsers = await fetchAllUsers();
       const normalizedInput = emailOrUsername.toLowerCase();
-      // In a real app, you would also verify the password (hashed)
+      
       const foundUser = allUsers.find(u =>
         u.email?.toLowerCase() === normalizedInput ||
         u.name.toLowerCase() === normalizedInput
@@ -79,9 +79,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (foundUser) {
         // Simulate password check - THIS IS NOT SECURE FOR PRODUCTION
-        // For demo: accept any password if user is found or use a dummy password
-        // const passwordMatches = pass === "password123"; // Example dummy password check
-        const passwordMatches = true; // For demo, assume password matches if user is found
+        // Passwords in users.json are plain text for this demo.
+        const passwordMatches = foundUser.password === pass;
 
         if (passwordMatches) {
             setUser(foundUser);
@@ -109,30 +108,32 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (emailExists) {
       console.warn("Registration attempt with existing email:", email);
       setLoading(false);
-      return false;
+      return false; // Indicate failure if email exists
     }
 
     // Simulate successful registration.
+    // IMPORTANT: This new user is NOT saved to users.json.
+    // To test login with this account, you must manually add it to public/api/data/users.json,
+    // including a 'password' field.
     console.warn(
       `Simulated registration for: {name: "${name}", email: "${email}"}. ` +
-      "IMPORTANT: This new user is NOT saved to users.json. " +
-      "To test login with this account, you must manually add it to public/api/data/users.json, " +
-      "or use an existing account."
+      "This new user is NOT saved to users.json. " +
+      "To test login with this account, manually add it to public/api/data/users.json with a password."
     );
-
-    // This part just simulates that the input data is valid for registration
-    if (name && email && pass && pass.length >=8) { // Added basic password length check for simulation
+    
+    if (name && email && pass && pass.length >=8) { 
       setLoading(false);
-      return true;
+      return true; // Indicate success for valid input
     }
 
     setLoading(false);
-    return false;
+    return false; // Indicate failure for other issues (e.g. invalid input)
   };
 
   const logout = () => {
     setUser(null);
     sessionStorage.removeItem('currentUser');
+    // Optional: redirect to login or home page can be handled in the component calling logout
   };
 
   return (
