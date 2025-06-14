@@ -2,7 +2,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form'; // Added Controller
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,7 +46,7 @@ const NO_CATEGORY_SELECTED_VALUE = "__NONE__";
 
 const postEditSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(15000, "Content can't exceed 15000 characters."), // Increased for HTML
+  content: z.string().min(1, 'Content is required.').max(15000, "Content can't exceed 15000 characters."),
   category: z.string().optional().nullable(),
   tags: z.string().optional().nullable(),
   communityId: z.string().optional().nullable(),
@@ -178,8 +178,8 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
       userId: user.id,
       title: data.title || undefined,
       content: data.content,
-      category: data.category, // Send null if category is explicitly cleared
-      tags: data.tags, // Send null if tags are explicitly cleared
+      category: data.category, 
+      tags: data.tags, 
       communityId: data.communityId === NO_COMMUNITY_VALUE ? NO_COMMUNITY_VALUE : (data.communityId || null),
     };
 
@@ -240,17 +240,19 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
+            <Controller
               name="content"
-              render={({ field }) => (
+              control={form.control}
+              rules={{ required: "Content is required." }}
+              render={({ field: { onChange, onBlur, value, name } }) => (
                 <FormItem>
                   <FormLabel>Content</FormLabel>
                   <FormControl>
                     <ReactQuill
                       theme="snow"
-                      value={field.value}
-                      onChange={(content) => field.onChange(content)}
+                      value={value}
+                      onChange={onChange}
+                      onBlur={onBlur}
                       placeholder="Share your thoughts with the community..."
                       modules={quillModules}
                     />
@@ -375,3 +377,5 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     </Card>
   );
 }
+
+    

@@ -2,7 +2,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form'; // Added Controller
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
@@ -49,7 +49,7 @@ const NO_COMMUNITY_VALUE = "__NONE__";
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(15000, "Content can't exceed 15000 characters."), // Increased max length for HTML
+  content: z.string().min(1, 'Content is required.').max(15000, "Content can't exceed 15000 characters."),
   category: z.string().optional(),
   tags: z.string().optional(),
   media: z.any().optional(),
@@ -143,8 +143,6 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
 
   const handleSuggestCategoryAndTags = useCallback(async () => {
     const contentValue = form.getValues('content');
-    // For HTML content, we might want to strip tags for AI analysis or send as is.
-    // For simplicity, sending as is. The AI should be robust enough or this can be refined.
     if (!contentValue || contentValue.trim().length < 20) {
       toast.error("Content too short. Please write at least 20 characters to get suggestions.");
       return;
@@ -179,7 +177,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
       [{ 'header': [1, 2, 3, false] }],
       ['bold', 'italic', 'underline', 'strike'],
       [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      [{ 'color': [] }, { 'background': [] }], // Added color pickers
+      [{ 'color': [] }, { 'background': [] }], 
       ['link'],
       ['clean']
     ],
@@ -270,20 +268,23 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
+            
+            <Controller
               name="content"
-              render={({ field }) => (
+              control={form.control}
+              rules={{ required: "Content is required." }}
+              render={({ field: { onChange, onBlur, value, name } }) => (
                 <FormItem>
                   <FormLabel>Content</FormLabel>
                   <FormControl>
                     <ReactQuill
                       theme="snow"
-                      value={field.value}
-                      onChange={(content) => field.onChange(content)}
+                      value={value}
+                      onChange={onChange}
+                      onBlur={onBlur}
                       placeholder="Share your thoughts with the community..."
                       modules={quillModules}
-                    />
+                      />
                   </FormControl>
                   <FormDescription>
                     Use the editor above to format your post content.
@@ -292,6 +293,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 </FormItem>
               )}
             />
+
 
             {memberCommunities.length > 0 && (
                 <FormField
@@ -527,3 +529,5 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
     </Card>
   );
 }
+
+    
