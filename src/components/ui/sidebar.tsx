@@ -534,22 +534,21 @@ const SidebarMenuButton = React.forwardRef<
 >(
   (
     {
-      asChild: ownAsChild = false, // This prop determines if Comp is Slot or button
+      asChild: ownAsChild = false, 
       isActive = false,
       variant = "default",
       size = "default",
       tooltip: tooltipProp,
       className,
       children,
-      ...restProps // Contains all other props, including a potential asChild from a parent Link
+      ...restProps 
     },
     ref
   ) => {
     const Comp = ownAsChild ? Slot : "button";
     const { isMobile, state } = useSidebar();
 
-    // Destructure asChild from restProps and discard it, keep other props in safeRestProps
-    const { asChild: _discardedParentAsChild, ...safeRestProps } = restProps;
+    const { asChild: _parentAsChild, ...safeRestProps } = restProps;
 
     const buttonElement = (
       <Comp
@@ -558,7 +557,7 @@ const SidebarMenuButton = React.forwardRef<
         data-size={size}
         data-active={isActive}
         className={cn(sidebarMenuButtonVariants({ variant, size, className }))}
-        {...safeRestProps} // Spread safeRestProps which doesn't have the parent's asChild
+        {...safeRestProps} 
       >
         {children}
       </Comp>
