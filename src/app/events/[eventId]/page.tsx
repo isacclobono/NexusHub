@@ -12,6 +12,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
 
@@ -70,9 +71,9 @@ export default function EventDetailPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // Fetch a single event. We can adapt the /api/events to support GET /api/events/:id or filter here
-      // For now, let's fetch all and filter, which is inefficient for many events but works for JSON files.
-      const response = await fetch('/api/events'); // This fetches all events
+      // Fetch a single event. API GET /api/events now fetches all, so we filter.
+      // A dedicated /api/events/[eventId] GET endpoint would be more efficient.
+      const response = await fetch('/api/events'); 
 
       if (!response.ok) {
         const errorData = await response.json();
@@ -80,24 +81,25 @@ export default function EventDetailPage() {
       }
       
       const eventsData: Event[] = await response.json();
+      // The API now returns events with populated organizer and rsvps
       const foundEvent = eventsData.find(e => e.id === eventId);
 
       if (foundEvent) {
         setEvent(foundEvent);
       } else {
         setError("Event not found.");
+        setEvent(null); // Ensure event state is cleared if not found
       }
     } catch (e) {
       console.error("Failed to fetch event details:", e);
       setError(e instanceof Error ? e.message : "Failed to load event details.");
+      setEvent(null);
     } finally {
       setIsLoading(false);
     }
   }, [eventId]);
 
   useEffect(() => {
-    // No need to wait for authLoading if eventId is directly available
-    // Auth status is checked before RSVP action
     if(eventId) {
         fetchEventDetails();
     }
@@ -109,8 +111,8 @@ export default function EventDetailPage() {
         router.push(`/login?redirect=/events/${eventId}`);
         return;
     }
-    if (!event) {
-        toast.error("Event details not loaded yet.");
+    if (!event || !event.id) { // Check event.id as well
+        toast.error("Event details not loaded yet or event ID is missing.");
         return;
     }
 
@@ -127,7 +129,8 @@ export default function EventDetailPage() {
             throw new Error(result.message || 'Failed to RSVP for the event.');
         }
         
-        setEvent(result.event); // Update event state with new RSVP list from API
+        // API response should now contain the updated event with populated rsvps
+        setEvent(result.event as Event); 
         toast.success(result.message || `Successfully RSVP'd for ${event.title}!`);
 
     } catch (err) {
@@ -140,7 +143,7 @@ export default function EventDetailPage() {
   };
   
   const handleDeleteEvent = async () => {
-    if (!event || !currentUser || currentUser.id !== event.organizerId) {
+    if (!event || !currentUser || currentUser.id !== event.organizer?.id) { // Check against populated organizer.id
       toast.error("You are not authorized to delete this event.");
       return;
     }
@@ -148,23 +151,24 @@ export default function EventDetailPage() {
       return;
     }
 
-    setIsLoading(true); // Use main loading indicator for deletion
+    setIsLoading(true); 
     try {
-      // Hypothetical DELETE endpoint, not implemented in this pass for brevity with JSON files
+      // TODO: Implement DELETE /api/events/[eventId] endpoint
       // const response = await fetch(`/api/events/${event.id}`, { method: 'DELETE' });
       // if (!response.ok) throw new Error("Failed to delete event.");
       await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
       toast.success(`Event "${event.title}" deleted (simulated).`);
       router.push('/events');
-    } catch (error) {
-      toast.error("Failed to delete event.");
-      console.error("Delete event error:", error);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to delete event."
+      toast.error(msg);
+      console.error("Delete event error:", err);
       setIsLoading(false);
     }
   };
 
 
-  if (isLoading || authLoading) { // Keep authLoading here for initial user state
+  if (isLoading || authLoading) {
     return <EventDetailSkeleton />;
   }
 
@@ -199,8 +203,9 @@ export default function EventDetailPage() {
     );
   }
 
-  const isOrganizer = currentUser?.id === event.organizerId;
+  const isOrganizer = currentUser?.id === event.organizer?.id; // Compare with populated organizer.id
   const hasRSVPd = event.rsvps?.some(u => u.id === currentUser?.id);
+  const rsvpCount = event.rsvps?.length || 0;
 
   return (
     <div className="container mx-auto py-8">
@@ -231,8 +236,8 @@ export default function EventDetailPage() {
                         <CalendarDays className="h-5 w-5 mr-3 mt-1 flex-shrink-0 text-primary" />
                         <div>
                             <p className="font-semibold">Date & Time</p>
-                            <p>{format(new Date(event.startTime), "EEEE, MMM d, yyyy 'from' h:mm a")} to</p>
-                            <p>{format(new Date(event.endTime), "h:mm a (z)")}</p>
+                            <p>{event.startTime ? format(new Date(event.startTime), "EEEE, MMM d, yyyy 'from' h:mm a") : 'Date TBD'} to</p>
+                            <p>{event.endTime ? format(new Date(event.endTime), "h:mm a (z)") : 'Time TBD'}</p>
                         </div>
                     </div>
                     {event.location && (
@@ -260,7 +265,7 @@ export default function EventDetailPage() {
             </div>
 
             <div className="md:col-span-1 p-6 bg-muted/30 border-l space-y-6">
-                {event.organizer && (
+                {event.organizer && event.organizer.id !== 'unknown' && ( // Check if organizer is not the fallback
                      <div>
                         <h3 className="text-lg font-headline font-semibold mb-3 text-primary">Organized by</h3>
                         <Link href={`/profile/${event.organizer.id}`} className="flex items-center space-x-3 group">
@@ -279,9 +284,10 @@ export default function EventDetailPage() {
                 <div>
                     <h3 className="text-lg font-headline font-semibold mb-3 text-primary flex items-center">
                         <Users className="h-5 w-5 mr-2"/>
-                        Attendees ({event.rsvps?.length || event.rsvpIds?.length || 0} / {event.maxAttendees || 'Unlimited'})
+                        Attendees ({rsvpCount} / {event.maxAttendees || 'Unlimited'})
                     </h3>
                     {event.rsvps && event.rsvps.length > 0 ? (
+                        <TooltipProvider>
                         <div className="flex flex-wrap -space-x-2 overflow-hidden">
                         {event.rsvps.slice(0, 10).map(user => (
                              <Tooltip key={user.id}>
@@ -302,14 +308,15 @@ export default function EventDetailPage() {
                             </div>
                         )}
                         </div>
+                        </TooltipProvider>
                     ) : (
                         <p className="text-sm text-muted-foreground">No RSVPs yet. Be the first!</p>
                     )}
                 </div>
 
-                 <Button onClick={handleRSVP} size="lg" className="w-full btn-gradient" disabled={isRsvpLoading || (!!event.maxAttendees && (event.rsvps?.length || 0) >= event.maxAttendees && !hasRSVPd) }>
+                 <Button onClick={handleRSVP} size="lg" className="w-full btn-gradient" disabled={isRsvpLoading || (!isOrganizer && !!event.maxAttendees && rsvpCount >= event.maxAttendees && !hasRSVPd) }>
                     {isRsvpLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ticket className="h-5 w-5 mr-2" />}
-                    {hasRSVPd ? "You're Going!" : ((!!event.maxAttendees && (event.rsvps?.length || 0) >= event.maxAttendees) ? "Event Full" : "RSVP to this Event")}
+                    {hasRSVPd ? "You're Going!" : ((!isOrganizer && !!event.maxAttendees && rsvpCount >= event.maxAttendees) ? "Event Full" : "RSVP to this Event")}
                 </Button>
 
                 {isOrganizer && (
@@ -327,4 +334,3 @@ export default function EventDetailPage() {
     </div>
   );
 }
-

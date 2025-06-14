@@ -2,7 +2,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import getDb from '@/lib/mongodb';
 import bcrypt from 'bcryptjs';
-import type { User } from '@/lib/types'; // Assuming User type doesn't include passwordHash
+import type { User } from '@/lib/types';
+import type { ObjectId } from 'mongodb';
+
+// Server-side user document type including passwordHash
+interface UserWithPasswordHash extends Omit<User, 'id'> {
+  _id: ObjectId;
+  passwordHash: string;
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -13,18 +20,18 @@ export async function POST(request: NextRequest) {
     }
 
     const db = await getDb();
-    const usersCollection = db.collection<Omit<User, 'id' | '_id'> & { _id: import('mongodb').ObjectId, passwordHash: string }>('users');
+    const usersCollection = db.collection<UserWithPasswordHash>('users');
 
     const foundUserDoc = await usersCollection.findOne({ email: email.toLowerCase() });
 
     if (!foundUserDoc) {
-      return NextResponse.json({ message: 'Invalid email or password.' }, { status: 401 }); // User not found
+      return NextResponse.json({ message: 'Invalid email or password.' }, { status: 401 });
     }
 
     const passwordIsValid = await bcrypt.compare(password, foundUserDoc.passwordHash);
 
     if (!passwordIsValid) {
-      return NextResponse.json({ message: 'Invalid email or password.' }, { status: 401 }); // Incorrect password
+      return NextResponse.json({ message: 'Invalid email or password.' }, { status: 401 });
     }
 
     // Prepare user object for client, excluding passwordHash

@@ -55,7 +55,7 @@ const eventFormSchema = z.object({
 type EventFormValues = z.infer<typeof eventFormSchema>;
 
 export default function CreateEventPage() {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const router = useRouter();
 
@@ -80,18 +80,18 @@ export default function CreateEventPage() {
   });
 
   async function onSubmit(data: EventFormValues) {
-    if (!user) {
-      toast.error("Authentication error. Please log in again.");
+    if (!user || !user.id) { // Ensure user.id is available
+      toast.error("Authentication error or user ID missing. Please log in again.");
       return;
     }
-    setIsLoading(true);
+    setIsSubmitting(true);
     
     const eventDataPayload = {
       ...data,
-      organizerId: user.id,
+      organizerId: user.id, // Send the string ID
       startTime: data.startTime.toISOString(),
       endTime: data.endTime.toISOString(),
-      imageUrl: data.imageUrl || `https://placehold.co/1200x400.png`, // Default placeholder if not provided
+      imageUrl: data.imageUrl || `https://placehold.co/1200x400.png`,
     };
 
     try {
@@ -103,17 +103,23 @@ export default function CreateEventPage() {
       const result = await response.json();
 
       if (!response.ok) {
-        throw new Error(result.message || 'Failed to create event.');
+        if (result.errors) {
+            let errorMessages = Object.values(result.errors).flat().join('\n');
+            toast.error(`Event creation failed:\n${errorMessages}`, { duration: 6000 });
+        } else {
+            throw new Error(result.message || 'Failed to create event.');
+        }
+      } else {
+        toast.success(`Your event "${result.event.title}" has been successfully created.`);
+        form.reset();
+        router.push(`/events/${result.event.id}`); 
       }
-      toast.success(`Your event "${result.event.title}" has been successfully created.`);
-      form.reset();
-      router.push(`/events/${result.event.id}`); // Redirect to the new event page
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
       toast.error(`Event creation failed: ${errorMessage}`);
       console.error("Error creating event:", error);
     } finally {
-      setIsLoading(false);
+      setIsSubmitting(false);
     }
   }
 
@@ -124,7 +130,8 @@ export default function CreateEventPage() {
       </div>
     );
   }
-  if (!isAuthenticated) {
+  // This check is after authLoading to ensure isAuthenticated status is confirmed
+  if (!isAuthenticated && !authLoading) {
      return (
       <div className="container mx-auto py-8 text-center">
         <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-destructive" />
@@ -204,8 +211,17 @@ export default function CreateEventPage() {
                           <Calendar
                             mode="single"
                             selected={field.value}
-                            onSelect={field.onChange}
-                            disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))}
+                            onSelect={(date) => {
+                                const newDate = date ? new Date(date) : undefined;
+                                if (newDate && field.value) { // If date exists, keep its time
+                                    newDate.setHours(field.value.getHours());
+                                    newDate.setMinutes(field.value.getMinutes());
+                                } else if (newDate) { // New date, set default time
+                                    newDate.setHours(9,0,0,0); 
+                                }
+                                field.onChange(newDate);
+                            }}
+                            disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))} // Allow today
                             initialFocus
                           />
                            <div className="p-2 border-t">
@@ -214,9 +230,10 @@ export default function CreateEventPage() {
                                     onChange={(e) => {
                                         const time = e.target.value;
                                         const [hours, minutes] = time.split(':').map(Number);
-                                        const currentDate = field.value || new Date();
-                                        currentDate.setHours(hours, minutes);
-                                        field.onChange(new Date(currentDate));
+                                        const currentDate = field.value || new Date(); // Use existing date or create new one
+                                        const newDate = new Date(currentDate); // Clone to avoid mutating previous state directly
+                                        newDate.setHours(hours, minutes);
+                                        field.onChange(newDate);
                                     }}
                                 />
                             </div>
@@ -255,19 +272,29 @@ export default function CreateEventPage() {
                           <Calendar
                             mode="single"
                             selected={field.value}
-                            onSelect={field.onChange}
-                            disabled={(date) => date < (form.getValues("startTime") || new Date(new Date().setDate(new Date().getDate() -1)))}
+                             onSelect={(date) => {
+                                const newDate = date ? new Date(date) : undefined;
+                                if (newDate && field.value) { // If date exists, keep its time
+                                    newDate.setHours(field.value.getHours());
+                                    newDate.setMinutes(field.value.getMinutes());
+                                } else if (newDate) { // New date, set default time
+                                    newDate.setHours(17,0,0,0); 
+                                }
+                                field.onChange(newDate);
+                            }}
+                            disabled={(date) => date < (form.getValues("startTime") || new Date(new Date().setDate(new Date().getDate() -1)))} // Ensure end is after start
                             initialFocus
                           />
                            <div className="p-2 border-t">
                                 <Input type="time" 
                                     defaultValue={field.value ? format(field.value, "HH:mm") : "17:00"}
-                                    onChange={(e) => {
+                                     onChange={(e) => {
                                         const time = e.target.value;
                                         const [hours, minutes] = time.split(':').map(Number);
                                         const currentDate = field.value || new Date();
-                                        currentDate.setHours(hours, minutes);
-                                        field.onChange(new Date(currentDate));
+                                        const newDate = new Date(currentDate);
+                                        newDate.setHours(hours, minutes);
+                                        field.onChange(newDate);
                                     }}
                                 />
                             </div>
@@ -337,7 +364,7 @@ export default function CreateEventPage() {
                   <FormItem>
                     <FormLabel>Max Attendees (Optional)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="e.g., 100" {...field} onChange={event => field.onChange(+event.target.value)} />
+                      <Input type="number" placeholder="e.g., 100" {...field} onChange={event => field.onChange(event.target.value === '' ? undefined : +event.target.value)} />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -362,8 +389,8 @@ export default function CreateEventPage() {
               />
 
               <CardFooter className="p-0 pt-8">
-                <Button type="submit" disabled={isLoading} className="w-full md:w-auto btn-gradient">
-                  {isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                <Button type="submit" disabled={isSubmitting || authLoading} className="w-full md:w-auto btn-gradient">
+                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                   Create Event
                 </Button>
               </CardFooter>

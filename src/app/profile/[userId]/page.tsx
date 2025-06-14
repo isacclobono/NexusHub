@@ -1,9 +1,9 @@
 
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import type { User, Post, Badge as BadgeType, Comment as CommentType } from '@/lib/types';
+import type { User, Post, Badge as BadgeType } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -15,6 +15,7 @@ import Image from 'next/image';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/use-auth-provider';
+import toast from 'react-hot-toast';
 
 
 const BadgeDisplayComponent = ({ badge }: { badge: BadgeType }) => (
@@ -72,77 +73,81 @@ const ProfileSkeleton = () => (
 
 export default function UserProfilePage() {
   const params = useParams();
+  const router = useRouter();
   const routeUserId = params.userId as string;
   
   const { user: authUser, loading: authLoading } = useAuth();
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
-  const [userBadges, setUserBadges] = useState<BadgeType[]>([]);
-  const [allUsers, setAllUsers] = useState<User[]>([]); // For enriching post comments
+  const [userBadges, setUserBadges] = useState<BadgeType[]>([]); // Badges still from JSON
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  // Determine which user ID to fetch (either from route or authenticated user for '/profile/me')
   const userIdToFetch = routeUserId === 'me' && authUser ? authUser.id : routeUserId;
 
   const fetchProfileData = useCallback(async (currentUserId: string) => {
-    if (!currentUserId) return;
+    if (!currentUserId || currentUserId === 'me') { // If 'me' and authUser not loaded yet, wait.
+        if (currentUserId === 'me' && !authUser && !authLoading) {
+            setError("Cannot load 'me' profile. User not authenticated.");
+            setIsLoading(false);
+        } else if (currentUserId === 'me' && authLoading) {
+            // still waiting for authUser
+        } else if (!currentUserId){
+             setError("User ID is missing.");
+             setIsLoading(false);
+        }
+        return;
+    }
     setIsLoading(true);
     setError(null);
     try {
-      const [usersResponse, postsResponse, badgesResponse] = await Promise.all([
-        fetch('/api/data/users.json'),
-        fetch('/api/data/posts.json'),
-        fetch('/api/data/badges.json')
-      ]);
-
-      if (!usersResponse.ok) throw new Error(`Failed to fetch users: ${usersResponse.statusText}`);
-      if (!postsResponse.ok) throw new Error(`Failed to fetch posts: ${postsResponse.statusText}`);
-      if (!badgesResponse.ok) throw new Error(`Failed to fetch badges: ${badgesResponse.statusText}`);
-      
+      // TODO: Create a dedicated API endpoint /api/users/[userId] to fetch specific user details from MongoDB
+      // For now, fetching all users and filtering (inefficient for production)
+      const usersResponse = await fetch('/api/data/users.json'); // Simulating fetch for profile user
+      if (!usersResponse.ok) throw new Error(`Failed to fetch user data: ${usersResponse.statusText}`);
       const usersData: User[] = await usersResponse.json();
-      setAllUsers(usersData); // Store all users for comment enrichment
-      const postsData: Post[] = await postsResponse.json();
-      const badgesData: BadgeType[] = await badgesResponse.json();
-
       const foundUser = usersData.find(u => u.id === currentUserId);
       setProfileUser(foundUser || null);
 
       if (foundUser) {
-        const enrichedPosts = postsData
-          .filter(p => p.authorId === foundUser.id && p.status === 'published')
-          .map(post => {
-            const comments = post.comments?.map(comment => ({
-                ...comment,
-                author: usersData.find(u => u.id === comment.authorId) || 
-                        { id: 'unknown', name: 'Unknown Commenter', reputation: 0, joinedDate: new Date().toISOString() } as User
-            })) || [];
-            return {
-                ...post,
-                author: foundUser,
-                comments,
-            };
-          });
-        setUserPosts(enrichedPosts);
-        // Assign all badges to the user for demo purposes on their own profile or a sample selection
+        // Fetch posts by this user from MongoDB
+        // TODO: Create /api/posts?authorId=[userId] endpoint
+        const postsResponse = await fetch('/api/posts'); // Fetches ALL posts for now
+        if (!postsResponse.ok) throw new Error(`Failed to fetch posts: ${postsResponse.statusText}`);
+        let allPostsData: Post[] = await postsResponse.json();
+        const filteredUserPosts = allPostsData.filter(p => p.author?.id === foundUser.id && p.status === 'published');
+        setUserPosts(filteredUserPosts);
+        
+        // Badges are still fetched from JSON for demo
+        const badgesResponse = await fetch('/api/data/badges.json');
+        if (!badgesResponse.ok) throw new Error(`Failed to fetch badges: ${badgesResponse.statusText}`);
+        const badgesData: BadgeType[] = await badgesResponse.json();
+         // Assign all badges to the user for demo purposes on their own profile or a sample selection
         setUserBadges(foundUser.id === authUser?.id ? badgesData : badgesData.slice(0, Math.floor(Math.random() * badgesData.length + 1))); 
+
       } else {
         setError("User not found.");
+        setProfileUser(null);
       }
     } catch (e) {
       console.error("Failed to fetch profile data:", e);
       setError(e instanceof Error ? e.message : "Failed to load profile.");
+      setProfileUser(null);
     } finally {
       setIsLoading(false);
     }
-  }, [authUser?.id]); // Added authUser.id to dependency array
+  }, [authUser, authLoading]); 
   
   useEffect(() => {
     if (!authLoading && userIdToFetch) {
       fetchProfileData(userIdToFetch);
-    } else if (!authLoading && routeUserId !== 'me' && !userIdToFetch) { // Case where routeUserId is direct ID and authUser is null
-       fetchProfileData(routeUserId);
+    } else if (routeUserId === 'me' && !authUser && !authLoading) {
+        // User is not authenticated and trying to access /profile/me
+        toast.error("Please log in to view your profile.");
+        router.push(`/login?redirect=/profile/me`);
     }
-  }, [userIdToFetch, authLoading, routeUserId, fetchProfileData]);
+  }, [userIdToFetch, authLoading, authUser, fetchProfileData, router, routeUserId]);
 
 
   if (authLoading || isLoading) {
@@ -198,13 +203,13 @@ export default function UserProfilePage() {
               <h1 className="text-3xl lg:text-4xl font-bold font-headline">{profileUser.name}</h1>
               {profileUser.bio && <p className="text-muted-foreground mt-1 text-sm md:text-base">{profileUser.bio}</p>}
               <div className="flex items-center justify-center md:justify-start space-x-4 text-sm text-muted-foreground mt-2">
-                <span className="flex items-center"><CalendarDays className="h-4 w-4 mr-1" /> Joined {format(new Date(profileUser.joinedDate), 'MMMM yyyy')}</span>
+                <span className="flex items-center"><CalendarDays className="h-4 w-4 mr-1" /> Joined {profileUser.joinedDate ? format(new Date(profileUser.joinedDate), 'MMMM yyyy') : 'N/A'}</span>
                 <span className="flex items-center"><Star className="h-4 w-4 mr-1 text-yellow-400 fill-current" /> {profileUser.reputation} Reputation</span>
               </div>
             </div>
             {isOwnProfile && (
               <div className="pt-4 md:pt-20">
-                <Button variant="outline"><Edit3 className="h-4 w-4 mr-2" /> Edit Profile</Button>
+                <Button variant="outline" onClick={() => toast.error("Edit profile not implemented.")}><Edit3 className="h-4 w-4 mr-2" /> Edit Profile</Button>
               </div>
             )}
           </div>
@@ -222,7 +227,8 @@ export default function UserProfilePage() {
           {userPosts.length > 0 ? (
             <div className="space-y-6">
               {userPosts.map(post => (
-                <PostCard key={post.id} post={post} allUsers={allUsers} />
+                // PostCard expects an author object within post
+                <PostCard key={post.id} post={post} />
               ))}
             </div>
           ) : (

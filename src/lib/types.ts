@@ -2,11 +2,11 @@
 import type { ObjectId } from 'mongodb';
 
 export interface User {
-  _id?: ObjectId; // MongoDB uses _id
+  _id?: ObjectId; // MongoDB uses _id, will be string on client as 'id'
   id?: string; // string representation of _id, often used on client
   name: string;
   email: string;
-  // password field should not be sent to client, handled server-side
+  // passwordHash field is server-side only
   avatarUrl?: string;
   bio?: string;
   reputation: number;
@@ -24,21 +24,21 @@ export interface Comment {
   _id?: ObjectId;
   id?: string;
   postId?: string | ObjectId;
-  parentId?: string | ObjectId;
-  authorId: string | ObjectId;
-  author?: User;
+  parentId?: string | ObjectId; // For threaded comments
+  authorId: string | ObjectId; // Will be string on client if populated
+  author?: User; // Populated author object
   content: string;
   createdAt: string; // ISO Date String
   reactions: Reaction[];
-  replyIds?: string[] | ObjectId[];
-  replies?: Comment[];
+  replyIds?: (string | ObjectId)[]; // Array of comment IDs
+  replies?: Comment[]; // Populated replies for threaded comments
 }
 
 export interface Post {
   _id?: ObjectId;
   id?: string;
-  authorId: string | ObjectId;
-  author?: User;
+  authorId: string | ObjectId; // Will be string on client if populated
+  author?: User; // Populated author object
   title?: string;
   content: string;
   media?: { type: 'image' | 'video' | 'document'; url: string; name?: string }[];
@@ -47,10 +47,10 @@ export interface Post {
   createdAt: string; // ISO Date String
   updatedAt?: string; // ISO Date String
   reactions: Reaction[];
-  commentIds?: string[] | ObjectId[];
-  comments?: Comment[];
+  commentIds?: (string | ObjectId)[]; // Array of comment ObjectIds from DB
+  comments?: Comment[]; // Populated comments
   commentCount: number;
-  isBookmarked?: boolean;
+  isBookmarked?: boolean; // Client-side state, or could be stored in DB
   scheduledAt?: string; // ISO Date String
   status?: 'published' | 'draft' | 'scheduled';
 }
@@ -59,15 +59,15 @@ export interface Event {
   _id?: ObjectId;
   id?: string;
   title: string;
-  description: string;
+  description:string;
   imageUrl?: string;
   startTime: string; // ISO Date String
   endTime: string; // ISO Date String
   location?: string;
-  organizerId: string | ObjectId;
-  organizer?: User;
-  rsvpIds: (string | ObjectId)[]; // Array of user IDs
-  rsvps?: User[];
+  organizerId: string | ObjectId; // Will be string on client if populated
+  organizer?: User; // Populated organizer object
+  rsvpIds: (string | ObjectId)[]; // Array of user ObjectIds from DB
+  rsvps?: User[]; // Array of populated User objects for RSVPs
   waitlistIds?: (string | ObjectId)[];
   waitlist?: User[];
   maxAttendees?: number;
@@ -89,7 +89,7 @@ export interface EventFeedback {
 }
 
 export interface Badge {
-  id: string; // For badges, we might keep them simple, maybe not in DB for this demo
+  id: string; 
   name: string;
   description: string;
   iconUrl: string;
@@ -109,15 +109,15 @@ export interface NavItem {
 export interface Notification {
   _id?: ObjectId;
   id?: string;
-  userId: string | ObjectId;
+  userId: string | ObjectId; // Target user
   type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp';
   title: string;
   message: string;
-  link?: string;
+  link?: string; // Link to the relevant content
   isRead: boolean;
   createdAt: string; // ISO Date String
-  relatedEntityId?: string | ObjectId;
-  actor?: {
+  relatedEntityId?: string | ObjectId; // e.g., Post ID, Event ID
+  actor?: { // The user who performed the action
     id: string | ObjectId;
     name: string;
     avatarUrl?: string;

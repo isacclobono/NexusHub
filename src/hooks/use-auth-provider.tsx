@@ -3,14 +3,13 @@
 
 import React, { createContext, useState, useEffect, useCallback, useContext, ReactNode } from 'react';
 import type { User } from '@/lib/types';
-import getDb from '@/lib/mongodb'; // We can't use getDb directly in client components. Login will call an API.
-import bcrypt from 'bcryptjs'; // bcrypt also cannot be used directly on client for comparison with DB hash.
+// No direct DB or bcrypt on client
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (emailOrUsername: string, pass: string) => Promise<boolean>;
+  login: (emailOrUsername: string, pass: string) => Promise<boolean>; // Returns true on success, throws error on failure
   logout: () => void;
   register: (name: string, email: string, pass: string) => Promise<{ success: boolean, message?: string, user?: User }>;
 }
@@ -26,10 +25,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const storedUser = sessionStorage.getItem('currentUser');
       if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        // Ensure _id is correctly handled if it exists from MongoDB responses
+        const parsedUser: User = JSON.parse(storedUser);
+        // Ensure 'id' field is present, typically from _id.toHexString() on server
         if (parsedUser._id && !parsedUser.id) {
-          parsedUser.id = typeof parsedUser._id === 'string' ? parsedUser._id : parsedUser._id.toString();
+             parsedUser.id = typeof parsedUser._id === 'string' ? parsedUser._id : (parsedUser._id as any).toString();
         }
         setUser(parsedUser);
       } else {
@@ -37,6 +36,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error("Failed to load user from session:", error);
+      sessionStorage.removeItem('currentUser'); // Clear potentially corrupted data
       setUser(null);
     } finally {
       setLoading(false);
@@ -56,38 +56,34 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     };
   }, [loadUserFromSession]);
 
-  const login = async (emailOrUsername: string, pass: string): Promise<boolean> => {
+  const login = async (email: string, pass: string): Promise<boolean> => {
     setLoading(true);
     try {
-      // Client-side login will now call an API route for authentication
-      const response = await fetch('/api/login', { // Assuming /api/login route will be created
+      const response = await fetch('/api/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: emailOrUsername.toLowerCase(), password: pass }),
+        body: JSON.stringify({ email: email.toLowerCase(), password: pass }),
       });
 
       const result = await response.json();
 
       if (response.ok && result.user) {
-        const loggedInUser = result.user;
-        // Ensure _id is mapped to id if not already present
-        if (loggedInUser._id && !loggedInUser.id) {
-            loggedInUser.id = typeof loggedInUser._id === 'string' ? loggedInUser._id : loggedInUser._id.toString();
+        const loggedInUser: User = result.user;
+         if (loggedInUser._id && !loggedInUser.id) { // Ensure id is present from _id
+            loggedInUser.id = typeof loggedInUser._id === 'string' ? loggedInUser._id : (loggedInUser._id as any).toString();
         }
         setUser(loggedInUser);
         sessionStorage.setItem('currentUser', JSON.stringify(loggedInUser));
         setLoading(false);
-        return true;
+        return true; // Indicate success
       } else {
         setLoading(false);
-        // Use message from API if available, otherwise a generic one
-        throw new Error(result.message || "Login failed");
+        throw new Error(result.message || "Login failed. Please check your credentials.");
       }
     } catch (error) {
-      console.error("Login error:", error);
+      console.error("Login error in AuthProvider:", error);
       setLoading(false);
-      // Rethrow or handle as appropriate for UI
-      throw error; // Let the login page handle displaying this error
+      throw error; // Re-throw for the login page to handle
     }
   };
 
@@ -96,21 +92,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const response = await fetch('/api/register', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ name, email, password: pass }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email: email.toLowerCase(), password: pass }),
       });
 
       const result = await response.json();
 
       if (!response.ok) {
-        return { success: false, message: result.message || `Registration failed with status: ${response.status}` };
+        // API returned an error (e.g., email exists, validation failure)
+        return { success: false, message: result.message || `Registration failed: ${response.statusText}` };
       }
+      // Registration successful, result.user should contain the new user object (client-safe version)
       return { success: true, message: result.message, user: result.user };
     } catch (error) {
       console.error("Registration API call error:", error);
-      const message = error instanceof Error ? error.message : "An unexpected error occurred during registration.";
+      const message = error instanceof Error ? error.message : "An unexpected network error occurred during registration.";
       return { success: false, message };
     } finally {
       setLoading(false);
@@ -120,7 +116,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     setUser(null);
     sessionStorage.removeItem('currentUser');
-    // Optionally call a /api/logout endpoint if server-side session needs cleanup
+    // Optionally, could call an /api/logout endpoint if server-side session/token invalidation is needed
   };
 
   return (

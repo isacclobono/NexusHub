@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Event, User } from '@/lib/types';
+import type { Event } from '@/lib/types'; // User type is implicitly handled by Event type
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Calendar, MapPin, Users, PlusCircle, Ticket, Clock, Loader2, AlertTriangle } from 'lucide-react';
@@ -51,7 +51,7 @@ const EventCard = ({ event }: { event: Event }) => (
       </CardTitle>
       <CardDescription className="text-sm text-primary flex items-center pt-1">
         <Calendar className="h-4 w-4 mr-2" />
-        {format(new Date(event.startTime), "MMM d, yyyy 'at' h:mm a")}
+        {event.startTime ? format(new Date(event.startTime), "MMM d, yyyy 'at' h:mm a") : 'Date TBD'}
       </CardDescription>
     </CardHeader>
     <CardContent className="p-4 pt-0 flex-grow">
@@ -62,7 +62,7 @@ const EventCard = ({ event }: { event: Event }) => (
         </div>
       )}
       <div className="text-xs text-muted-foreground flex items-center">
-        <Users className="h-3 w-3 mr-1.5" /> {event.rsvps?.length || event.rsvpIds?.length || 0} attending
+        <Users className="h-3 w-3 mr-1.5" /> {event.rsvps?.length || 0} attending
         {event.maxAttendees && ` / ${event.maxAttendees}`}
       </div>
     </CardContent>
@@ -79,7 +79,7 @@ const EventCard = ({ event }: { event: Event }) => (
 
 const EventCalendarView = () => {
   const [date, setDate] = useState<Date | undefined>(new Date());
-  // In a real app, you would fetch events for the selected month/date
+  // In a real app, you would fetch events for the selected month/date from the API
   // and display them, potentially highlighting days with events on the calendar.
 
   return (
@@ -99,8 +99,8 @@ const EventCalendarView = () => {
         <CardContent>
           <div className="text-center py-10 text-muted-foreground">
             <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
-            <p>No events scheduled for this day.</p>
-            <p className="text-xs mt-1">Select another day or check the list view.</p>
+            <p>No events scheduled for this day (Calendar view is illustrative).</p>
+            <p className="text-xs mt-1">Select another day or check the list view for all events.</p>
           </div>
         </CardContent>
       </Card>
@@ -118,14 +118,14 @@ export default function EventsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // Fetching from the new API route
-      const response = await fetch('/api/events');
+      const response = await fetch('/api/events'); // Fetches from MongoDB via API route
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || `Failed to fetch events: ${response.statusText}`);
       }
       const eventsData: Event[] = await response.json();
-      setEvents(eventsData.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())); // Sort by start time
+      // API should now return events with enriched organizer and rsvps details
+      setEvents(eventsData.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()));
     } catch (e) {
       console.error("Failed to fetch events data:", e);
       setError(e instanceof Error ? e.message : "Failed to load events.");

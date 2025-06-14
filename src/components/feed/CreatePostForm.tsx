@@ -19,7 +19,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Loader2, UploadCloud, Sparkles, Lightbulb, Calendar as CalendarIcon } from 'lucide-react';
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
 import {
@@ -30,13 +30,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { categorizeContent as callCategorizeContentAI } from '@/ai/flows/smart-content-categorization';
-import type { CategorizeContentOutput } from '@/lib/types';
+// Removed CategorizeContentOutput import as it's not directly used for type here after AI call
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth-provider';
+import { useRouter } from 'next/navigation'; // For redirecting if not logged in
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
@@ -70,7 +71,15 @@ export function CreatePostForm() {
   const [suggestedCategory, setSuggestedCategory] = useState<string | null>(null);
   const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
   const [showSchedule, setShowSchedule] = useState(false);
-  const { user } = useAuth();
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      toast.error("You must be logged in to create a post.");
+      router.push('/login?redirect=/posts/create');
+    }
+  }, [authLoading, isAuthenticated, router]);
 
   const form = useForm<PostFormValues>({
     resolver: zodResolver(postFormSchema),
@@ -113,15 +122,15 @@ export function CreatePostForm() {
 
 
   async function onSubmit(data: PostFormValues) {
-    if (!user) {
-      toast.error('You must be logged in to create a post.');
+    if (!user || !user.id) { // Check for user.id as well
+      toast.error('Authentication error or user ID is missing. Please log in again.');
       return;
     }
     setIsSubmitting(true);
 
     const finalData = { 
       ...data,
-      userId: user.id, 
+      userId: user.id, // Pass the string ID of the user
       scheduledAt: (showSchedule && data.scheduledAt) ? data.scheduledAt.toISOString() : undefined,
     };
 
@@ -138,7 +147,13 @@ export function CreatePostForm() {
         if (result.isFlagged) {
            toast.error(result.message || "Post flagged by moderation, please revise.", { duration: 7000 });
         } else {
-          throw new Error(result.message || `Error: ${response.status}`);
+          // Handle Zod validation errors from API if present
+          if (result.errors) {
+            let errorMessages = Object.values(result.errors).flat().join('\n');
+            toast.error(`Post creation failed:\n${errorMessages}`, { duration: 6000 });
+          } else {
+            throw new Error(result.message || `Error: ${response.status}`);
+          }
         }
       } else {
         toast.success(`Your post "${result.post?.title || 'Untitled'}" has been successfully created.`);
@@ -146,6 +161,8 @@ export function CreatePostForm() {
         setSuggestedCategory(null);
         setSuggestedTags([]);
         setShowSchedule(false);
+        // Optionally redirect to the feed or the new post
+        // router.push('/feed'); 
       }
     } catch (error) {
       console.error("Error submitting post:", error);
@@ -155,6 +172,15 @@ export function CreatePostForm() {
       setIsSubmitting(false);
     }
   }
+  
+  if (authLoading) {
+    return <div className="container mx-auto py-8 flex justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
+  }
+  if (!isAuthenticated && !authLoading) { // User is definitively not authenticated
+    // The useEffect above should have redirected, but this is a safeguard.
+    return <div className="container mx-auto py-8 text-center"><p>Redirecting to login...</p></div>;
+  }
+
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-lg">
@@ -270,6 +296,7 @@ export function CreatePostForm() {
                   </label>
                 </div>
               </FormControl>
+              <FormDescription>Media upload is a placeholder and not fully implemented with backend storage.</FormDescription>
               <FormMessage />
             </FormItem>
             <FormField
@@ -310,7 +337,7 @@ export function CreatePostForm() {
                             form.setValue("scheduledAt", undefined, {shouldValidate: true});
                         }
                         if (checked) { 
-                            form.setValue("isDraft", false);
+                            form.setValue("isDraft", false); // Cannot be draft if scheduled
                         }
                     }}
                     disabled={isSubmitting}
@@ -354,10 +381,10 @@ export function CreatePostForm() {
                                         newDate.setHours(field.value.getHours());
                                         newDate.setMinutes(field.value.getMinutes());
                                     } else if (newDate) { 
-                                        newDate.setHours(9,0,0,0);
+                                        newDate.setHours(9,0,0,0); // Default time if none set
                                     }
                                     field.onChange(newDate);
-                                    if(newDate) form.setValue("isDraft", false); 
+                                    if(newDate) form.setValue("isDraft", false); // Ensure not draft if scheduled
                                 }}
                                 initialFocus
                                 disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} 
@@ -368,10 +395,11 @@ export function CreatePostForm() {
                                     onChange={(e) => {
                                         const time = e.target.value;
                                         const [hours, minutes] = time.split(':').map(Number);
-                                        const currentDate = field.value || new Date();
-                                        currentDate.setHours(hours, minutes);
-                                        field.onChange(new Date(currentDate));
-                                        if(field.value) form.setValue("isDraft", false);
+                                        const currentDate = field.value || new Date(); // Use existing date or create new one
+                                        const newDate = new Date(currentDate); // Clone to avoid mutating previous state directly
+                                        newDate.setHours(hours, minutes);
+                                        field.onChange(newDate);
+                                        if(newDate) form.setValue("isDraft", false); // Ensure not draft if scheduled
                                     }}
                                 />
                             </div>
@@ -385,12 +413,12 @@ export function CreatePostForm() {
 
 
             <div className="flex justify-end space-x-2 pt-4">
-               <Button type="button" variant="outline" onClick={() => {form.reset(); setShowSchedule(false);}} disabled={isSubmitting}>
+               <Button type="button" variant="outline" onClick={() => {form.reset(); setShowSchedule(false); setSuggestedCategory(null); setSuggestedTags([]);}} disabled={isSubmitting}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting} className="btn-gradient min-w-[120px]">
+              <Button type="submit" disabled={isSubmitting || authLoading} className="btn-gradient min-w-[120px]">
                 {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {isSubmitting ? 'Submitting...' : (form.getValues('isDraft') ? 'Save Draft' : (form.getValues('scheduledAt') ? 'Schedule Post' : 'Publish Post'))}
+                {isSubmitting ? 'Submitting...' : (form.getValues('isDraft') ? 'Save Draft' : (showSchedule && form.getValues('scheduledAt') ? 'Schedule Post' : 'Publish Post'))}
               </Button>
             </div>
           </form>

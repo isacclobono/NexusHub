@@ -38,8 +38,6 @@ const PostSkeleton = () => (
 export default function FeedPage() {
   const [allPosts, setAllPosts] = useState<Post[]>([]); 
   const [displayedPosts, setDisplayedPosts] = useState<Post[]>([]);
-  // AllUsers is not directly fetched here anymore, PostCard will handle its own author data if needed
-  // Or, API for posts should return enriched author data.
   const [isLoading, setIsLoading] = useState(true);
   const [isCurating, setIsCurating] = useState(false);
   const [curationReasoning, setCurationReasoning] = useState<string | null>(null);
@@ -50,15 +48,14 @@ export default function FeedPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // Fetch posts from the API route (which now uses MongoDB)
-      const postsResponse = await fetch('/api/posts');
+      const postsResponse = await fetch('/api/posts'); // Fetches from MongoDB via API route
       if (!postsResponse.ok) {
         const errorData = await postsResponse.json();
         throw new Error(errorData.message || `Failed to fetch posts: ${postsResponse.statusText}`);
       }
       
       const postsData: Post[] = await postsResponse.json();
-      // Assuming postsData from API now includes enriched author and comment author details
+      // API now returns posts with enriched author details
       setAllPosts(postsData);
       setDisplayedPosts(postsData.filter(p => p.status === 'published'));
 
@@ -106,10 +103,11 @@ export default function FeedPage() {
       
       const curatedTitles = result.curatedFeed.split('\n').map(t => t.trim().toLowerCase()).filter(Boolean);
       
+      // Improve matching logic for curated posts
       const curatedPosts = allPosts.filter(p => 
         p.status === 'published' && 
         ( (p.title && curatedTitles.includes(p.title.toLowerCase())) || 
-          curatedTitles.some(ct => p.content.toLowerCase().includes(ct.substring(0, Math.min(ct.length, 20) )))
+          curatedTitles.some(ct => p.content.toLowerCase().includes(ct.substring(0, Math.min(ct.length, 20)).toLowerCase() ))
         )
       );
       
@@ -193,7 +191,6 @@ export default function FeedPage() {
       {displayedPosts.length > 0 ? (
         <div className="space-y-6">
           {displayedPosts.map((post) => (
-            // PostCard will use post.author which is now enriched by the API
             <PostCard key={post.id} post={post} /> 
           ))}
         </div>

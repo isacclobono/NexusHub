@@ -10,18 +10,18 @@ import { formatDistanceToNow } from 'date-fns';
 
 interface PostCardProps {
   post: Post;
-  allUsers?: User[]; // Kept for potential future use if comments are not pre-enriched
+  // allUsers is no longer needed if author and comment authors are pre-enriched
 }
 
 const ReactionDisplay = ({ reactions }: { reactions: Post['reactions'] }) => (
   <div className="flex items-center space-x-2">
-    {reactions.slice(0, 3).map((reaction, index) => (
+    {reactions && reactions.slice(0, 3).map((reaction, index) => (
       <div key={index} className="flex items-center text-sm text-muted-foreground">
         <span className="mr-1 text-lg">{reaction.emoji}</span>
         <span>{reaction.count}</span>
       </div>
     ))}
-    {reactions.length > 3 && (
+    {reactions && reactions.length > 3 && (
       <span className="text-sm text-muted-foreground">+{reactions.length - 3} more</span>
     )}
   </div>
@@ -34,7 +34,6 @@ const MediaIcon = ({ type }: { type: 'image' | 'video' | 'document' }) => {
 };
 
 const CommentItem = ({ comment }: { comment: CommentType }) => {
-  // Assuming comment.author is now pre-enriched by the API
   const commentAuthor = comment.author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined, email: '', reputation: 0, joinedDate: new Date().toISOString() };
   return (
     <div className="flex items-start space-x-3 pt-3">
@@ -48,7 +47,7 @@ const CommentItem = ({ comment }: { comment: CommentType }) => {
                 {commentAuthor.name}
             </Link>
             <p className="text-xs text-muted-foreground">
-                {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
+                {comment.createdAt ? formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true }) : 'Just now'}
             </p>
         </div>
         <p className="text-foreground/90 mt-1">{comment.content}</p>
@@ -57,13 +56,21 @@ const CommentItem = ({ comment }: { comment: CommentType }) => {
   );
 };
 
-export function PostCard({ post, allUsers }: PostCardProps) {
-  // Assuming post.author is now pre-enriched by the API
+export function PostCard({ post }: PostCardProps) {
   const { author, title, content, media, category, tags, createdAt, reactions, comments: postComments, commentCount, isBookmarked } = post;
-  const postAuthor = author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined, reputation: 0, joinedDate: '', email: '' };
+  
+  // The API now provides the author object directly within the post
+  const postAuthor = author || { 
+    id: post.authorId?.toString() || 'unknown', 
+    name: 'Unknown User', 
+    avatarUrl: undefined, 
+    reputation: 0, 
+    joinedDate: new Date().toISOString(),
+    email: ''
+  };
 
-  // Comments are also assumed to be pre-enriched by the API if present
-  const enrichedComments = postComments?.slice(0, 2); 
+  // Assuming comments are also enriched if present, or handled on detail page
+  const displayComments = postComments?.slice(0, 2) || [];
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-subtle hover:shadow-md transition-shadow duration-300">
@@ -77,7 +84,7 @@ export function PostCard({ post, allUsers }: PostCardProps) {
             <div>
               <p className="font-semibold text-sm font-headline group-hover:underline">{postAuthor.name}</p>
               <p className="text-xs text-muted-foreground">
-                {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
+                {createdAt ? formatDistanceToNow(new Date(createdAt), { addSuffix: true }) : 'Recently'}
                 {category && ` · ${category}`}
               </p>
             </div>
@@ -118,11 +125,11 @@ export function PostCard({ post, allUsers }: PostCardProps) {
           </div>
         )}
 
-        {enrichedComments && enrichedComments.length > 0 && (
+        {displayComments && displayComments.length > 0 && (
           <div className="mt-4 pt-4 border-t">
             <h4 className="text-sm font-semibold text-muted-foreground mb-1">Comments:</h4>
             <div className="space-y-2">
-              {enrichedComments.map(comment => (
+              {displayComments.map(comment => (
                 <CommentItem key={comment.id || comment._id?.toString()} comment={comment} />
               ))}
             </div>
@@ -140,7 +147,7 @@ export function PostCard({ post, allUsers }: PostCardProps) {
             <ThumbsUp className="h-5 w-5 mr-1" /> Like
           </Button>
           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
-            <MessageCircle className="h-5 w-5 mr-1" /> {commentCount}
+            <MessageCircle className="h-5 w-5 mr-1" /> {commentCount || 0}
           </Button>
           {reactions && reactions.length > 0 && <ReactionDisplay reactions={reactions} />}
         </div>
