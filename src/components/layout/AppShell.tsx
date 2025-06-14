@@ -64,10 +64,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       tooltip={item.title}
                       variant="default"
                     >
-                      <>
+                      <div>
                         <item.icon />
                         <span>{item.title}</span>
-                      </>
+                      </div>
                     </SidebarMenuButton>
                   </Link>
                 </SidebarMenuItem>
@@ -80,13 +80,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
            {user && (
              <Link href={`/profile/${user.id}`} asChild>
               <SidebarMenuButton asChild tooltip="Profile" variant="ghost" className="justify-start">
-                <>
+                <div>
                   <Avatar className="h-8 w-8 mr-2">
                     <AvatarImage src={user.avatarUrl} alt={user.name} />
                     <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
                   </Avatar>
                   <span className="truncate">{user.name}</span>
-                </>
+                </div>
               </SidebarMenuButton>
             </Link>
            )}
@@ -100,10 +100,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   tooltip={item.title}
                   variant="ghost"
                 >
-                  <>
+                  <div>
                     <item.icon />
                     <span>{item.title}</span>
-                  </>
+                  </div>
                 </SidebarMenuButton>
               </Link>
             </SidebarMenuItem>
