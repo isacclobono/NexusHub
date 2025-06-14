@@ -55,16 +55,8 @@ export const SIDENAV_ITEMS: NavItem[] = [
 
 
 export const SIDENAV_USER_ITEMS_TEMPLATE: NavItem[] = [
- {
-    title: 'Profile',
-    href: '/profile/me',
-    icon: UserCircle,
-  },
-  {
-    title: 'Settings',
-    href: '/settings',
-    icon: Settings,
-  },
+ // "Profile" and "Settings" are intentionally removed from here as per user request
+ // to only have them in the top-right header dropdown.
   {
     title: 'Logout',
     href: '#logout',

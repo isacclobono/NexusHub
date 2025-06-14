@@ -94,8 +94,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (authLoading) return []; 
     if (isAuthenticated && user) {
       return [
-        { title: 'Profile', href: `/profile/${user.id}`, icon: UserCircle },
-        { title: 'Settings', href: '/settings', icon: SettingsIcon },
+        // "Profile" and "Settings" removed from here
         { title: 'Logout', onClick: handleLogout, icon: LogOut, href: '#' }
       ];
     }
@@ -103,7 +102,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       { title: 'Login', href: '/login', icon: LogIn },
       { title: 'Register', href: '/register', icon: UserPlus }
     ];
-  }, [user, authLoading, isAuthenticated, router]);
+  }, [user, authLoading, isAuthenticated, router]); // router removed from dependencies as handleLogout is now stable
 
 
   return (
