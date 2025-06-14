@@ -1,9 +1,23 @@
 
-'use client'; // This file needs to be a client component
+'use client';
 
 import React, { createContext, useState, useEffect, useCallback, useContext, ReactNode } from 'react';
 import type { User } from '@/lib/types';
-import { fetchUsers } from '@/lib/mock-data'; // Assuming fetchUsers can get all users for simulation
+
+// Helper to fetch users from the static JSON file
+async function fetchAllUsers(): Promise<User[]> {
+  try {
+    const response = await fetch('/api/data/users.json');
+    if (!response.ok) {
+      console.error(`HTTP error! status: ${response.status}`);
+      return [];
+    }
+    return await response.json();
+  } catch (error) {
+    console.error("Could not fetch users:", error);
+    return [];
+  }
+}
 
 interface AuthContextType {
   user: User | null;
@@ -31,7 +45,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error("Failed to load user from session:", error);
-      setUser(null);
+      setUser(null); // Ensure user is null on error
     } finally {
       setLoading(false);
     }
@@ -39,7 +53,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   useEffect(() => {
     loadUserFromSession();
-    // Listen for storage changes to sync across tabs (optional, basic example)
     const handleStorageChange = (event: StorageEvent) => {
       if (event.key === 'currentUser') {
         loadUserFromSession();
@@ -53,20 +66,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (emailOrUsername: string, pass: string): Promise<boolean> => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 750)); // Simulate API delay
+    // Simulate API delay
+    await new Promise(resolve => setTimeout(resolve, 750)); 
     try {
-      const allUsers = await fetchUsers(); // Fetch all users from mock data
+      const allUsers = await fetchAllUsers();
       const normalizedInput = emailOrUsername.toLowerCase();
+      // In a real app, you would also verify the password (hashed)
       const foundUser = allUsers.find(u => 
-        u.name.toLowerCase() === normalizedInput || 
-        (u as any).email?.toLowerCase() === normalizedInput // Assuming users might have an email field
+        u.email?.toLowerCase() === normalizedInput || 
+        u.name.toLowerCase() === normalizedInput
       );
 
-      if (foundUser) { // In real app, also check password securely
-        setUser(foundUser);
-        sessionStorage.setItem('currentUser', JSON.stringify(foundUser));
-        setLoading(false);
-        return true;
+      if (foundUser) {
+        // Simulate password check - THIS IS NOT SECURE FOR PRODUCTION
+        // For demo: accept any password if user is found or use a dummy password
+        // const passwordMatches = pass === "password123"; // Example dummy password check
+        const passwordMatches = true; // For demo, assume password matches if user is found
+
+        if (passwordMatches) {
+            setUser(foundUser);
+            sessionStorage.setItem('currentUser', JSON.stringify(foundUser));
+            setLoading(false);
+            return true;
+        }
       }
       setLoading(false);
       return false;
@@ -80,9 +102,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const register = async (name: string, email: string, pass: string): Promise<boolean> => {
     setLoading(true);
     await new Promise(resolve => setTimeout(resolve, 1000));
+    
+    // Simulate checking if email already exists
+    const allUsers = await fetchAllUsers();
+    const emailExists = allUsers.some(u => u.email?.toLowerCase() === email.toLowerCase());
+
+    if (emailExists) {
+      console.warn("Registration attempt with existing email:", email);
+      setLoading(false);
+      return false; // Indicate failure (e.g. email already in use)
+    }
+
+    // Simulate successful registration. 
+    // IMPORTANT: This does NOT add the user to users.json. A backend is needed for that.
     if (name && email && pass) {
-      // Simulate successful registration. In a real app, you'd create a new user in the backend.
-      // For this demo, registration doesn't automatically log the user in or add to users.json.
+      console.log("Simulated registration for:", { name, email });
       setLoading(false);
       return true; 
     }
@@ -93,17 +127,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     setUser(null);
     sessionStorage.removeItem('currentUser');
-    // Here you might also want to redirect or clear other caches
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAuthenticated: !!user, login, logout, register }}>
+    <AuthContext.Provider value={{ user, loading, isAuthenticated: !!user && !loading, login, logout, register }}>
       {children}
     </AuthContext.Provider>
   );
 };
 
-// Custom hook to use the AuthContext
 export const useAuth = (): AuthContextType => {
   const context = useContext(AuthContext);
   if (context === undefined) {

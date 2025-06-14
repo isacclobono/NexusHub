@@ -1,12 +1,6 @@
 
 import type { User } from './types';
 
-// This file is now significantly reduced.
-// Data is primarily fetched from /public/api/data/*.json files.
-
-// getCurrentUser can fetch a specific user from users.json or be simplified
-// For now, let's assume it fetches the first user as the current user.
-// In a real app, this would involve actual authentication.
 export async function fetchUsers(): Promise<User[]> {
   try {
     const response = await fetch('/api/data/users.json');
@@ -21,10 +15,22 @@ export async function fetchUsers(): Promise<User[]> {
 }
 
 export async function getCurrentUser(): Promise<User | null> {
+  // Attempt to get user from session storage (simulating logged-in state)
+  if (typeof window !== 'undefined') {
+    const storedUser = sessionStorage.getItem('currentUser');
+    if (storedUser) {
+      try {
+        return JSON.parse(storedUser);
+      } catch (e) {
+        console.error("Error parsing user from session storage", e);
+        // Fall through to fetching default if session storage is corrupt
+      }
+    }
+  }
+  
+  // Fallback for server-side or if no user in session: get the first user from the list
+  // This is a placeholder; in a real app, server-side auth would be different.
+  console.warn("getCurrentUser falling back to fetching first user from users.json. This is for demo/SSR placeholder.");
   const users = await fetchUsers();
   return users.length > 0 ? users[0] : null;
 }
-
-// The mock arrays (mockUsers, mockPosts, etc.) are removed as data is in JSON files.
-// Functions that directly manipulated these arrays, like adding a new post to mockPosts,
-// will need to be rethought if persistence is required (e.g., using a proper backend API).

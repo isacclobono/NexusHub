@@ -33,11 +33,11 @@ import { useToast } from '@/hooks/use-toast';
 const SidebarButtonContentWrapper = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & { item: NavItem | { icon: React.ElementType; title: string }, isActive?: boolean, asChild?: boolean }
->(({ item, isActive, asChild: _removedAsChildFromParent, ...props }, ref) => {
+>(({ item, isActive, asChild: _removedAsChild, ...props }, ref) => {
   const IconComponent = item.icon;
   return (
     <div ref={ref} {...props} className={cn("flex items-center w-full", props.className)}>
-      <IconComponent className={cn("mr-2", isActive && "text-primary")} />
+      <IconComponent className={cn("mr-2 h-5 w-5", isActive && "text-primary")} />
       <span className={cn(isActive && "font-semibold")}>{item.title}</span>
     </div>
   );
@@ -47,7 +47,7 @@ SidebarButtonContentWrapper.displayName = 'SidebarButtonContentWrapper';
 const UserProfileButtonContentWrapper = React.forwardRef<
   HTMLDivElement,
   React.HTMLAttributes<HTMLDivElement> & { user?: { avatarUrl?: string, name: string } | null, loading?: boolean, asChild?: boolean }
->(({ user, loading, asChild: _removedAsChildFromParent, ...props }, ref) => {
+>(({ user, loading, asChild: _removedAsChild, ...props }, ref) => {
   if (loading) {
     return (
       <div ref={ref} {...props} className={cn("flex items-center w-full", props.className)}>
@@ -56,7 +56,7 @@ const UserProfileButtonContentWrapper = React.forwardRef<
       </div>
     );
   }
-  if (!user) {
+  if (!user) { // Should not happen if this component is rendered conditionally
      return (
       <div ref={ref} {...props} className={cn("flex items-center w-full", props.className)}>
         <LogIn className="h-5 w-5 mr-2 text-muted-foreground" />
@@ -66,11 +66,11 @@ const UserProfileButtonContentWrapper = React.forwardRef<
   }
   return (
     <div ref={ref} {...props} className={cn("flex items-center w-full", props.className)}>
-      <Avatar className="h-8 w-8 mr-2">
+      <Avatar className="h-8 w-8 mr-2 border">
         <AvatarImage src={user.avatarUrl || `https://placehold.co/32x32.png`} alt={user.name} data-ai-hint="profile avatar small"/>
         <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
       </Avatar>
-      <span className="truncate">{user.name}</span>
+      <span className="truncate font-medium">{user.name}</span>
     </div>
   );
 });
@@ -79,12 +79,12 @@ UserProfileButtonContentWrapper.displayName = 'UserProfileButtonContentWrapper';
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const { user, loading: authLoading, logout } = useAuth();
+  const { user, loading: authLoading, logout, isAuthenticated } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
 
   const handleLogout = () => {
-    logout(); // This is now a synchronous call from useAuth
+    logout();
     toast({
       title: "Logged Out",
       description: "You have been successfully logged out.",
@@ -92,16 +92,20 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     router.push('/login');
   };
 
-  const userNavItems = [
-    ...(user ? [
-      { title: 'Profile', href: `/profile/${user.id}`, icon: UserCircle },
-      { title: 'Settings', href: '/settings', icon: SettingsIcon },
-      { title: 'Logout', onClick: handleLogout, icon: LogOut, href: '#' } // href is placeholder
-    ] : [
+  const userNavItems: NavItem[] = React.useMemo(() => {
+    if (authLoading) return []; // Or return skeleton items
+    if (isAuthenticated && user) {
+      return [
+        { title: 'Profile', href: `/profile/${user.id}`, icon: UserCircle },
+        { title: 'Settings', href: '/settings', icon: SettingsIcon },
+        { title: 'Logout', onClick: handleLogout, icon: LogOut, href: '#' }
+      ];
+    }
+    return [
       { title: 'Login', href: '/login', icon: LogIn },
       { title: 'Register', href: '/register', icon: UserPlus }
-    ])
-  ];
+    ];
+  }, [user, authLoading, isAuthenticated, handleLogout, router]);
 
 
   return (
@@ -109,10 +113,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       <Sidebar
         variant="sidebar"
         collapsible="icon"
-        className="border-r dark:border-neutral-700"
+        className="border-r dark:border-neutral-700 bg-card"
       >
         <SidebarHeader className="p-4">
-          <NexusHubLogo />
+          <Link href="/" aria-label="NexusHub Home">
+            <NexusHubLogo />
+          </Link>
         </SidebarHeader>
         <ScrollArea className="flex-1">
           <SidebarContent className="p-2">
@@ -129,7 +135,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                 const isActive = pathname === item.href || (item.href !== "/" && pathname.startsWith(item.href));
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <Link href={item.href} asChild>
+                    <Link href={item.href} passHref legacyBehavior={false} >
                       <SidebarMenuButton
                         asChild
                         isActive={isActive}
@@ -148,7 +154,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </ScrollArea>
         <SidebarSeparator />
         <SidebarFooter className="p-2">
-          {userNavItems.map((item) => {
+          {authLoading ? (
+            <>
+              <Skeleton className="h-10 w-full rounded-md mb-1" />
+              <Skeleton className="h-10 w-full rounded-md" />
+            </>
+          ) : (
+            userNavItems.map((item) => {
               const isActive = pathname === item.href;
               if (item.onClick) {
                 return (
@@ -168,7 +180,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               }
               return (
                 <SidebarMenuItem key={item.title}>
-                  <Link href={item.href} asChild>
+                  <Link href={item.href} passHref legacyBehavior={false}>
                     <SidebarMenuButton
                       asChild
                       isActive={isActive}
@@ -180,7 +192,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   </Link>
                 </SidebarMenuItem>
               );
-            })}
+            })
+          )}
         </SidebarFooter>
       </Sidebar>
       <SidebarInset className="flex flex-col">
