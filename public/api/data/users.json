@@ -5,8 +5,8 @@
     "name": "Alice Wonderland",
     "email": "alice@example.com",
     "password": "password123",
-    "avatarUrl": "https://placehold.co/100x100.png",
-    "bio": "Curiouser and curiouser. Exploring the digital rabbit hole.",
+    "avatarUrl": "https://placehold.co/100x100.png?text=AW",
+    "bio": "Curiouser and curiouser. Full-stack developer with a passion for AI and community building. Loves a good cup of tea.",
     "reputation": 1500,
     "joinedDate": "2023-01-15T10:00:00Z"
   },
@@ -14,40 +14,40 @@
     "id": "user2",
     "name": "Bob The Builder",
     "email": "bob@example.com",
-    "password": "bobspassword",
-    "avatarUrl": "https://placehold.co/100x100.png",
-    "bio": "Can we fix it? Yes, we can! Passionate about open source and community building.",
+    "password": "password123",
+    "avatarUrl": "https://placehold.co/100x100.png?text=BB",
+    "bio": "Can we fix it? Yes, we can! Frontend specialist focusing on accessible and performant UIs. Enjoys woodworking and open-source.",
     "reputation": 1250,
-    "joinedDate": "2023-03-22T14:30:00Z"
+    "joinedDate": "2023-02-20T14:30:00Z"
   },
   {
     "id": "user3",
-    "name": "Charlie Chaplin",
+    "name": "Charlie Brown",
     "email": "charlie@example.com",
-    "password": "mypassword",
-    "avatarUrl": "https://placehold.co/100x100.png",
-    "bio": "A day without laughter is a day wasted. Film enthusiast and storyteller.",
-    "reputation": 1800,
-    "joinedDate": "2022-11-01T09:15:00Z"
+    "password": "password123",
+    "avatarUrl": "https://placehold.co/100x100.png?text=CB",
+    "bio": "Good grief! UX designer and aspiring cartoonist. Believes in simple solutions to complex problems. Often found flying kites.",
+    "reputation": 980,
+    "joinedDate": "2023-03-10T09:15:00Z"
   },
   {
     "id": "user4",
     "name": "Diana Prince",
     "email": "diana@example.com",
-    "password": "wondersecure",
-    "avatarUrl": "https://placehold.co/100x100.png",
-    "bio": "Advocate for peace, justice, and equality. Believer in the power of community.",
-    "reputation": 2200,
-    "joinedDate": "2023-05-10T12:00:00Z"
+    "password": "password123",
+    "avatarUrl": "https://placehold.co/100x100.png?text=DP",
+    "bio": "Champion of truth and justice. Backend engineer specializing in distributed systems and cloud infrastructure. Also an archaeologist.",
+    "reputation": 2100,
+    "joinedDate": "2022-11-05T18:00:00Z"
   },
   {
     "id": "user5",
     "name": "Edward Scissorhands",
     "email": "edward@example.com",
-    "password": "cutitout",
-    "avatarUrl": "https://placehold.co/100x100.png",
-    "bio": "Artistically inclined, though a bit shy. Loves topiary and ice sculptures.",
-    "reputation": 950,
-    "joinedDate": "2023-02-01T18:45:00Z"
+    "password": "password123",
+    "avatarUrl": "https://placehold.co/100x100.png?text=ES",
+    "bio": "Creative soul with a unique perspective. Data scientist and artist. Prefers quiet environments and topiary.",
+    "reputation": 750,
+    "joinedDate": "2023-05-01T12:00:00Z"
   }
 ]

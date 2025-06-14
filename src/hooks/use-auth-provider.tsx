@@ -4,10 +4,11 @@
 import React, { createContext, useState, useEffect, useCallback, useContext, ReactNode } from 'react';
 import type { User } from '@/lib/types';
 
-// Helper to fetch users from the static JSON file
+// Helper to fetch users from the static JSON file (for login check)
 async function fetchAllUsers(): Promise<User[]> {
   try {
-    const response = await fetch('/api/data/users.json');
+    // Add cache-busting parameter to ensure fresh data after registration
+    const response = await fetch(`/api/data/users.json?v=${Date.now()}`);
     if (!response.ok) {
       console.error(`HTTP error! status: ${response.status}`);
       return [];
@@ -25,7 +26,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: (emailOrUsername: string, pass: string) => Promise<boolean>;
   logout: () => void;
-  register: (name: string, email: string, pass: string) => Promise<boolean>;
+  register: (name: string, email: string, pass: string) => Promise<{ success: boolean, message?: string, user?: User }>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,7 +46,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       }
     } catch (error) {
       console.error("Failed to load user from session:", error);
-      setUser(null); // Ensure user is null on error
+      setUser(null);
     } finally {
       setLoading(false);
     }
@@ -66,28 +67,21 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (emailOrUsername: string, pass: string): Promise<boolean> => {
     setLoading(true);
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 750));
+    await new Promise(resolve => setTimeout(resolve, 750)); // Simulate API delay
     try {
       const allUsers = await fetchAllUsers();
       const normalizedInput = emailOrUsername.toLowerCase();
       
       const foundUser = allUsers.find(u =>
-        u.email?.toLowerCase() === normalizedInput ||
+        u.email?.toLowerCase() === normalizedInput || // Ensure email is checked
         u.name.toLowerCase() === normalizedInput
       );
 
-      if (foundUser) {
-        // Simulate password check - THIS IS NOT SECURE FOR PRODUCTION
-        // Passwords in users.json are plain text for this demo.
-        const passwordMatches = foundUser.password === pass;
-
-        if (passwordMatches) {
-            setUser(foundUser);
-            sessionStorage.setItem('currentUser', JSON.stringify(foundUser));
-            setLoading(false);
-            return true;
-        }
+      if (foundUser && foundUser.password === pass) { // Check password
+        setUser(foundUser);
+        sessionStorage.setItem('currentUser', JSON.stringify(foundUser));
+        setLoading(false);
+        return true;
       }
       setLoading(false);
       return false;
@@ -98,42 +92,37 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
-  const register = async (name: string, email: string, pass: string): Promise<boolean> => {
+  const register = async (name: string, email: string, pass: string): Promise<{ success: boolean, message?: string, user?: User }> => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    try {
+      const response = await fetch('/api/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ name, email, password: pass }), // pass 'password' field
+      });
 
-    const allUsers = await fetchAllUsers();
-    const emailExists = allUsers.some(u => u.email?.toLowerCase() === email.toLowerCase());
+      const result = await response.json();
 
-    if (emailExists) {
-      console.warn("Registration attempt with existing email:", email);
+      if (!response.ok) {
+        return { success: false, message: result.message || `Registration failed with status: ${response.status}` };
+      }
+      // Do not automatically log in the user after registration for this flow.
+      // User will be redirected to login page.
+      return { success: true, message: result.message, user: result.user };
+    } catch (error) {
+      console.error("Registration API call error:", error);
+      const message = error instanceof Error ? error.message : "An unexpected error occurred during registration.";
+      return { success: false, message };
+    } finally {
       setLoading(false);
-      return false; // Indicate failure if email exists
     }
-
-    // Simulate successful registration.
-    // IMPORTANT: This new user is NOT saved to users.json.
-    // To test login with this account, you must manually add it to public/api/data/users.json,
-    // including a 'password' field.
-    console.warn(
-      `Simulated registration for: {name: "${name}", email: "${email}"}. ` +
-      "This new user is NOT saved to users.json. " +
-      "To test login with this account, manually add it to public/api/data/users.json with a password."
-    );
-    
-    if (name && email && pass && pass.length >=8) { 
-      setLoading(false);
-      return true; // Indicate success for valid input
-    }
-
-    setLoading(false);
-    return false; // Indicate failure for other issues (e.g. invalid input)
   };
 
   const logout = () => {
     setUser(null);
     sessionStorage.removeItem('currentUser');
-    // Optional: redirect to login or home page can be handled in the component calling logout
   };
 
   return (

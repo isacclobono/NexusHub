@@ -2,8 +2,8 @@
 export interface User {
   id: string;
   name: string;
-  email?: string; // Made email optional to align with users.json if some users don't have it
-  password?: string; // Added for login simulation
+  email: string; // Made email mandatory for registration/login
+  password?: string; // Added for login simulation and API storage
   avatarUrl?: string;
   bio?: string;
   reputation: number;

@@ -27,28 +27,39 @@ export default function RegisterPage() {
     e.preventDefault();
     setError(null);
     if (password !== confirmPassword) {
-      setError("Passwords do not match. Please re-enter.");
+      const msg = "Passwords do not match. Please re-enter.";
+      setError(msg);
       toast({
         title: "Password Mismatch",
-        description: "Passwords do not match. Please re-enter.",
+        description: msg,
         variant: "destructive",
       });
       return;
     }
+    if (password.length < 8) {
+        const msg = "Password must be at least 8 characters long.";
+        setError(msg);
+        toast({
+            title: "Password Too Short",
+            description: msg,
+            variant: "destructive",
+        });
+        return;
+    }
+
     setIsLoading(true);
 
-    const success = await register(name, email, password);
+    const result = await register(name, email, password);
 
-    if (success) {
+    if (result.success) {
       toast({
-        title: "Registration Simulated!",
-        description: "Your registration is simulated. For this demo, new users are NOT saved persistently. Please use an existing account from users.json to log in, or manually add this user to that file.",
-        duration: 9000, // Longer duration for more info
+        title: "Registration Successful!",
+        description: result.message || "You can now log in with your new account.",
+        duration: 7000,
       });
-      router.push('/login');
+      router.push('/login'); // Redirect to login page after successful registration
     } else {
-      // Assuming register function might return a more specific error or it's generic
-      const regError = "Could not simulate registration. The email might already be in use (check users.json) or another issue occurred.";
+      const regError = result.message || "Could not register user. Please try again.";
       setError(regError);
       toast({
         title: "Registration Failed",
@@ -131,12 +142,14 @@ export default function RegisterPage() {
               />
             </div>
             <Button type="submit" className="w-full btn-gradient text-lg py-3" disabled={isLoading}>
-              {isLoading ? (
-                <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-              ) : (
-                <UserPlus className="mr-2 h-5 w-5" />
-              )}
-              Create Account
+              <span className="inline-flex items-center justify-center gap-2">
+                {isLoading ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                ) : (
+                    <UserPlus className="mr-2 h-5 w-5" />
+                )}
+                Create Account
+              </span>
             </Button>
           </form>
         </CardContent>
@@ -146,7 +159,9 @@ export default function RegisterPage() {
           </p>
            <Button variant="outline" asChild className="w-full border-primary/50 text-primary hover:bg-primary/5 hover:text-primary" disabled={isLoading}>
             <Link href="/login">
-               <LogIn className="mr-2 h-4 w-4" /> Sign In Instead
+              <span className="inline-flex items-center justify-center gap-2">
+                <LogIn className="mr-2 h-4 w-4" /> Sign In Instead
+              </span>
             </Link>
           </Button>
         </CardFooter>
