@@ -118,27 +118,14 @@ export default function EventsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [eventsResponse, usersResponse] = await Promise.all([
-        fetch('/api/data/events.json'),
-        fetch('/api/data/users.json')
-      ]);
-
-      if (!eventsResponse.ok) throw new Error(`Failed to fetch events: ${eventsResponse.statusText}`);
-      if (!usersResponse.ok) throw new Error(`Failed to fetch users: ${usersResponse.statusText}`);
-
-      const eventsData: Event[] = await eventsResponse.json();
-      const usersData: User[] = await usersResponse.json();
-      
-      const enrichedEvents = eventsData.map(event => {
-        const organizer = usersData.find(u => u.id === event.organizerId);
-        const rsvps = event.rsvpIds.map(id => usersData.find(u => u.id === id)).filter(Boolean) as User[];
-        return {
-          ...event,
-          organizer: organizer || {id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: ''} as User,
-          rsvps,
-        };
-      });
-      setEvents(enrichedEvents);
+      // Fetching from the new API route
+      const response = await fetch('/api/events');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Failed to fetch events: ${response.statusText}`);
+      }
+      const eventsData: Event[] = await response.json();
+      setEvents(eventsData.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())); // Sort by start time
     } catch (e) {
       console.error("Failed to fetch events data:", e);
       setError(e instanceof Error ? e.message : "Failed to load events.");

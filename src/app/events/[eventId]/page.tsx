@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
 import type { Event, User } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -56,11 +56,13 @@ const EventDetailSkeleton = () => (
 export default function EventDetailPage() {
   const params = useParams();
   const eventId = params.eventId as string;
-  const { user: currentUser, loading: authLoading } = useAuth();
+  const { user: currentUser, loading: authLoading, isAuthenticated } = useAuth();
+  const router = useRouter();
   
 
   const [event, setEvent] = useState<Event | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRsvpLoading, setIsRsvpLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchEventDetails = useCallback(async () => {
@@ -68,28 +70,20 @@ export default function EventDetailPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [eventsResponse, usersResponse] = await Promise.all([
-        fetch('/api/data/events.json'),
-        fetch('/api/data/users.json')
-      ]);
+      // Fetch a single event. We can adapt the /api/events to support GET /api/events/:id or filter here
+      // For now, let's fetch all and filter, which is inefficient for many events but works for JSON files.
+      const response = await fetch('/api/events'); // This fetches all events
 
-      if (!eventsResponse.ok) throw new Error(`Failed to fetch events: ${eventsResponse.statusText}`);
-      if (!usersResponse.ok) throw new Error(`Failed to fetch users: ${usersResponse.statusText}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Failed to fetch event details: ${response.statusText}`);
+      }
       
-      const eventsData: Event[] = await eventsResponse.json();
-      const usersData: User[] = await usersResponse.json();
-
+      const eventsData: Event[] = await response.json();
       const foundEvent = eventsData.find(e => e.id === eventId);
 
       if (foundEvent) {
-        const organizer = usersData.find(u => u.id === foundEvent.organizerId);
-        const rsvps = foundEvent.rsvpIds.map(id => usersData.find(u => u.id === id)).filter(Boolean) as User[];
-        
-        setEvent({
-          ...foundEvent,
-          organizer: organizer || { id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: new Date().toISOString() } as User,
-          rsvps,
-        });
+        setEvent(foundEvent);
       } else {
         setError("Event not found.");
       }
@@ -102,27 +96,75 @@ export default function EventDetailPage() {
   }, [eventId]);
 
   useEffect(() => {
-    if (!authLoading) { 
+    // No need to wait for authLoading if eventId is directly available
+    // Auth status is checked before RSVP action
+    if(eventId) {
         fetchEventDetails();
     }
-  }, [eventId, authLoading, fetchEventDetails]);
+  }, [eventId, fetchEventDetails]);
 
-  const handleRSVP = () => {
-    if (!currentUser) {
+  const handleRSVP = async () => {
+    if (!isAuthenticated || !currentUser) {
         toast.error("Please login to RSVP for events.");
+        router.push(`/login?redirect=/events/${eventId}`);
         return;
     }
-    if (event && event.rsvps?.some(u => u.id === currentUser.id)) {
-        toast("You have already RSVP'd to this event.");
-    } else {
-        toast.success(`You've RSVP'd for ${event?.title}.`);
-        if (event) {
-            setEvent(prev => prev ? ({ ...prev, rsvps: [...(prev.rsvps || []), currentUser], rsvpIds: [...prev.rsvpIds, currentUser.id] }) : null);
+    if (!event) {
+        toast.error("Event details not loaded yet.");
+        return;
+    }
+
+    setIsRsvpLoading(true);
+    try {
+        const response = await fetch(`/api/events/${event.id}/rsvp`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: currentUser.id }),
+        });
+        const result = await response.json();
+
+        if (!response.ok) {
+            throw new Error(result.message || 'Failed to RSVP for the event.');
         }
+        
+        setEvent(result.event); // Update event state with new RSVP list from API
+        toast.success(result.message || `Successfully RSVP'd for ${event.title}!`);
+
+    } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : "An unknown error occurred during RSVP.";
+        toast.error(errorMessage);
+        console.error("RSVP Error:", err);
+    } finally {
+        setIsRsvpLoading(false);
+    }
+  };
+  
+  const handleDeleteEvent = async () => {
+    if (!event || !currentUser || currentUser.id !== event.organizerId) {
+      toast.error("You are not authorized to delete this event.");
+      return;
+    }
+    if (!confirm("Are you sure you want to delete this event? This action cannot be undone.")) {
+      return;
+    }
+
+    setIsLoading(true); // Use main loading indicator for deletion
+    try {
+      // Hypothetical DELETE endpoint, not implemented in this pass for brevity with JSON files
+      // const response = await fetch(`/api/events/${event.id}`, { method: 'DELETE' });
+      // if (!response.ok) throw new Error("Failed to delete event.");
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
+      toast.success(`Event "${event.title}" deleted (simulated).`);
+      router.push('/events');
+    } catch (error) {
+      toast.error("Failed to delete event.");
+      console.error("Delete event error:", error);
+      setIsLoading(false);
     }
   };
 
-  if (isLoading || authLoading) {
+
+  if (isLoading || authLoading) { // Keep authLoading here for initial user state
     return <EventDetailSkeleton />;
   }
 
@@ -237,15 +279,22 @@ export default function EventDetailPage() {
                 <div>
                     <h3 className="text-lg font-headline font-semibold mb-3 text-primary flex items-center">
                         <Users className="h-5 w-5 mr-2"/>
-                        Attendees ({event.rsvps?.length || 0} / {event.maxAttendees || 'Unlimited'})
+                        Attendees ({event.rsvps?.length || event.rsvpIds?.length || 0} / {event.maxAttendees || 'Unlimited'})
                     </h3>
                     {event.rsvps && event.rsvps.length > 0 ? (
                         <div className="flex flex-wrap -space-x-2 overflow-hidden">
                         {event.rsvps.slice(0, 10).map(user => (
-                            <Avatar key={user.id} className="h-10 w-10 border-2 border-background hover:z-10 transition-all">
-                                <AvatarImage src={user.avatarUrl || `https://placehold.co/40x40.png`} alt={user.name} data-ai-hint="attendee avatar"/>
-                                <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
-                            </Avatar>
+                             <Tooltip key={user.id}>
+                                <TooltipTrigger asChild>
+                                    <Link href={`/profile/${user.id}`}>
+                                        <Avatar className="h-10 w-10 border-2 border-background hover:z-10 transition-all cursor-pointer">
+                                            <AvatarImage src={user.avatarUrl || `https://placehold.co/40x40.png`} alt={user.name} data-ai-hint="attendee avatar"/>
+                                            <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                                        </Avatar>
+                                    </Link>
+                                </TooltipTrigger>
+                                <TooltipContent>{user.name}</TooltipContent>
+                            </Tooltip>
                         ))}
                         {event.rsvps.length > 10 && (
                              <div className="h-10 w-10 rounded-full bg-primary text-primary-foreground flex items-center justify-center text-xs font-semibold border-2 border-background">
@@ -258,17 +307,17 @@ export default function EventDetailPage() {
                     )}
                 </div>
 
-                 <Button onClick={handleRSVP} size="lg" className="w-full btn-gradient" disabled={isLoading}>
-                    <Ticket className="h-5 w-5 mr-2" />
-                    {hasRSVPd ? "You're Going!" : "RSVP to this Event"}
+                 <Button onClick={handleRSVP} size="lg" className="w-full btn-gradient" disabled={isRsvpLoading || (!!event.maxAttendees && (event.rsvps?.length || 0) >= event.maxAttendees && !hasRSVPd) }>
+                    {isRsvpLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ticket className="h-5 w-5 mr-2" />}
+                    {hasRSVPd ? "You're Going!" : ((!!event.maxAttendees && (event.rsvps?.length || 0) >= event.maxAttendees) ? "Event Full" : "RSVP to this Event")}
                 </Button>
 
                 {isOrganizer && (
                     <div className="pt-4 border-t mt-6">
                         <h3 className="text-md font-semibold mb-2">Organizer Actions</h3>
                         <div className="flex space-x-2">
-                            <Button variant="outline" size="sm"><Edit className="mr-2 h-4 w-4"/> Edit Event</Button>
-                            <Button variant="destructive" size="sm" onClick={() => toast.error("This event would be deleted (Not Implemented).")}><Trash2 className="mr-2 h-4 w-4" /> Delete Event</Button>
+                            <Button variant="outline" size="sm" onClick={() => toast.error("Edit event functionality not implemented.")}><Edit className="mr-2 h-4 w-4"/> Edit Event</Button>
+                            <Button variant="destructive" size="sm" onClick={handleDeleteEvent}><Trash2 className="mr-2 h-4 w-4" /> Delete Event</Button>
                         </div>
                     </div>
                 )}
@@ -278,3 +327,4 @@ export default function EventDetailPage() {
     </div>
   );
 }
+

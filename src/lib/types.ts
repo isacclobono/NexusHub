@@ -59,9 +59,9 @@ export interface Event {
   endTime: string; // ISO Date String
   location?: string;
   organizerId: string; 
-  organizer?: User; 
+  organizer?: User; // Enriched on client or by API
   rsvpIds: string[]; 
-  rsvps?: User[]; 
+  rsvps?: User[]; // Enriched on client or by API
   waitlistIds?: string[];
   waitlist?: User[]; 
   maxAttendees?: number;
@@ -102,11 +102,16 @@ export interface NavItem {
 export interface Notification {
   id: string;
   userId: string; // User to whom the notification is addressed
-  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system';
+  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp';
   title: string;
   message: string;
   link?: string; // Optional link to the relevant content
   isRead: boolean;
   createdAt: string; // ISO Date String
   relatedEntityId?: string; // e.g., postId, eventId
+  actor?: { // Optional: User who performed the action causing the notification
+    id: string;
+    name: string;
+    avatarUrl?: string;
+  }
 }

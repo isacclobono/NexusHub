@@ -18,13 +18,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar as CalendarIcon, UploadCloud, Loader2, MapPin } from 'lucide-react';
+import { Calendar as CalendarIcon, UploadCloud, Loader2, MapPin, AlertTriangle } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
-import { CATEGORIES } from '@/lib/constants';
 import {
   Select,
   SelectContent,
@@ -32,7 +31,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-
+import { useAuth } from '@/hooks/use-auth-provider';
+import { useRouter } from 'next/navigation';
 
 const eventFormSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters.').max(100),
@@ -42,8 +42,11 @@ const eventFormSchema = z.object({
   location: z.string().optional(),
   category: z.string().optional(),
   tags: z.string().optional(), 
-  maxAttendees: z.number().int().positive().optional(),
-  imageUrl: z.any().optional(), 
+  maxAttendees: z.preprocess(
+    (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
+    z.number().int().positive().optional()
+  ),
+  imageUrl: z.string().url({message: "Please enter a valid image URL e.g. https://placehold.co/image.png"}).optional(),
 }).refine(data => data.endTime > data.startTime, {
   message: "End date and time must be after start date and time.",
   path: ["endTime"],
@@ -53,6 +56,15 @@ type EventFormValues = z.infer<typeof eventFormSchema>;
 
 export default function CreateEventPage() {
   const [isLoading, setIsLoading] = useState(false);
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      toast.error("You must be logged in to create an event.");
+      router.push('/login?redirect=/events/create');
+    }
+  }, [authLoading, isAuthenticated, router]);
   
 
   const form = useForm<EventFormValues>({
@@ -60,18 +72,68 @@ export default function CreateEventPage() {
     defaultValues: {
       title: '',
       description: '',
+      location: '',
+      category: '',
+      tags: '',
+      imageUrl: '',
     },
   });
 
   async function onSubmit(data: EventFormValues) {
+    if (!user) {
+      toast.error("Authentication error. Please log in again.");
+      return;
+    }
     setIsLoading(true);
-    console.log('Event data:', data);
     
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    setIsLoading(false);
-    toast.success(`Your event "${data.title}" has been successfully created.`);
-    form.reset();
+    const eventDataPayload = {
+      ...data,
+      organizerId: user.id,
+      startTime: data.startTime.toISOString(),
+      endTime: data.endTime.toISOString(),
+      imageUrl: data.imageUrl || `https://placehold.co/1200x400.png`, // Default placeholder if not provided
+    };
+
+    try {
+      const response = await fetch('/api/events', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(eventDataPayload),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to create event.');
+      }
+      toast.success(`Your event "${result.event.title}" has been successfully created.`);
+      form.reset();
+      router.push(`/events/${result.event.id}`); // Redirect to the new event page
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
+      toast.error(`Event creation failed: ${errorMessage}`);
+      console.error("Error creating event:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }
+
+  if (authLoading) {
+    return (
+      <div className="container mx-auto py-8 flex justify-center items-center min-h-[calc(100vh-200px)]">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
+  }
+  if (!isAuthenticated) {
+     return (
+      <div className="container mx-auto py-8 text-center">
+        <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-destructive" />
+        <p className="text-lg text-muted-foreground">Access Denied. Please log in to create events.</p>
+        <Button onClick={() => router.push('/login?redirect=/events/create')} className="mt-4">Login</Button>
+      </div>
+    );
+  }
+
 
   return (
     <div className="container mx-auto py-8">
@@ -143,8 +205,21 @@ export default function CreateEventPage() {
                             mode="single"
                             selected={field.value}
                             onSelect={field.onChange}
+                            disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))}
                             initialFocus
                           />
+                           <div className="p-2 border-t">
+                                <Input type="time" 
+                                    defaultValue={field.value ? format(field.value, "HH:mm") : "09:00"}
+                                    onChange={(e) => {
+                                        const time = e.target.value;
+                                        const [hours, minutes] = time.split(':').map(Number);
+                                        const currentDate = field.value || new Date();
+                                        currentDate.setHours(hours, minutes);
+                                        field.onChange(new Date(currentDate));
+                                    }}
+                                />
+                            </div>
                         </PopoverContent>
                       </Popover>
                       <FormMessage />
@@ -181,8 +256,21 @@ export default function CreateEventPage() {
                             mode="single"
                             selected={field.value}
                             onSelect={field.onChange}
+                            disabled={(date) => date < (form.getValues("startTime") || new Date(new Date().setDate(new Date().getDate() -1)))}
                             initialFocus
                           />
+                           <div className="p-2 border-t">
+                                <Input type="time" 
+                                    defaultValue={field.value ? format(field.value, "HH:mm") : "17:00"}
+                                    onChange={(e) => {
+                                        const time = e.target.value;
+                                        const [hours, minutes] = time.split(':').map(Number);
+                                        const currentDate = field.value || new Date();
+                                        currentDate.setHours(hours, minutes);
+                                        field.onChange(new Date(currentDate));
+                                    }}
+                                />
+                            </div>
                         </PopoverContent>
                       </Popover>
                       <FormMessage />
@@ -219,8 +307,8 @@ export default function CreateEventPage() {
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {['Conference', 'Workshop', 'Meetup', 'Social', 'Webinar', 'Hackathon', 'Other'].map(cat => (
-                          <SelectItem key={cat} value={cat.toLowerCase().replace(' ', '-')}>{cat}</SelectItem>
+                        {['Conference', 'Workshop', 'Meetup', 'Social', 'Webinar', 'Hackathon', 'Networking', 'Product Launch', 'Community Building', 'Other'].map(cat => (
+                          <SelectItem key={cat} value={cat.toLowerCase().replace(/\s+/g, '-')}>{cat}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -255,22 +343,23 @@ export default function CreateEventPage() {
                   </FormItem>
                 )}
               />
-               <FormItem>
-                <FormLabel>Event Image (Optional)</FormLabel>
-                <FormControl>
-                  <div className="flex items-center justify-center w-full">
-                    <label htmlFor="event-image-file" className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-muted hover:bg-secondary transition-colors">
-                      <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                        <UploadCloud className="w-8 h-8 mb-2 text-muted-foreground" />
-                        <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">Click to upload</span> or drag and drop</p>
-                        <p className="text-xs text-muted-foreground">Recommended: 16:9 aspect ratio</p>
+               <FormField
+                control={form.control}
+                name="imageUrl"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Event Image URL (Optional)</FormLabel>
+                    <FormControl>
+                       <div className="relative">
+                        <UploadCloud className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <Input placeholder="https://example.com/your-event-image.png" className="pl-10" {...field} />
                       </div>
-                      <Input id="event-image-file" type="file" className="hidden" {...form.register("imageUrl")} />
-                    </label>
-                  </div>
-                </FormControl>
-                <FormMessage />
-              </FormItem>
+                    </FormControl>
+                     <FormDescription>Link to an image for your event (e.g., from placehold.co or Unsplash).</FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
 
               <CardFooter className="p-0 pt-8">
                 <Button type="submit" disabled={isLoading} className="w-full md:w-auto btn-gradient">

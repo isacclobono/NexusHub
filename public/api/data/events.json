@@ -1,32 +1,44 @@
 
 [
   {
-    "id": "event1",
-    "title": "NexusHub Launch Party",
-    "description": "Join us to celebrate the official launch of NexusHub! Food, drinks, music, and great company await. Come meet the team and other community members.",
-    "imageUrl": "https://placehold.co/800x450.png",
-    "startTime": "2024-08-15T18:00:00Z",
-    "endTime": "2024-08-15T22:00:00Z",
-    "location": "NexusHub HQ, 123 Community Drive",
-    "organizerId": "user1",
-    "rsvpIds": ["user2", "user3"],
-    "waitlistIds": [],
+    "id": "event-1700000000001",
+    "title": "NexusHub Community Kick-off",
+    "description": "Join us for the official launch event of NexusHub! Meet the team, learn about upcoming features, and connect with fellow community members. Food and drinks will be provided.",
+    "imageUrl": "https://placehold.co/1200x400.png",
+    "startTime": "2024-09-15T18:00:00.000Z",
+    "endTime": "2024-09-15T21:00:00.000Z",
+    "location": "NexusHub HQ - 123 Community Drive, Webville",
+    "organizerId": "user-1690000000001",
+    "rsvpIds": ["user-1690000000002"],
     "maxAttendees": 100,
-    "category": "Social",
-    "tags": ["Launch", "Party", "Networking"]
+    "category": "Networking",
+    "tags": ["launch", "community", "meetup"]
   },
   {
-    "id": "event2",
-    "title": "AI Ethics Workshop",
-    "description": "A deep dive into the ethical considerations of AI development and deployment. This interactive workshop will feature guest speakers and group discussions.",
-    "imageUrl": "https://placehold.co/800x450.png",
-    "startTime": "2024-09-05T10:00:00Z",
-    "endTime": "2024-09-05T16:00:00Z",
-    "location": "Online (Zoom)",
-    "organizerId": "user2",
-    "rsvpIds": ["user1"],
-    "waitlistIds": [],
+    "id": "event-1700000000002",
+    "title": "AI in Web Development Workshop",
+    "description": "An interactive workshop exploring the latest AI tools and techniques for modern web development. Suitable for all skill levels. Bring your laptops!",
+    "imageUrl": "https://placehold.co/1200x400.png",
+    "startTime": "2024-10-05T10:00:00.000Z",
+    "endTime": "2024-10-05T16:00:00.000Z",
+    "location": "Online (Zoom Link to be provided)",
+    "organizerId": "user-1690000000002",
+    "rsvpIds": [],
+    "maxAttendees": 50,
     "category": "Workshop",
-    "tags": ["AI", "Ethics", "Technology"]
+    "tags": ["ai", "webdev", "coding", "learning"]
+  },
+  {
+    "id": "event-1700000000003",
+    "title": "Gaming Night: Retro Classics",
+    "description": "Relax and unwind with a fun night of retro gaming! We'll have classic consoles and games available. Pizza and snacks included.",
+    "imageUrl": "https://placehold.co/1200x400.png",
+    "startTime": "2024-11-20T19:00:00.000Z",
+    "endTime": "2024-11-20T23:00:00.000Z",
+    "location": "The Arcade Bar - 456 Pixel Lane, Gametown",
+    "organizerId": "user-1690000000001",
+    "rsvpIds": ["user-1690000000001", "user-1690000000002"],
+    "category": "Social",
+    "tags": ["gaming", "social", "fun", "retro"]
   }
 ]
