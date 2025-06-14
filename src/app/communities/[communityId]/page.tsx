@@ -36,7 +36,7 @@ const CommunityDetailSkeleton = () => (
         </div>
       </CardHeader>
       <CardContent className="p-6">
-        <Skeleton className="h-10 w-full md:w-1/3 mb-6" /> 
+        <Skeleton className="h-10 w-full md:w-1/3 mb-6" />
         <Tabs defaultValue="discussion">
           <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 max-w-xl mb-6">
             <Skeleton className="h-10 w-full" />
@@ -135,7 +135,7 @@ export default function CommunityDetailPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/communities/${communityId}`); 
+      const response = await fetch(`/api/communities/${communityId}`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || `Failed to fetch community details: ${response.statusText}`);
@@ -202,7 +202,7 @@ export default function CommunityDetailPage() {
         router.push(`/login?redirect=/communities/${communityId}`);
         return;
     }
-    if (!community || !community.id) { 
+    if (!community || !community.id) {
         toast.error("Community details not loaded yet.");
         return;
     }
@@ -223,11 +223,11 @@ export default function CommunityDetailPage() {
         if (!response.ok) {
             throw new Error(result.message || `Failed to ${isMember ? 'leave' : 'join'} community.`);
         }
-        
+
         toast.success(result.message || `Successfully ${isMember ? 'left' : 'joined'} ${community.name}!`);
-        await fetchCommunityDetails(); 
+        await fetchCommunityDetails();
         await fetchCommunityContent(); // Re-fetch members
-        await refreshUser(); 
+        await refreshUser();
 
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : "An unknown error occurred.";
@@ -237,7 +237,7 @@ export default function CommunityDetailPage() {
         setIsMembershipProcessing(false);
     }
   };
-  
+
   if (isLoading || authLoading) {
     return <CommunityDetailSkeleton />;
   }
@@ -297,16 +297,16 @@ export default function CommunityDetailPage() {
              </Badge>
            </div>
         </div>
-        
+
         <CardHeader className="p-6 border-b">
             <div className="flex flex-col md:flex-row justify-between items-start gap-4">
                 <p className="text-muted-foreground text-sm md:max-w-3xl">{community.description}</p>
                 <div className="flex-shrink-0 w-full md:w-auto">
                     {isAuthenticated && (
-                         <Button 
-                            onClick={handleJoinLeaveCommunity} 
-                            size="default" 
-                            className="w-full md:w-auto btn-gradient" 
+                         <Button
+                            onClick={handleJoinLeaveCommunity}
+                            size="default"
+                            className="w-full md:w-auto btn-gradient"
                             disabled={isMembershipProcessing || (isCreator && community.privacy === 'public')}
                          >
                             {isMembershipProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (isMember ? <LogOut className="mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />)}
@@ -319,8 +319,10 @@ export default function CommunityDetailPage() {
                         </Button>
                     )}
                     {isCreator && (
-                        <Button variant="outline" size="sm" className="w-full md:w-auto mt-2 md:mt-0 md:ml-2" onClick={() => toast.info("Community settings not implemented yet.")}>
-                            <Settings className="mr-2 h-4 w-4" /> Settings
+                        <Button variant="outline" size="sm" className="w-full md:w-auto mt-2 md:mt-0 md:ml-2" asChild>
+                           <Link href={`/communities/${community.id}/settings`}>
+                             <Settings className="mr-2 h-4 w-4" /> Settings
+                           </Link>
                         </Button>
                     )}
                 </div>
@@ -343,7 +345,7 @@ export default function CommunityDetailPage() {
                 </div>
             </div>
         </CardHeader>
-        
+
         <CardContent className="p-6">
             <Tabs defaultValue="discussion" className="w-full">
               <TabsList className="mb-6 grid w-full grid-cols-2 sm:grid-cols-4 max-w-xl">
@@ -371,10 +373,10 @@ export default function CommunityDetailPage() {
                                 {communityPosts.map(post => <PostCard key={post.id} post={post} onToggleBookmark={handlePostUpdate} onToggleLike={handlePostUpdate} />)}
                             </div>
                         ) : (
-                           !loadingPosts && !postsError && 
+                           !loadingPosts && !postsError &&
                            <div className="text-center py-10 text-muted-foreground">
                              <MessageSquare className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                             <p>No posts in this community yet. Be the first to share something!</p>
+                             <p>No posts in this community yet. {isMember ? 'Be the first to share something!' : 'Join the community to see and create posts.'}</p>
                            </div>
                         )}
                     </CardContent>
@@ -401,7 +403,7 @@ export default function CommunityDetailPage() {
                             !loadingEvents && !eventsError &&
                             <div className="text-center py-10 text-muted-foreground">
                                 <CalendarDays className="h-12 w-12 mx-auto mb-4 opacity-30" />
-                                <p>No events scheduled for this community yet.</p>
+                                <p>No events scheduled for this community yet. {isMember ? 'Feel free to create one!' : 'Join to participate in events.'}</p>
                             </div>
                         )}
                     </CardContent>
