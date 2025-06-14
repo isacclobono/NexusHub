@@ -30,7 +30,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user } = useAuth();
 
-  const resolvedUserNavItems = SIDENAV_USER_ITEMS.map(item => 
+  const resolvedUserNavItems = SIDENAV_USER_ITEMS.map(item =>
     item.href === '/profile/me' && user ? { ...item, href: `/profile/${user.id}` } : item
   );
 
@@ -48,14 +48,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <SidebarContent className="p-2">
             <SidebarMenu>
                <SidebarMenuItem>
-                 <Link href="/posts/create" passHref>
-                  <Button asChild className="w-full btn-gradient" size="lg">
-                    <a>
-                      <PlusCircle className="mr-2 h-5 w-5" />
-                      Create Post
-                    </a>
-                  </Button>
-                  </Link>
+                 <Button asChild className="w-full btn-gradient" size="lg">
+                   <Link href="/posts/create">
+                     <PlusCircle className="mr-2 h-5 w-5" />
+                     Create Post
+                   </Link>
+                 </Button>
               </SidebarMenuItem>
               {SIDENAV_ITEMS.map((item) => (
                 <SidebarMenuItem key={item.title}>
