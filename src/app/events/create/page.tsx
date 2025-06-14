@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar as CalendarIcon, UploadCloud, Loader2, MapPin, AlertTriangle } from 'lucide-react';
+import { Calendar as CalendarIcon, UploadCloud, Loader2, MapPin, AlertTriangle, UsersRound } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/select";
 import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
+import type { Community } from '@/lib/types';
 
 const eventFormSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters.').max(100),
@@ -47,6 +48,7 @@ const eventFormSchema = z.object({
     z.number().int().positive().optional()
   ),
   imageUrl: z.string().url({message: "Please enter a valid image URL e.g. https://placehold.co/image.png"}).optional(),
+  communityId: z.string().optional(),
 }).refine(data => data.endTime > data.startTime, {
   message: "End date and time must be after start date and time.",
   path: ["endTime"],
@@ -58,13 +60,43 @@ export default function CreateEventPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const router = useRouter();
+  const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
+  const [loadingCommunities, setLoadingCommunities] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       toast.error("You must be logged in to create an event.");
       router.push('/login?redirect=/events/create');
     }
-  }, [authLoading, isAuthenticated, router]);
+     if (isAuthenticated && user?.id) {
+      const fetchUserCommunities = async () => {
+        setLoadingCommunities(true);
+        try {
+            const userDetailsResponse = await fetch(`/api/users/${user.id}`);
+            if (userDetailsResponse.ok) {
+                const userData = await userDetailsResponse.json();
+                if (userData.communityIds && userData.communityIds.length > 0) {
+                    const communityDetailsPromises = userData.communityIds.map((id: string) =>
+                        fetch(`/api/communities/${id}`).then(res => res.json())
+                    );
+                    const communitiesData = await Promise.all(communityDetailsPromises);
+                    setMemberCommunities(communitiesData.filter(c => c && c.id));
+                } else {
+                    setMemberCommunities([]);
+                }
+            } else {
+                setMemberCommunities([]);
+            }
+        } catch (error) {
+          console.error("Failed to fetch user's communities", error);
+          setMemberCommunities([]);
+        } finally {
+          setLoadingCommunities(false);
+        }
+      };
+      fetchUserCommunities();
+    }
+  }, [authLoading, isAuthenticated, user, router]);
   
 
   const form = useForm<EventFormValues>({
@@ -80,7 +112,7 @@ export default function CreateEventPage() {
   });
 
   async function onSubmit(data: EventFormValues) {
-    if (!user || !user.id) { // Ensure user.id is available
+    if (!user || !user.id) { 
       toast.error("Authentication error or user ID missing. Please log in again.");
       return;
     }
@@ -88,10 +120,11 @@ export default function CreateEventPage() {
     
     const eventDataPayload = {
       ...data,
-      organizerId: user.id, // Send the string ID
+      organizerId: user.id, 
       startTime: data.startTime.toISOString(),
       endTime: data.endTime.toISOString(),
-      imageUrl: data.imageUrl || `https://placehold.co/1200x400.png`,
+      imageUrl: data.imageUrl || `https://placehold.co/1200x400.png?text=${encodeURIComponent(data.title)}`,
+      communityId: data.communityId || undefined,
     };
 
     try {
@@ -123,14 +156,13 @@ export default function CreateEventPage() {
     }
   }
 
-  if (authLoading) {
+  if (authLoading || loadingCommunities) {
     return (
       <div className="container mx-auto py-8 flex justify-center items-center min-h-[calc(100vh-200px)]">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
   }
-  // This check is after authLoading to ensure isAuthenticated status is confirmed
   if (!isAuthenticated && !authLoading) {
      return (
       <div className="container mx-auto py-8 text-center">
@@ -181,6 +213,34 @@ export default function CreateEventPage() {
                   </FormItem>
                 )}
               />
+
+            {memberCommunities.length > 0 && (
+                <FormField
+                control={form.control}
+                name="communityId"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel className="flex items-center"><UsersRound className="mr-2 h-4 w-4 text-muted-foreground"/>Associate with a Community (Optional)</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select a community (optional)" />
+                        </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                        <SelectItem value="">None (General event)</SelectItem>
+                        {memberCommunities.map(community => (
+                            <SelectItem key={community.id!} value={community.id!}>{community.name}</SelectItem>
+                        ))}
+                        </SelectContent>
+                    </Select>
+                    <FormDescription>If selected, this event will be associated with the chosen community.</FormDescription>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+            )}
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <FormField
                   control={form.control}
@@ -213,15 +273,15 @@ export default function CreateEventPage() {
                             selected={field.value}
                             onSelect={(date) => {
                                 const newDate = date ? new Date(date) : undefined;
-                                if (newDate && field.value) { // If date exists, keep its time
+                                if (newDate && field.value) { 
                                     newDate.setHours(field.value.getHours());
                                     newDate.setMinutes(field.value.getMinutes());
-                                } else if (newDate) { // New date, set default time
+                                } else if (newDate) { 
                                     newDate.setHours(9,0,0,0); 
                                 }
                                 field.onChange(newDate);
                             }}
-                            disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))} // Allow today
+                            disabled={(date) => date < new Date(new Date().setDate(new Date().getDate() -1))} 
                             initialFocus
                           />
                            <div className="p-2 border-t">
@@ -230,8 +290,8 @@ export default function CreateEventPage() {
                                     onChange={(e) => {
                                         const time = e.target.value;
                                         const [hours, minutes] = time.split(':').map(Number);
-                                        const currentDate = field.value || new Date(); // Use existing date or create new one
-                                        const newDate = new Date(currentDate); // Clone to avoid mutating previous state directly
+                                        const currentDate = field.value || new Date(); 
+                                        const newDate = new Date(currentDate); 
                                         newDate.setHours(hours, minutes);
                                         field.onChange(newDate);
                                     }}
@@ -274,15 +334,15 @@ export default function CreateEventPage() {
                             selected={field.value}
                              onSelect={(date) => {
                                 const newDate = date ? new Date(date) : undefined;
-                                if (newDate && field.value) { // If date exists, keep its time
+                                if (newDate && field.value) { 
                                     newDate.setHours(field.value.getHours());
                                     newDate.setMinutes(field.value.getMinutes());
-                                } else if (newDate) { // New date, set default time
+                                } else if (newDate) { 
                                     newDate.setHours(17,0,0,0); 
                                 }
                                 field.onChange(newDate);
                             }}
-                            disabled={(date) => date < (form.getValues("startTime") || new Date(new Date().setDate(new Date().getDate() -1)))} // Ensure end is after start
+                            disabled={(date) => date < (form.getValues("startTime") || new Date(new Date().setDate(new Date().getDate() -1)))} 
                             initialFocus
                           />
                            <div className="p-2 border-t">

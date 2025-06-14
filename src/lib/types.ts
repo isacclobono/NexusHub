@@ -3,55 +3,59 @@ import type { ObjectId } from 'mongodb';
 
 export interface User {
   _id?: ObjectId; 
-  id?: string; // String version of _id for client-side ease
+  id?: string; 
   name: string;
   email: string;
-  passwordHash?: string; // Only on server, never sent to client
+  passwordHash?: string; 
   avatarUrl?: string;
   bio?: string;
   reputation: number;
-  joinedDate: string; // ISO Date String
-  bookmarkedPostIds?: ObjectId[]; // Array of Post ObjectIds
+  joinedDate: string; 
+  bookmarkedPostIds?: ObjectId[]; 
+  communityIds?: ObjectId[]; // Communities the user is a member of
 }
 
 export interface Comment {
   _id?: ObjectId;
   id?: string;
   postId: ObjectId; 
-  postTitle?: string; // For displaying in activity feeds
+  postTitle?: string; 
   parentId?: ObjectId; 
   authorId: ObjectId; 
-  author: User; // Populated on server
+  author: User; 
   content: string;
-  createdAt: string; // ISO Date String
+  createdAt: string; 
   replyIds?: ObjectId[]; 
-  replies?: Comment[]; // Populated for nested comments
+  replies?: Comment[]; 
 }
 
 export interface Post {
   _id?: ObjectId;
   id?: string;
   authorId: ObjectId; 
-  author: User; // Populated on server
+  author: User; 
   title?: string;
   content: string;
   media?: { type: 'image' | 'video' | 'document'; url: string; name?: string }[];
   category?: string;
   tags?: string[];
-  createdAt: string; // ISO Date String
-  updatedAt?: string; // ISO Date String
+  createdAt: string; 
+  updatedAt?: string; 
   
-  likedBy: ObjectId[]; // Array of user ObjectIds who liked the post
+  likedBy: ObjectId[]; 
   likeCount: number;
-  isLikedByCurrentUser?: boolean; // Client-side state, derived based on current user
+  isLikedByCurrentUser?: boolean; 
 
-  commentIds: ObjectId[]; // Array of Comment ObjectIds
-  comments: Comment[]; // Populated on server (e.g., recent comments for feed)
+  commentIds: ObjectId[]; 
+  comments: Comment[]; 
   commentCount: number;
 
-  isBookmarkedByCurrentUser?: boolean; // Client-side state, derived from user's bookmarks
-  scheduledAt?: string; // ISO Date String
+  isBookmarkedByCurrentUser?: boolean; 
+  scheduledAt?: string; 
   status?: 'published' | 'draft' | 'scheduled';
+
+  communityId?: ObjectId; // ID of the community this post belongs to
+  communityName?: string; // For display purposes if needed
 }
 
 export interface Event {
@@ -60,13 +64,13 @@ export interface Event {
   title: string;
   description:string;
   imageUrl?: string;
-  startTime: string; // ISO Date String
-  endTime: string; // ISO Date String
+  startTime: string; 
+  endTime: string; 
   location?: string;
-  organizerId: ObjectId; // ObjectId of the User who is the organizer
-  organizer: User; // Populated User object
-  rsvpIds: ObjectId[]; // Array of User ObjectIds who RSVP'd
-  rsvps: User[]; // Array of populated User objects for those who RSVP'd
+  organizerId: ObjectId; 
+  organizer: User; 
+  rsvpIds: ObjectId[]; 
+  rsvps: User[]; 
   waitlistIds?: ObjectId[];
   waitlist?: User[];
   maxAttendees?: number;
@@ -74,6 +78,9 @@ export interface Event {
   tags?: string[];
   feedbackIds?: ObjectId[];
   feedback?: EventFeedback[];
+
+  communityId?: ObjectId; // ID of the community this event belongs to
+  communityName?: string; // For display purposes
 }
 
 export interface EventFeedback {
@@ -82,9 +89,9 @@ export interface EventFeedback {
   eventId: ObjectId;
   userId: ObjectId;
   user?: User;
-  rating: number; // e.g., 1-5 stars
+  rating: number; 
   comment?: string;
-  createdAt: string; // ISO Date String
+  createdAt: string; 
 }
 
 export interface Badge {
@@ -109,12 +116,12 @@ export interface Notification {
   _id?: ObjectId;
   id?: string;
   userId: ObjectId; 
-  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like';
+  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like' | 'community_join_request' | 'community_post_approved'; // Added community types
   title: string;
   message: string;
   link?: string; 
   isRead: boolean;
-  createdAt: string; // ISO Date String
+  createdAt: string; 
   relatedEntityId?: ObjectId; 
   actor?: { 
     _id: ObjectId; 
@@ -122,4 +129,20 @@ export interface Notification {
     name: string;
     avatarUrl?: string;
   }
+}
+
+export interface Community {
+  _id?: ObjectId;
+  id?: string;
+  name: string;
+  description: string;
+  creatorId: ObjectId;
+  creator?: User; // Populated
+  memberIds: ObjectId[];
+  adminIds?: ObjectId[]; // For future admin roles
+  coverImageUrl?: string;
+  privacy: 'public' | 'private'; // 'public' = anyone can join, 'private' = requires approval (approval not in this iteration)
+  createdAt: string; // ISO Date String
+  updatedAt?: string; // ISO Date String
+  memberCount?: number; // Denormalized for easier querying, updated by triggers or API logic
 }

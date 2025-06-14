@@ -1,6 +1,6 @@
 
 import type { NavItem } from './types';
-import { Home, MessageSquareText, CalendarDays, Users, Settings, Search, Bookmark, LogOut, UserCircle, UserPlus, LogIn, Bell, Archive } from 'lucide-react'; // Added Archive, Bell
+import { Home, MessageSquareText, CalendarDays, Users, Settings, Search, Bookmark, LogOut, UserCircle, UserPlus, LogIn, Bell, Archive, UsersRound } from 'lucide-react'; // Added Archive, Bell, UsersRound
 
 export const APP_NAME = 'NexusHub';
 
@@ -14,6 +14,11 @@ export const SIDENAV_ITEMS: NavItem[] = [
     title: 'Feed',
     href: '/feed',
     icon: MessageSquareText,
+  },
+  {
+    title: 'Communities', // New Item
+    href: '/communities',
+    icon: UsersRound, 
   },
   {
     title: 'Events',
@@ -37,7 +42,7 @@ export const SIDENAV_ITEMS: NavItem[] = [
     icon: Bookmark,
   },
   {
-    title: 'My Posts', // New Item
+    title: 'My Posts', 
     href: '/my-posts',
     icon: Archive,
   },
@@ -48,12 +53,11 @@ export const SIDENAV_ITEMS: NavItem[] = [
   },
 ];
 
-// SIDENAV_USER_ITEMS is now dynamically generated in AppShell.tsx based on auth state
-// This constant can be removed or kept for reference, but AppShell won't directly use it in the same way.
+
 export const SIDENAV_USER_ITEMS_TEMPLATE: NavItem[] = [
  {
     title: 'Profile',
-    href: '/profile/me', // Actual href will be /profile/:userId
+    href: '/profile/me', 
     icon: UserCircle, 
   },
   {
@@ -63,7 +67,7 @@ export const SIDENAV_USER_ITEMS_TEMPLATE: NavItem[] = [
   },
   {
     title: 'Logout',
-    href: '#logout', // Handled by onClick
+    href: '#logout', 
     icon: LogOut,
   },
    {
@@ -100,3 +104,7 @@ export const CATEGORIES = [
   'Other',
 ];
 
+export const COMMUNITY_PRIVACY_OPTIONS = [
+  { value: 'public', label: 'Public (Anyone can find, view, and join)' },
+  { value: 'private', label: 'Private (Only members can see content and who\'s in the group. Join by request - approval not implemented yet.)' },
+];

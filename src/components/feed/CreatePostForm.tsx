@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, UploadCloud, Sparkles, Lightbulb, Calendar as CalendarIcon } from 'lucide-react';
+import { Loader2, UploadCloud, Sparkles, Lightbulb, Calendar as CalendarIcon, UsersRound } from 'lucide-react';
 import React, { useState, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
@@ -30,14 +30,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { categorizeContent as callCategorizeContentAI } from '@/ai/flows/smart-content-categorization';
-// Removed CategorizeContentOutput import as it's not directly used for type here after AI call
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth-provider';
-import { useRouter } from 'next/navigation'; // For redirecting if not logged in
+import { useRouter } from 'next/navigation';
+import type { Community } from '@/lib/types';
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
@@ -47,6 +47,7 @@ const postFormSchema = z.object({
   media: z.any().optional(), 
   isDraft: z.boolean().default(false),
   scheduledAt: z.date().optional(),
+  communityId: z.string().optional(), // For selecting a community
 }).refine(data => !data.scheduledAt || data.scheduledAt > new Date(), {
     message: "Scheduled date must be in the future.",
     path: ["scheduledAt"],
@@ -73,13 +74,56 @@ export function CreatePostForm() {
   const [showSchedule, setShowSchedule] = useState(false);
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const router = useRouter();
+  const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
+  const [loadingCommunities, setLoadingCommunities] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       toast.error("You must be logged in to create a post.");
       router.push('/login?redirect=/posts/create');
     }
-  }, [authLoading, isAuthenticated, router]);
+    if (isAuthenticated && user?.id) {
+      const fetchUserCommunities = async () => {
+        setLoadingCommunities(true);
+        try {
+          // This API endpoint needs to exist or be adapted: fetch communities user is a member of
+          // For now, this will likely be an empty list or require a new API.
+          // Let's assume for now it fetches communities they CREATED.
+          const response = await fetch(`/api/communities?creatorId=${user.id}`); // Placeholder, needs specific API
+          if(response.ok) {
+            const data = await response.json();
+            setMemberCommunities(data);
+          } else {
+            // setMemberCommunities([]); // Could also fetch `/api/users/${user.id}` and get `communityIds` then fetch those.
+            // For simplicity, we'll assume the user can only post to communities they created, for now.
+            // This needs a more robust /api/users/[userId]/communitiesMemberOf endpoint
+            const userDetailsResponse = await fetch(`/api/users/${user.id}`);
+            if (userDetailsResponse.ok) {
+                const userData = await userDetailsResponse.json();
+                if (userData.communityIds && userData.communityIds.length > 0) {
+                    // Fetch details for these communities
+                    const communityDetailsPromises = userData.communityIds.map((id: string) =>
+                        fetch(`/api/communities/${id}`).then(res => res.json())
+                    );
+                    const communitiesData = await Promise.all(communityDetailsPromises);
+                    setMemberCommunities(communitiesData.filter(c => c && c.id)); // Filter out any failed fetches
+                } else {
+                    setMemberCommunities([]);
+                }
+            } else {
+                setMemberCommunities([]);
+            }
+          }
+        } catch (error) {
+          console.error("Failed to fetch user's communities", error);
+          setMemberCommunities([]);
+        } finally {
+          setLoadingCommunities(false);
+        }
+      };
+      fetchUserCommunities();
+    }
+  }, [authLoading, isAuthenticated, user, router]);
 
   const form = useForm<PostFormValues>({
     resolver: zodResolver(postFormSchema),
@@ -122,7 +166,7 @@ export function CreatePostForm() {
 
 
   async function onSubmit(data: PostFormValues) {
-    if (!user || !user.id) { // Check for user.id as well
+    if (!user || !user.id) { 
       toast.error('Authentication error or user ID is missing. Please log in again.');
       return;
     }
@@ -130,8 +174,9 @@ export function CreatePostForm() {
 
     const finalData = { 
       ...data,
-      userId: user.id, // Pass the string ID of the user
+      userId: user.id, 
       scheduledAt: (showSchedule && data.scheduledAt) ? data.scheduledAt.toISOString() : undefined,
+      communityId: data.communityId || undefined, // Ensure it's undefined if empty
     };
 
     try {
@@ -147,7 +192,6 @@ export function CreatePostForm() {
         if (result.isFlagged) {
            toast.error(result.message || "Post flagged by moderation, please revise.", { duration: 7000 });
         } else {
-          // Handle Zod validation errors from API if present
           if (result.errors) {
             let errorMessages = Object.values(result.errors).flat().join('\n');
             toast.error(`Post creation failed:\n${errorMessages}`, { duration: 6000 });
@@ -161,8 +205,6 @@ export function CreatePostForm() {
         setSuggestedCategory(null);
         setSuggestedTags([]);
         setShowSchedule(false);
-        // Optionally redirect to the feed or the new post
-        // router.push('/feed'); 
       }
     } catch (error) {
       console.error("Error submitting post:", error);
@@ -173,11 +215,10 @@ export function CreatePostForm() {
     }
   }
   
-  if (authLoading) {
+  if (authLoading || loadingCommunities) {
     return <div className="container mx-auto py-8 flex justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   }
-  if (!isAuthenticated && !authLoading) { // User is definitively not authenticated
-    // The useEffect above should have redirected, but this is a safeguard.
+  if (!isAuthenticated && !authLoading) { 
     return <div className="container mx-auto py-8 text-center"><p>Redirecting to login...</p></div>;
   }
 
@@ -220,6 +261,34 @@ export function CreatePostForm() {
                 </FormItem>
               )}
             />
+            
+            {memberCommunities.length > 0 && (
+                <FormField
+                control={form.control}
+                name="communityId"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel className="flex items-center"><UsersRound className="mr-2 h-4 w-4 text-muted-foreground"/>Post to a Community (Optional)</FormLabel>
+                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                        <FormControl>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select a community (optional)" />
+                        </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                        <SelectItem value="">None (Post to main feed)</SelectItem>
+                        {memberCommunities.map(community => (
+                            <SelectItem key={community.id!} value={community.id!}>{community.name}</SelectItem>
+                        ))}
+                        </SelectContent>
+                    </Select>
+                    <FormDescription>If selected, this post will primarily appear in the chosen community's feed.</FormDescription>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+            )}
+
 
             <GenAICallout icon={Lightbulb} title="AI Content Assistant">
               Enhance your post with AI! Click to get category & tag suggestions. Content is automatically checked for moderation upon submission.
@@ -337,7 +406,7 @@ export function CreatePostForm() {
                             form.setValue("scheduledAt", undefined, {shouldValidate: true});
                         }
                         if (checked) { 
-                            form.setValue("isDraft", false); // Cannot be draft if scheduled
+                            form.setValue("isDraft", false); 
                         }
                     }}
                     disabled={isSubmitting}
@@ -381,10 +450,10 @@ export function CreatePostForm() {
                                         newDate.setHours(field.value.getHours());
                                         newDate.setMinutes(field.value.getMinutes());
                                     } else if (newDate) { 
-                                        newDate.setHours(9,0,0,0); // Default time if none set
+                                        newDate.setHours(9,0,0,0); 
                                     }
                                     field.onChange(newDate);
-                                    if(newDate) form.setValue("isDraft", false); // Ensure not draft if scheduled
+                                    if(newDate) form.setValue("isDraft", false); 
                                 }}
                                 initialFocus
                                 disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} 
@@ -395,11 +464,11 @@ export function CreatePostForm() {
                                     onChange={(e) => {
                                         const time = e.target.value;
                                         const [hours, minutes] = time.split(':').map(Number);
-                                        const currentDate = field.value || new Date(); // Use existing date or create new one
-                                        const newDate = new Date(currentDate); // Clone to avoid mutating previous state directly
+                                        const currentDate = field.value || new Date(); 
+                                        const newDate = new Date(currentDate); 
                                         newDate.setHours(hours, minutes);
                                         field.onChange(newDate);
-                                        if(newDate) form.setValue("isDraft", false); // Ensure not draft if scheduled
+                                        if(newDate) form.setValue("isDraft", false); 
                                     }}
                                 />
                             </div>
