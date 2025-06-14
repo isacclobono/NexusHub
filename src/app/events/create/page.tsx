@@ -418,8 +418,12 @@ export default function CreateEventPage() {
                          <Input 
                             type="number" 
                             placeholder="Enter 0 for a free event" 
-                            {...field} 
-                            onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))}
+                            {...field}
+                            value={field.value === undefined ? '' : String(field.value)}
+                            onChange={e => {
+                                const val = e.target.value;
+                                field.onChange(val === '' ? undefined : parseFloat(val));
+                            }}
                             min="0"
                             step="0.01"
                         />
@@ -486,7 +490,18 @@ export default function CreateEventPage() {
                   <FormItem>
                     <FormLabel>Max Attendees (Optional)</FormLabel>
                     <FormControl>
-                      <Input type="number" placeholder="e.g., 100" {...field} onChange={event => field.onChange(event.target.value === '' ? undefined : +event.target.value)} />
+                      <Input 
+                        type="number" 
+                        placeholder="e.g., 100" 
+                        {...field} 
+                        value={field.value === undefined ? '' : String(field.value)}
+                        onChange={e => {
+                            const val = e.target.value;
+                            field.onChange(val === '' ? undefined : parseInt(val, 10));
+                        }}
+                        min="1" 
+                        step="1"
+                       />
                     </FormControl>
                     <FormMessage />
                   </FormItem>
@@ -523,3 +538,4 @@ export default function CreateEventPage() {
     </div>
   );
 }
+
