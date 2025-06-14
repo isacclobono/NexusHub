@@ -15,7 +15,7 @@ interface UserWithPasswordHash extends Omit<User, 'id' | 'bookmarkedPostIds'> {
     mentionNotifications?: boolean;
   };
   privacy?: 'public' | 'private';
-  updatedAt?: string; // Ensure updatedAt is part of the type
+  updatedAt?: string; 
 }
 
 interface UserParams {
@@ -87,79 +87,88 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
       return NextResponse.json({ message: 'Invalid profile data.', errors: validation.error.flatten().fieldErrors }, { status: 400 });
     }
     
-    // Use validated data directly
-    const { name, bio, avatarUrl, notificationPreferences, privacy } = validation.data;
+    const validatedData = validation.data;
 
     const db = await getDb();
     const usersCollection = db.collection<UserWithPasswordHash>('users');
     const userObjectId = new ObjectId(pathUserId);
 
-    const existingUser = await usersCollection.findOne({ _id: userObjectId }, { projection: { name: 1 } });
+    const existingUser = await usersCollection.findOne({ _id: userObjectId }, { projection: { name: 1, avatarUrl: 1 } });
     if (!existingUser) {
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
     }
 
-    const updatePayload: Partial<Omit<UserWithPasswordHash, '_id' | 'passwordHash'>> & { updatedAt: string } = {
-        updatedAt: new Date().toISOString(), // This will always be new
+    const updatePayload: any = { // Use 'any' for $set flexibility, or a more complex Partial type
+        $set: { updatedAt: new Date().toISOString() }
     };
 
-    if (name !== undefined) {
-      updatePayload.name = name;
+    if (validatedData.name !== undefined) {
+      updatePayload.$set.name = validatedData.name;
     }
     
-    // Handle bio: if present in validated data (even if null), set it.
-    // If bio is explicitly set to null or empty string, it will be stored as empty string.
-    if (bio !== undefined) {
-      updatePayload.bio = bio === null ? '' : bio;
+    if (validatedData.bio !== undefined) {
+      updatePayload.$set.bio = validatedData.bio === null ? '' : validatedData.bio;
     }
 
-    // Handle avatarUrl: if present in validated data, process it.
-    if (avatarUrl !== undefined) {
-      if (avatarUrl === null || avatarUrl === '') {
-        // Use current name from validated data if available, else existing name
-        const finalNameForAvatar = name !== undefined ? name : existingUser.name;
-        updatePayload.avatarUrl = `https://placehold.co/100x100.png?text=${(finalNameForAvatar || 'U').charAt(0)}`;
+    if (validatedData.avatarUrl !== undefined) {
+      if (validatedData.avatarUrl === null || validatedData.avatarUrl === '') {
+        const finalNameForAvatar = validatedData.name !== undefined ? validatedData.name : existingUser.name;
+        updatePayload.$set.avatarUrl = `https://placehold.co/100x100.png?text=${(finalNameForAvatar || 'U').charAt(0)}`;
       } else {
-        updatePayload.avatarUrl = avatarUrl;
+        updatePayload.$set.avatarUrl = validatedData.avatarUrl;
       }
     }
 
-    if (notificationPreferences !== undefined) {
-      // Ensure all keys are present with defaults if some are missing from client
-      updatePayload.notificationPreferences = {
-        emailNewPosts: notificationPreferences.emailNewPosts ?? true,
-        eventReminders: notificationPreferences.eventReminders ?? true,
-        mentionNotifications: notificationPreferences.mentionNotifications ?? false,
+    if (validatedData.notificationPreferences !== undefined) {
+      updatePayload.$set.notificationPreferences = {
+        emailNewPosts: validatedData.notificationPreferences.emailNewPosts ?? true,
+        eventReminders: validatedData.notificationPreferences.eventReminders ?? true,
+        mentionNotifications: validatedData.notificationPreferences.mentionNotifications ?? false,
       };
     }
 
-    if (privacy !== undefined) {
-      updatePayload.privacy = privacy;
+    if (validatedData.privacy !== undefined) {
+      updatePayload.$set.privacy = validatedData.privacy;
     }
     
-    const result = await usersCollection.findOneAndUpdate(
+    // Only proceed if there are fields to update besides 'updatedAt'
+    if (Object.keys(updatePayload.$set).length === 1 && 'updatedAt' in updatePayload.$set) {
+        // No actual user-modifiable fields were changed, but we can consider 'updatedAt' a valid update.
+        // To ensure the client gets the document, we can still run the update and fetch.
+        // Or, if we want to be strict, we could return a 304 Not Modified or a 200 with a message.
+        // For simplicity and to ensure `refreshUser` works, let's proceed with the update.
+    }
+    
+    const updateResult = await usersCollection.updateOne(
       { _id: userObjectId },
-      { $set: updatePayload },
-      { returnDocument: 'after', projection: { passwordHash: 0 } }
+      updatePayload 
     );
 
-    if (!result.value) {
-      // This is the problematic spot. If result.value is null, the update didn't return the document.
-      // This can happen if the document was not found (but we check 'existingUser')
-      // OR if the update operation resulted in no actual change to the document's fields
-      // (other than potentially _id or fields not in projection) and MongoDB + driver optimize.
-      // The `updatedAt` field *should* prevent this.
-      console.error(`User ${pathUserId} found initially. Update payload: ${JSON.stringify(updatePayload)}. findOneAndUpdate returned no document.`);
-      return NextResponse.json({ message: 'Profile update operation failed. The document might not have been modified or an unexpected error occurred.' }, { status: 500 });
+    if (updateResult.matchedCount === 0) {
+      // This case should be caught by the 'existingUser' check above, but good for safety.
+      return NextResponse.json({ message: 'User not found during update operation.' }, { status: 404 });
+    }
+    
+    // If updateOne doesn't modify (e.g. data is identical), modifiedCount would be 0
+    // But we always update 'updatedAt', so modifiedCount should be 1 if matchedCount is 1.
+    // After update, fetch the document to return to the client
+    const updatedUserDoc = await usersCollection.findOne(
+        { _id: userObjectId },
+        { projection: { passwordHash: 0 } }
+    );
+
+    if (!updatedUserDoc) {
+        // This would be very unusual if the update matched.
+        console.error(`User ${pathUserId} updated, but could not be re-fetched.`);
+        return NextResponse.json({ message: 'Profile updated, but failed to retrieve updated details.' }, { status: 500 });
     }
 
     const updatedUserForClient: User = {
-        ...(result.value as Omit<UserWithPasswordHash, 'passwordHash'>), // Cast because passwordHash is projected out
-        id: result.value._id.toHexString(),
-        bookmarkedPostIds: Array.isArray(result.value.bookmarkedPostIds) ? result.value.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
-        // Ensure these have defaults if they somehow become undefined after update (shouldn't happen with proper $set)
-        notificationPreferences: result.value.notificationPreferences || { emailNewPosts: true, eventReminders: true, mentionNotifications: false },
-        privacy: result.value.privacy || 'public',
+        ...updatedUserDoc,
+        id: updatedUserDoc._id.toHexString(),
+        bookmarkedPostIds: Array.isArray(updatedUserDoc.bookmarkedPostIds) ? updatedUserDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
+        notificationPreferences: updatedUserDoc.notificationPreferences || { emailNewPosts: true, eventReminders: true, mentionNotifications: false },
+        privacy: updatedUserDoc.privacy || 'public',
     };
 
     return NextResponse.json({ message: 'Profile updated successfully!', user: updatedUserForClient }, { status: 200 });
@@ -173,3 +182,4 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
+```
