@@ -2,7 +2,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm } from 'react-hook-form';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,10 +15,10 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Added Textarea
+import { Textarea } from '@/components/ui/textarea'; // Using Textarea as fallback
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Sparkles, Lightbulb, UsersRound, Edit } from 'lucide-react';
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
 import {
@@ -42,7 +42,7 @@ const NO_CATEGORY_SELECTED_VALUE = "__NONE__";
 
 const postEditSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."),
+  content: z.string().min(1, 'Content is required.').max(5000, "Content can't exceed 5000 characters."), // Adjusted max length
   category: z.string().optional().nullable(),
   tags: z.string().optional().nullable(),
   communityId: z.string().optional().nullable(),
@@ -164,7 +164,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
       userId: user.id,
       title: data.title || undefined,
       content: data.content,
-      category: data.category,
+      category: data.category === NO_CATEGORY_SELECTED_VALUE ? null : data.category,
       tags: data.tags,
       communityId: data.communityId === NO_COMMUNITY_VALUE ? NO_COMMUNITY_VALUE : (data.communityId || null),
     };
@@ -233,11 +233,11 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                 <FormItem>
                   <FormLabel>Content</FormLabel>
                   <FormControl>
-                    <Textarea
-                      placeholder="Share your thoughts with the community..."
-                      className="min-h-[200px]"
-                      {...field}
-                    />
+                     <Textarea
+                        placeholder="Edit your thoughts..."
+                        className="min-h-[200px]"
+                        {...field}
+                      />
                   </FormControl>
                    <FormDescription>
                     Your post content.
