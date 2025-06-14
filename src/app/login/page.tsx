@@ -82,7 +82,7 @@ export default function LoginPage() {
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
                 <Button variant="link" size="sm" className="p-0 h-auto text-xs text-primary hover:text-accent" disabled={isLoading} asChild>
-                   <Link href="#">Forgot password?</Link> {/* Add actual link later */}
+                   <Link href="#"><span>Forgot password?</span></Link>
                 </Button>
               </div>
               <Input
@@ -114,7 +114,9 @@ export default function LoginPage() {
           </p>
           <Button variant="outline" asChild className="w-full border-primary/50 text-primary hover:bg-primary/5 hover:text-primary" disabled={isLoading}>
             <Link href="/register">
-              <UserPlus className="mr-2 h-4 w-4" /> Create a New Account
+              <span className="inline-flex items-center justify-center gap-2">
+                <UserPlus className="mr-2 h-4 w-4" /> Create a New Account
+              </span>
             </Link>
           </Button>
         </CardFooter>
