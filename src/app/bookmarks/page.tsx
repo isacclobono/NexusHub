@@ -37,11 +37,11 @@ export default function BookmarksPage() {
   const [bookmarkedPosts, setBookmarkedPosts] = useState<Post[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user, loading: authLoading, isAuthenticated } = useAuth();
+  const { user, loading: authLoading, isAuthenticated, refreshUser } = useAuth();
 
   const fetchBookmarkedPosts = useCallback(async () => {
     if (!user || !user.id) {
-      if (!authLoading) { // Only set error if auth has finished loading and user is not available
+      if (!authLoading) { 
         setError("Please log in to view your bookmarks.");
         setIsLoading(false);
       }
@@ -50,18 +50,16 @@ export default function BookmarksPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // Fetch posts specifically bookmarked by the current user
-      const response = await fetch(`/api/posts?bookmarkedById=${user.id}`);
+      // Fetch posts specifically bookmarked by the current user, also pass forUserId for like status
+      const response = await fetch(`/api/posts?bookmarkedById=${user.id}&forUserId=${user.id}`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || `Failed to fetch bookmarked posts: ${response.statusText}`);
       }
       const postsData: Post[] = await response.json();
       
-      // Enrich posts with isBookmarkedByCurrentUser, although for this page, they all are.
-      // The PostCard component might use this.
-      const enrichedPosts = postsData.map(p => ({...p, isBookmarkedByCurrentUser: true}));
-      setBookmarkedPosts(enrichedPosts);
+      // API should now provide isBookmarkedByCurrentUser and isLikedByCurrentUser
+      setBookmarkedPosts(postsData);
 
     } catch (e) {
       console.error("Failed to fetch bookmarked posts:", e);
@@ -72,18 +70,20 @@ export default function BookmarksPage() {
   }, [user, authLoading]);
 
   useEffect(() => {
-    if (!authLoading) { // Wait for auth to resolve before fetching
+    if (!authLoading) { 
         if (isAuthenticated) {
             fetchBookmarkedPosts();
         } else {
             setIsLoading(false);
             setError("Please log in to view your bookmarks.");
-            // Optionally, redirect to login: router.push('/login?redirect=/bookmarks');
         }
     }
   }, [authLoading, isAuthenticated, fetchBookmarkedPosts]);
 
   const handleUnbookmarkOptimistic = async (postId: string) => {
+    if (!user || !user.id) return;
+
+    // Optimistic UI update
     const originalPosts = [...bookmarkedPosts];
     setBookmarkedPosts(prevPosts => prevPosts.filter(p => p.id !== postId));
 
@@ -91,18 +91,26 @@ export default function BookmarksPage() {
       const response = await fetch(`/api/posts/${postId}/unbookmark`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user?.id }),
+        body: JSON.stringify({ userId: user.id }),
       });
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || 'Failed to unbookmark post.');
       }
       toast.success('Post unbookmarked.');
-      // No need to refetch, already updated optimistically.
+      await refreshUser(); // Refresh user context to update their bookmarkedPostIds
+      // No need to refetch all posts if only removing from this page
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not unbookmark post.');
       setBookmarkedPosts(originalPosts); // Revert on error
     }
+  };
+  
+  const handleLikeToggleOptimistic = async (postId: string, isCurrentlyLiked: boolean, updatedPostFromServer: Post) => {
+    // Update the specific post in the local state
+    setBookmarkedPosts(prevPosts => 
+        prevPosts.map(p => p.id === postId ? { ...updatedPostFromServer } : p)
+    );
   };
 
 
@@ -149,7 +157,12 @@ export default function BookmarksPage() {
       {bookmarkedPosts.length > 0 ? (
         <div className="space-y-6">
           {bookmarkedPosts.map((post) => (
-            <PostCard key={post.id!} post={{...post, isBookmarkedByCurrentUser: true}} onToggleBookmark={handleUnbookmarkOptimistic} />
+            <PostCard 
+              key={post.id!} 
+              post={{...post, isBookmarkedByCurrentUser: true}} // Explicitly true for this page
+              onToggleBookmark={handleUnbookmarkOptimistic} 
+              onToggleLike={handleLikeToggleOptimistic}
+            />
           ))}
         </div>
       ) : (

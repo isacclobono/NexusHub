@@ -11,26 +11,19 @@ export interface User {
   bio?: string;
   reputation: number;
   joinedDate: string; // ISO Date String
-  bookmarkedPostIds?: ObjectId[]; // For storing bookmarked post IDs
-}
-
-export interface Reaction {
-  id?: string;
-  emoji: string;
-  count: number;
-  reactedByCurrentUser?: boolean;
+  bookmarkedPostIds?: ObjectId[]; 
 }
 
 export interface Comment {
   _id?: ObjectId;
   id?: string;
-  postId?: ObjectId; 
+  postId: ObjectId; 
   parentId?: ObjectId; 
   authorId: ObjectId; 
   author?: User; 
   content: string;
   createdAt: string; // ISO Date String
-  reactions: Reaction[];
+  // reactions: Reaction[]; // Future: reactions on comments
   replyIds?: ObjectId[]; 
   replies?: Comment[]; 
 }
@@ -47,10 +40,15 @@ export interface Post {
   tags?: string[];
   createdAt: string; // ISO Date String
   updatedAt?: string; // ISO Date String
-  reactions: Reaction[];
-  commentIds?: ObjectId[]; 
+  
+  likedBy: ObjectId[]; // Array of user ObjectIds who liked the post
+  likeCount: number;
+  isLikedByCurrentUser?: boolean; // Client-side state
+
+  commentIds: ObjectId[]; 
   comments?: Comment[]; 
   commentCount: number;
+
   isBookmarkedByCurrentUser?: boolean; // Client-side state, derived from user's bookmarks
   scheduledAt?: string; // ISO Date String
   status?: 'published' | 'draft' | 'scheduled';
@@ -111,7 +109,7 @@ export interface Notification {
   _id?: ObjectId;
   id?: string;
   userId: ObjectId; // Target user
-  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower';
+  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like';
   title: string;
   message: string;
   link?: string; // Link to the relevant content
@@ -119,7 +117,8 @@ export interface Notification {
   createdAt: string; // ISO Date String
   relatedEntityId?: ObjectId; 
   actor?: { 
-    id: ObjectId;
+    _id: ObjectId; // Changed from id to _id to match User structure
+    id: string; // Keep string id for client convenience after conversion
     name: string;
     avatarUrl?: string;
   }

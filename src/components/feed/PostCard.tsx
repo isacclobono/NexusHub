@@ -9,32 +9,16 @@ import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Ima
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
-import React, { useState } from 'react'; // Import useState
+import React, { useState, useEffect } from 'react';
+import type { ObjectId } from 'mongodb'; // For type consistency with backend
 
 interface PostCardProps {
   post: Post;
   onToggleBookmark?: (postId: string, isCurrentlyBookmarked: boolean) => Promise<void> | void;
+  onToggleLike?: (postId: string, isCurrentlyLiked: boolean, updatedPost: Post) => Promise<void> | void;
+  // onAddComment?: (postId: string, updatedPost: Post) => Promise<void> | void; // For future comment adding UI
 }
 
-const ReactionDisplay = ({ reactions }: { reactions: Post['reactions'] }) => (
-  <div className="flex items-center space-x-2">
-    {reactions && reactions.slice(0, 3).map((reaction, index) => (
-      <div key={index} className="flex items-center text-sm text-muted-foreground">
-        <span className="mr-1 text-lg">{reaction.emoji}</span>
-        <span>{reaction.count}</span>
-      </div>
-    ))}
-    {reactions && reactions.length > 3 && (
-      <span className="text-sm text-muted-foreground">+{reactions.length - 3} more</span>
-    )}
-  </div>
-);
-
-const MediaIcon = ({ type }: { type: 'image' | 'video' | 'document' }) => {
-  if (type === 'video') return <Video className="h-4 w-4 text-muted-foreground" />;
-  if (type === 'document') return <FileText className="h-4 w-4 text-muted-foreground" />;
-  return <ImageIcon className="h-4 w-4 text-muted-foreground" />;
-};
 
 const CommentItem = ({ comment }: { comment: CommentType }) => {
   const commentAuthor = comment.author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined, email: '', reputation: 0, joinedDate: new Date().toISOString() };
@@ -59,20 +43,29 @@ const CommentItem = ({ comment }: { comment: CommentType }) => {
   );
 };
 
-export function PostCard({ post, onToggleBookmark: onToggleBookmarkProp }: PostCardProps) {
-  const { author, title, content, media, category, tags, createdAt, reactions, comments: postComments, commentCount } = post;
+export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmarkProp, onToggleLike: onToggleLikeProp }: PostCardProps) {
   const { user, isAuthenticated } = useAuth();
+  const [post, setPost] = useState(initialPost); // Local state for post data, including likes/comments
+
+  // Update local post state if initialPost prop changes (e.g., after feed refresh)
+  useEffect(() => {
+    setPost(initialPost);
+  }, [initialPost]);
+
+
   const [isBookmarking, setIsBookmarking] = useState(false);
+  const [isLiking, setIsLiking] = useState(false);
   
-  // Internal state for bookmark, initialized by prop, updated optimistically
-  const [isBookmarkedOptimistic, setIsBookmarkedOptimistic] = useState(!!post.isBookmarkedByCurrentUser);
+  const isBookmarkedByCurrentUser = isAuthenticated && user && post.id ? 
+    user.bookmarkedPostIds?.some(id => id.toString() === post.id) : false;
 
-  React.useEffect(() => {
-    setIsBookmarkedOptimistic(!!post.isBookmarkedByCurrentUser);
-  }, [post.isBookmarkedByCurrentUser]);
+  const isLikedByCurrentUser = isAuthenticated && user && post.id && post.likedBy ?
+    post.likedBy.some(likedById => likedById.toString() === user._id?.toString()) : false;
 
 
-  const postAuthor = author || { 
+  const { author: postAuthorData, title, content, media, category, tags, createdAt, comments: postComments, commentCount } = post;
+  
+  const postAuthor = postAuthorData || { 
     id: post.authorId?.toString() || 'unknown', 
     name: 'Unknown User', 
     avatarUrl: undefined, 
@@ -91,29 +84,33 @@ export function PostCard({ post, onToggleBookmark: onToggleBookmarkProp }: PostC
     if (isBookmarking) return;
 
     setIsBookmarking(true);
-    const currentlyBookmarked = isBookmarkedOptimistic;
-    setIsBookmarkedOptimistic(!currentlyBookmarked); // Optimistic update
+    const currentlyBookmarked = isBookmarkedByCurrentUser;
+    
+    // Optimistic update for UI
+    setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: !currentlyBookmarked}));
+
 
     try {
       const endpoint = currentlyBookmarked ? `/api/posts/${post.id}/unbookmark` : `/api/posts/${post.id}/bookmark`;
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id }),
+        body: JSON.stringify({ userId: user.id }), // user.id is string from AuthContext
       });
 
       const result = await response.json();
       if (!response.ok) {
-        setIsBookmarkedOptimistic(currentlyBookmarked); // Revert optimistic update
+        setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: currentlyBookmarked})); // Revert
         throw new Error(result.message || `Failed to ${currentlyBookmarked ? 'unbookmark' : 'bookmark'} post.`);
       }
       toast.success(result.message || `Post ${currentlyBookmarked ? 'unbookmarked' : 'bookmarked'}!`);
-      if (onToggleBookmarkProp) {
+      if (onToggleBookmarkProp) { // This usually triggers a refresh of user data and feed
         onToggleBookmarkProp(post.id, !currentlyBookmarked);
       }
+      // No direct user state update here, rely on parent to refresh user which includes bookmarkedPostIds
 
     } catch (err) {
-      setIsBookmarkedOptimistic(currentlyBookmarked); // Revert optimistic update
+      setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: currentlyBookmarked})); // Revert
       toast.error(err instanceof Error ? err.message : 'An error occurred.');
       console.error("Bookmark error:", err);
     } finally {
@@ -121,6 +118,73 @@ export function PostCard({ post, onToggleBookmark: onToggleBookmarkProp }: PostC
     }
   };
 
+  const handleToggleLike = async () => {
+    if (!isAuthenticated || !user || !user._id || !post.id) {
+      toast.error("Please log in to like posts.");
+      return;
+    }
+    if (isLiking) return;
+
+    setIsLiking(true);
+    const currentlyLiked = isLikedByCurrentUser;
+    const originalLikeCount = post.likeCount;
+    const originalLikedBy = [...post.likedBy];
+
+    // Optimistic Update
+    setPost(prevPost => ({
+      ...prevPost,
+      likeCount: currentlyLiked ? prevPost.likeCount - 1 : prevPost.likeCount + 1,
+      likedBy: currentlyLiked 
+        ? prevPost.likedBy.filter(id => id.toString() !== user._id!.toString()) 
+        : [...prevPost.likedBy, user._id! as ObjectId], // Assuming user._id is ObjectId or string convertible
+      isLikedByCurrentUser: !currentlyLiked
+    }));
+
+    try {
+      const endpoint = currentlyLiked ? `/api/posts/${post.id}/unlike` : `/api/posts/${post.id}/like`;
+      const response = await fetch(
+        currentlyLiked ? `/api/posts/${post.id}/like?userId=${user._id.toString()}` : `/api/posts/${post.id}/like`, // Corrected unlike to use DELETE and query param
+        {
+          method: currentlyLiked ? 'DELETE' : 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          ...(currentlyLiked ? {} : { body: JSON.stringify({ userId: user._id.toString() }) }), // Send userId in body for POST (like)
+        }
+      );
+      
+      const result = await response.json();
+
+      if (!response.ok || !result.post) {
+        // Revert optimistic update
+        setPost(prevPost => ({
+          ...prevPost,
+          likeCount: originalLikeCount,
+          likedBy: originalLikedBy,
+          isLikedByCurrentUser: currentlyLiked
+        }));
+        throw new Error(result.message || `Failed to ${currentlyLiked ? 'unlike' : 'like'} post.`);
+      }
+      
+      // Update local post state with the authoritative response from the server
+      setPost(result.post); 
+      toast.success(result.message || `Post ${currentlyLiked ? 'unliked' : 'liked'}!`);
+      if (onToggleLikeProp) {
+        onToggleLikeProp(post.id, !currentlyLiked, result.post);
+      }
+
+    } catch (err) {
+       // Revert optimistic update
+        setPost(prevPost => ({
+          ...prevPost,
+          likeCount: originalLikeCount,
+          likedBy: originalLikedBy,
+          isLikedByCurrentUser: currentlyLiked
+        }));
+      toast.error(err instanceof Error ? err.message : 'An error occurred during like/unlike.');
+      console.error("Like/Unlike error:", err);
+    } finally {
+      setIsLiking(false);
+    }
+  };
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-subtle hover:shadow-md transition-shadow duration-300">
@@ -157,7 +221,8 @@ export function PostCard({ post, onToggleBookmark: onToggleBookmarkProp }: PostC
                 )}
                  {(item.type === 'video' || item.type === 'document') && (
                     <div className="flex flex-col items-center justify-center h-full bg-muted">
-                      <MediaIcon type={item.type} />
+                       {item.type === 'video' && <Video className="h-8 w-8 text-muted-foreground" />}
+                       {item.type === 'document' && <FileText className="h-8 w-8 text-muted-foreground" />}
                       <span className="mt-2 text-sm text-muted-foreground">{item.name || item.type}</span>
                     </div>
                  )}
@@ -183,7 +248,7 @@ export function PostCard({ post, onToggleBookmark: onToggleBookmarkProp }: PostC
                 <CommentItem key={comment.id || comment._id?.toString()} comment={comment} />
               ))}
             </div>
-            {commentCount > 2 && post.id && ( // Ensure post.id is defined
+            {commentCount > 2 && post.id && (
               <Button variant="link" asChild className="text-xs p-0 h-auto mt-2">
                 <Link href={`/posts/${post.id}`}>View all {commentCount} comments</Link>
               </Button>
@@ -193,17 +258,31 @@ export function PostCard({ post, onToggleBookmark: onToggleBookmarkProp }: PostC
       </CardContent>
       <CardFooter className="p-4 flex justify-between items-center border-t">
         <div className="flex items-center space-x-4">
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
-            <ThumbsUp className="h-5 w-5 mr-1" /> Like
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handleToggleLike}
+            disabled={isLiking || !isAuthenticated}
+            className={`text-muted-foreground hover:text-primary ${isLikedByCurrentUser ? 'text-primary' : ''}`}
+          >
+            {isLiking ? <Loader2 className="h-5 w-5 mr-1 animate-spin" /> : <ThumbsUp className="h-5 w-5 mr-1" />}
+             {post.likeCount > 0 ? post.likeCount : 'Like'}
           </Button>
           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
             <MessageCircle className="h-5 w-5 mr-1" /> {commentCount || 0}
           </Button>
-          {reactions && reactions.length > 0 && <ReactionDisplay reactions={reactions} />}
+          {/* Removed ReactionDisplay as likes are now handled by the ThumbsUp button */}
         </div>
-        <Button variant="ghost" size="icon" onClick={handleToggleBookmark} disabled={isBookmarking || !isAuthenticated} className={`text-muted-foreground ${isBookmarkedOptimistic ? 'text-accent' : 'hover:text-accent'}`}>
+        <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={handleToggleBookmark} 
+            disabled={isBookmarking || !isAuthenticated} 
+            className={`text-muted-foreground ${isBookmarkedByCurrentUser ? 'text-accent' : 'hover:text-accent'}`}
+            title={isBookmarkedByCurrentUser ? 'Unbookmark' : 'Bookmark'}
+        >
           {isBookmarking ? <Loader2 className="h-5 w-5 animate-spin" /> : <Bookmark className="h-5 w-5" />}
-          <span className="sr-only">{isBookmarkedOptimistic ? 'Unbookmark' : 'Bookmark'}</span>
+          <span className="sr-only">{isBookmarkedByCurrentUser ? 'Unbookmark' : 'Bookmark'}</span>
         </Button>
       </CardFooter>
     </Card>

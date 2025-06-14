@@ -12,7 +12,7 @@ import type { Post, Event as EventType } from '@/lib/types';
 import Link from 'next/link';
 import Image from 'next/image';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useAuth } from '@/hooks/use-auth-provider'; // For enriching posts with bookmark status
+import { useAuth } from '@/hooks/use-auth-provider'; 
 
 const SearchResultSkeleton = ({ count = 2 }: { count?: number}) => (
   <section className="space-y-4">
@@ -36,30 +36,23 @@ export default function SearchPage() {
   const { user, isAuthenticated, refreshUser } = useAuth();
 
 
-  const handleSearch = async (e?: React.FormEvent<HTMLFormElement>) => {
-    if (e) e.preventDefault();
-    if (!searchQuery.trim()) return;
+  const performSearch = useCallback(async (currentSearchQuery: string, currentSearchType: string, currentSortBy: string) => {
+    if (!currentSearchQuery.trim()) return;
 
     setIsLoading(true);
     setHasSearched(true);
     setError(null);
     
     try {
-      const response = await fetch(`/api/search?q=${encodeURIComponent(searchQuery)}&type=${searchType}&sortBy=${sortBy}`);
+      const forUserIdParam = isAuthenticated && user ? `&forUserId=${user.id}` : "";
+      const response = await fetch(`/api/search?q=${encodeURIComponent(currentSearchQuery)}&type=${currentSearchType}&sortBy=${currentSortBy}${forUserIdParam}`);
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || "Search request failed");
       }
       let data = await response.json();
 
-      if (isAuthenticated && user && user.bookmarkedPostIds && data.posts) {
-        data.posts = data.posts.map((post: Post) => ({
-          ...post,
-          isBookmarkedByCurrentUser: user.bookmarkedPostIds!.some(bookmarkedId => 
-            (typeof bookmarkedId === 'string' ? bookmarkedId : bookmarkedId.toHexString()) === post.id
-          )
-        }));
-      }
+      // API should return posts with isLikedByCurrentUser and isBookmarkedByCurrentUser if forUserId is provided
       setSearchResults(data);
 
     } catch (err) {
@@ -69,15 +62,26 @@ export default function SearchPage() {
     } finally {
         setIsLoading(false);
     }
-  };
+  }, [isAuthenticated, user]);
   
+  const handleSearchSubmit = (e?: React.FormEvent<HTMLFormElement>) => {
+    if (e) e.preventDefault();
+    performSearch(searchQuery, searchType, sortBy);
+  };
+
   // Callback for PostCard to update UI after bookmark action
   const handlePostBookmarkToggle = async () => {
-    await refreshUser(); // Refresh user data to get updated bookmarks
-    // Re-run the search if a query exists to update bookmark status on displayed posts
+    await refreshUser(); 
     if (searchQuery.trim() && hasSearched) {
-      handleSearch(); 
+      performSearch(searchQuery, searchType, sortBy); // Re-run search to update post states
     }
+  };
+
+  const handlePostLikeToggle = async (postId: string, isCurrentlyLiked: boolean, updatedPostFromServer: Post) => {
+    setSearchResults(prevResults => ({
+      ...prevResults,
+      posts: prevResults.posts.map(p => p.id === postId ? updatedPostFromServer : p)
+    }));
   };
 
 
@@ -88,7 +92,7 @@ export default function SearchPage() {
           <CardTitle className="font-headline text-2xl flex items-center"><SearchIcon className="mr-2 h-6 w-6 text-primary" /> Advanced Search</CardTitle>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSearch} className="space-y-4">
+          <form onSubmit={handleSearchSubmit} className="space-y-4">
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="relative flex-grow">
                 <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -170,7 +174,14 @@ export default function SearchPage() {
               <section>
                 <h2 className="text-xl font-semibold mb-4 font-headline">Posts ({searchResults.posts.length})</h2>
                 <div className="space-y-6">
-                  {searchResults.posts.map(post => <PostCard key={post.id!} post={post} onToggleBookmark={handlePostBookmarkToggle} />)}
+                  {searchResults.posts.map(post => (
+                    <PostCard 
+                        key={post.id!} 
+                        post={post} 
+                        onToggleBookmark={handlePostBookmarkToggle} 
+                        onToggleLike={handlePostLikeToggle}
+                    />
+                  ))}
                 </div>
               </section>
             )}

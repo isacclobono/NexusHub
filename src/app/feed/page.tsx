@@ -11,7 +11,7 @@ import { personalizeFeed, PersonalizeFeedInput } from '@/ai/flows/personalized-f
 import { useAuth } from '@/hooks/use-auth-provider';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
-import { ObjectId } from 'mongodb'; // For type checking, though not directly used for generation
+
 
 const PostSkeleton = () => (
   <div className="w-full max-w-2xl mx-auto space-y-4 p-4 border rounded-lg shadow-sm bg-card">
@@ -45,30 +45,33 @@ export default function FeedPage() {
   const [error, setError] = useState<string | null>(null);
   const { user, loading: authLoading, isAuthenticated, refreshUser } = useAuth();
 
-  const fetchData = useCallback(async () => {
+  const fetchData = useCallback(async (currentUserId?: string) => {
     setIsLoading(true);
     setError(null);
     try {
-      const postsResponse = await fetch('/api/posts'); 
+      // Pass currentUserId to API for deriving isLikedByCurrentUser and isBookmarkedByCurrentUser
+      const postsResponse = await fetch(currentUserId ? `/api/posts?forUserId=${currentUserId}` : '/api/posts'); 
       if (!postsResponse.ok) {
         const errorData = await postsResponse.json();
         throw new Error(errorData.message || `Failed to fetch posts: ${postsResponse.statusText}`);
       }
       
-      let postsData: Post[] = await postsResponse.json();
+      const postsData: Post[] = await postsResponse.json();
       
-      if (isAuthenticated && user && user.bookmarkedPostIds) {
-        postsData = postsData.map(post => ({
+      // The API now handles deriving isLikedByCurrentUser and isBookmarkedByCurrentUser if forUserId is passed.
+      // So, the client-side enrichment logic previously here is no longer strictly needed if API does it.
+      // However, keeping it for robustness or if API doesn't cover all cases.
+      let processedPosts = postsData;
+      if (isAuthenticated && user) {
+        processedPosts = postsData.map(post => ({
           ...post,
-          // Ensure bookmarkedPostIds are strings if comparing with string post.id
-          isBookmarkedByCurrentUser: user.bookmarkedPostIds!.some(bookmarkedId => 
-            (typeof bookmarkedId === 'string' ? bookmarkedId : bookmarkedId.toHexString()) === post.id
-          )
+          isLikedByCurrentUser: post.likedBy?.some(id => id.toString() === user._id?.toString()),
+          isBookmarkedByCurrentUser: user.bookmarkedPostIds?.some(id => id.toString() === post._id?.toString())
         }));
       }
       
-      setAllPosts(postsData);
-      setDisplayedPosts(postsData.filter(p => p.status === 'published'));
+      setAllPosts(processedPosts);
+      setDisplayedPosts(processedPosts.filter(p => p.status === 'published'));
 
     } catch (e) {
       console.error("Error fetching feed data:", e);
@@ -76,17 +79,31 @@ export default function FeedPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user]); // user object might change, triggering refetch
 
   useEffect(() => {
-    fetchData();
-  }, [fetchData]);
+    if (!authLoading) { // Ensure auth state is resolved
+        fetchData(user?.id); // Pass user.id if available
+    }
+  }, [fetchData, authLoading, user?.id]); // Re-fetch if user.id changes
   
   const handlePostBookmarkToggle = async (postId: string, isCurrentlyBookmarked: boolean) => {
-    // Refetch user data to update their bookmarkedPostIds list in auth context
-    await refreshUser(); 
-    // Then refetch all posts to get updated isBookmarkedByCurrentUser status
-    await fetchData();
+    await refreshUser(); // Refreshes user from DB, updates user.bookmarkedPostIds
+    // After user data is refreshed, re-fetch posts to update their bookmarked status in the UI
+    // The fetchData will use the updated user context.
+    fetchData(user?.id);
+  };
+
+  const handlePostLikeToggle = async (postId: string, isCurrentlyLiked: boolean, updatedPostFromServer: Post) => {
+    // Optimistically update the specific post in the local state
+    setDisplayedPosts(prevPosts => 
+        prevPosts.map(p => p.id === postId ? { ...updatedPostFromServer } : p)
+    );
+    setAllPosts(prevPosts => 
+        prevPosts.map(p => p.id === postId ? { ...updatedPostFromServer } : p)
+    );
+    // No full fetchData needed if API returns the updated post, which it does.
+    // Parent (this page) doesn't need to do much more here as PostCard handles its state.
   };
 
 
@@ -132,12 +149,11 @@ export default function FeedPage() {
       const otherPosts = allPosts.filter(p => p.status === 'published' && !curatedPosts.some(cp => cp.id === p.id));
       
       let finalDisplayedPosts = [...curatedPosts, ...otherPosts];
-      if (isAuthenticated && user && user.bookmarkedPostIds) {
+      if (isAuthenticated && user) { // Re-apply user-specific flags after reordering
          finalDisplayedPosts = finalDisplayedPosts.map(post => ({
           ...post,
-          isBookmarkedByCurrentUser: user.bookmarkedPostIds!.some(bookmarkedId => 
-            (typeof bookmarkedId === 'string' ? bookmarkedId : bookmarkedId.toHexString()) === post.id
-          )
+          isLikedByCurrentUser: post.likedBy?.some(id => id.toString() === user._id?.toString()),
+          isBookmarkedByCurrentUser: user.bookmarkedPostIds?.some(id => id.toString() === post._id?.toString())
         }));
       }
       setDisplayedPosts(finalDisplayedPosts);
@@ -218,7 +234,12 @@ export default function FeedPage() {
       {displayedPosts.length > 0 ? (
         <div className="space-y-6">
           {displayedPosts.map((post) => (
-            <PostCard key={post.id!} post={post} onToggleBookmark={handlePostBookmarkToggle} /> 
+            <PostCard 
+                key={post.id!} 
+                post={post} 
+                onToggleBookmark={handlePostBookmarkToggle} 
+                onToggleLike={handlePostLikeToggle}
+            /> 
           ))}
         </div>
       ) : (
