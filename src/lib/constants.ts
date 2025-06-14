@@ -16,9 +16,9 @@ export const SIDENAV_ITEMS: NavItem[] = [
     icon: MessageSquareText,
   },
   {
-    title: 'Communities', // New Item
+    title: 'Communities',
     href: '/communities',
-    icon: UsersRound, 
+    icon: UsersRound,
   },
   {
     title: 'Events',
@@ -42,7 +42,7 @@ export const SIDENAV_ITEMS: NavItem[] = [
     icon: Bookmark,
   },
   {
-    title: 'My Posts', 
+    title: 'My Posts',
     href: '/my-posts',
     icon: Archive,
   },
@@ -57,8 +57,8 @@ export const SIDENAV_ITEMS: NavItem[] = [
 export const SIDENAV_USER_ITEMS_TEMPLATE: NavItem[] = [
  {
     title: 'Profile',
-    href: '/profile/me', 
-    icon: UserCircle, 
+    href: '/profile/me',
+    icon: UserCircle,
   },
   {
     title: 'Settings',
@@ -67,7 +67,7 @@ export const SIDENAV_USER_ITEMS_TEMPLATE: NavItem[] = [
   },
   {
     title: 'Logout',
-    href: '#logout', 
+    href: '#logout',
     icon: LogOut,
   },
    {
@@ -108,4 +108,3 @@ export const COMMUNITY_PRIVACY_OPTIONS = [
   { value: 'public', label: 'Public (Anyone can find, view, and join)' },
   { value: 'private', label: 'Private (Only members can see content and who\'s in the group. Join by request - approval not implemented yet.)' },
 ];
-
