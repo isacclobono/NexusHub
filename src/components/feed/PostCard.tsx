@@ -10,18 +10,17 @@ import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
 import React, { useState, useEffect } from 'react';
-import type { ObjectId } from 'mongodb'; // For type consistency with backend
+import type { ObjectId } from 'mongodb';
 
 interface PostCardProps {
   post: Post;
   onToggleBookmark?: (postId: string, isCurrentlyBookmarked: boolean) => Promise<void> | void;
   onToggleLike?: (postId: string, isCurrentlyLiked: boolean, updatedPost: Post) => Promise<void> | void;
-  // onAddComment?: (postId: string, updatedPost: Post) => Promise<void> | void; // For future comment adding UI
 }
 
 
 const CommentItem = ({ comment }: { comment: CommentType }) => {
-  const commentAuthor = comment.author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined, email: '', reputation: 0, joinedDate: new Date().toISOString() };
+  const commentAuthor = comment.author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined, email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [] };
   return (
     <div className="flex items-start space-x-3 pt-3">
       <Avatar className="h-8 w-8">
@@ -45,9 +44,8 @@ const CommentItem = ({ comment }: { comment: CommentType }) => {
 
 export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmarkProp, onToggleLike: onToggleLikeProp }: PostCardProps) {
   const { user, isAuthenticated } = useAuth();
-  const [post, setPost] = useState(initialPost); // Local state for post data, including likes/comments
+  const [post, setPost] = useState(initialPost); 
 
-  // Update local post state if initialPost prop changes (e.g., after feed refresh)
   useEffect(() => {
     setPost(initialPost);
   }, [initialPost]);
@@ -56,11 +54,11 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
   const [isBookmarking, setIsBookmarking] = useState(false);
   const [isLiking, setIsLiking] = useState(false);
   
-  const isBookmarkedByCurrentUser = isAuthenticated && user && post.id ? 
-    user.bookmarkedPostIds?.some(id => id.toString() === post.id) : false;
+  const isBookmarkedByCurrentUser = isAuthenticated && user && post.id && Array.isArray(user.bookmarkedPostIds) ? 
+    user.bookmarkedPostIds.some(id => id.toString() === (post._id! as ObjectId).toString()) : false;
 
-  const isLikedByCurrentUser = isAuthenticated && user && post.id && post.likedBy ?
-    post.likedBy.some(likedById => likedById.toString() === user._id?.toString()) : false;
+  const isLikedByCurrentUser = isAuthenticated && user && post.id && Array.isArray(post.likedBy) && user._id ?
+    post.likedBy.some(likedById => likedById.toString() === user._id!.toString()) : false;
 
 
   const { author: postAuthorData, title, content, media, category, tags, createdAt, comments: postComments, commentCount } = post;
@@ -71,10 +69,11 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
     avatarUrl: undefined, 
     reputation: 0, 
     joinedDate: new Date().toISOString(),
-    email: ''
+    email: '',
+    bookmarkedPostIds: []
   };
 
-  const displayComments = postComments?.slice(0, 2) || [];
+  const displayComments = Array.isArray(postComments) ? postComments.slice(0, 2) : [];
 
   const handleToggleBookmark = async () => {
     if (!isAuthenticated || !user || !user.id || !post.id) {
@@ -86,7 +85,6 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
     setIsBookmarking(true);
     const currentlyBookmarked = isBookmarkedByCurrentUser;
     
-    // Optimistic update for UI
     setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: !currentlyBookmarked}));
 
 
@@ -95,22 +93,21 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id }), // user.id is string from AuthContext
+        body: JSON.stringify({ userId: user.id }), 
       });
 
       const result = await response.json();
       if (!response.ok) {
-        setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: currentlyBookmarked})); // Revert
+        setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: currentlyBookmarked})); 
         throw new Error(result.message || `Failed to ${currentlyBookmarked ? 'unbookmark' : 'bookmark'} post.`);
       }
       toast.success(result.message || `Post ${currentlyBookmarked ? 'unbookmarked' : 'bookmarked'}!`);
-      if (onToggleBookmarkProp) { // This usually triggers a refresh of user data and feed
+      if (onToggleBookmarkProp) { 
         onToggleBookmarkProp(post.id, !currentlyBookmarked);
       }
-      // No direct user state update here, rely on parent to refresh user which includes bookmarkedPostIds
 
     } catch (err) {
-      setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: currentlyBookmarked})); // Revert
+      setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: currentlyBookmarked})); 
       toast.error(err instanceof Error ? err.message : 'An error occurred.');
       console.error("Bookmark error:", err);
     } finally {
@@ -127,34 +124,32 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
 
     setIsLiking(true);
     const currentlyLiked = isLikedByCurrentUser;
-    const originalLikeCount = post.likeCount;
-    const originalLikedBy = [...post.likedBy];
+    const originalLikeCount = post.likeCount || 0;
+    const originalLikedBy = Array.isArray(post.likedBy) ? [...post.likedBy] : [];
 
-    // Optimistic Update
     setPost(prevPost => ({
       ...prevPost,
-      likeCount: currentlyLiked ? prevPost.likeCount - 1 : prevPost.likeCount + 1,
+      likeCount: currentlyLiked ? (prevPost.likeCount || 0) - 1 : (prevPost.likeCount || 0) + 1,
       likedBy: currentlyLiked 
-        ? prevPost.likedBy.filter(id => id.toString() !== user._id!.toString()) 
-        : [...prevPost.likedBy, user._id! as ObjectId], // Assuming user._id is ObjectId or string convertible
+        ? (Array.isArray(prevPost.likedBy) ? prevPost.likedBy.filter(id => id.toString() !== user._id!.toString()) : [])
+        : [...(Array.isArray(prevPost.likedBy) ? prevPost.likedBy : []), user._id! as ObjectId],
       isLikedByCurrentUser: !currentlyLiked
     }));
 
     try {
-      const endpoint = currentlyLiked ? `/api/posts/${post.id}/unlike` : `/api/posts/${post.id}/like`;
+      const endpoint = currentlyLiked ? `/api/posts/${post.id}/like?userId=${user._id.toString()}` : `/api/posts/${post.id}/like`;
       const response = await fetch(
-        currentlyLiked ? `/api/posts/${post.id}/like?userId=${user._id.toString()}` : `/api/posts/${post.id}/like`, // Corrected unlike to use DELETE and query param
+        endpoint,
         {
           method: currentlyLiked ? 'DELETE' : 'POST',
           headers: { 'Content-Type': 'application/json' },
-          ...(currentlyLiked ? {} : { body: JSON.stringify({ userId: user._id.toString() }) }), // Send userId in body for POST (like)
+          ...(currentlyLiked ? {} : { body: JSON.stringify({ userId: user._id.toString() }) }),
         }
       );
       
       const result = await response.json();
 
       if (!response.ok || !result.post) {
-        // Revert optimistic update
         setPost(prevPost => ({
           ...prevPost,
           likeCount: originalLikeCount,
@@ -164,7 +159,6 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
         throw new Error(result.message || `Failed to ${currentlyLiked ? 'unlike' : 'like'} post.`);
       }
       
-      // Update local post state with the authoritative response from the server
       setPost(result.post); 
       toast.success(result.message || `Post ${currentlyLiked ? 'unliked' : 'liked'}!`);
       if (onToggleLikeProp) {
@@ -172,7 +166,6 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       }
 
     } catch (err) {
-       // Revert optimistic update
         setPost(prevPost => ({
           ...prevPost,
           likeCount: originalLikeCount,
@@ -212,7 +205,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       <CardContent className="p-4 pt-0">
         {title && <CardTitle className="text-xl mb-2 font-headline">{title}</CardTitle>}
         <p className="text-foreground whitespace-pre-wrap break-words mb-3">{content.substring(0, 300)}{content.length > 300 && '...'}</p>
-        {media && media.length > 0 && (
+        {media && Array.isArray(media) && media.length > 0 && (
           <div className={`grid gap-2 ${media.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} mb-3`}>
             {media.map((item, index) => (
               <div key={index} className="relative aspect-video rounded-lg overflow-hidden border">
@@ -230,7 +223,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
             ))}
           </div>
         )}
-        {tags && tags.length > 0 && (
+        {tags && Array.isArray(tags) && tags.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {tags.map(tag => (
               <Link href={`/tags/${tag}`} key={tag} className="text-xs bg-secondary hover:bg-muted text-secondary-foreground px-2 py-1 rounded-full transition-colors">
@@ -248,7 +241,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
                 <CommentItem key={comment.id || comment._id?.toString()} comment={comment} />
               ))}
             </div>
-            {commentCount > 2 && post.id && (
+            {(commentCount || 0) > 2 && post.id && (
               <Button variant="link" asChild className="text-xs p-0 h-auto mt-2">
                 <Link href={`/posts/${post.id}`}>View all {commentCount} comments</Link>
               </Button>
@@ -266,12 +259,11 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
             className={`text-muted-foreground hover:text-primary ${isLikedByCurrentUser ? 'text-primary' : ''}`}
           >
             {isLiking ? <Loader2 className="h-5 w-5 mr-1 animate-spin" /> : <ThumbsUp className="h-5 w-5 mr-1" />}
-             {post.likeCount > 0 ? post.likeCount : 'Like'}
+             {(post.likeCount || 0) > 0 ? post.likeCount : 'Like'}
           </Button>
           <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
             <MessageCircle className="h-5 w-5 mr-1" /> {commentCount || 0}
           </Button>
-          {/* Removed ReactionDisplay as likes are now handled by the ThumbsUp button */}
         </div>
         <Button 
             variant="ghost" 

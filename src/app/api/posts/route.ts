@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
     if (!currentUserDoc) {
         return NextResponse.json({ message: 'User not found. Cannot create post.' }, { status: 404 });
     }
-    const currentUser: User = {...currentUserDoc, id: currentUserDoc._id!.toHexString() };
+    const currentUser: User = {...currentUserDoc, id: currentUserDoc._id!.toHexString(), bookmarkedPostIds: currentUserDoc.bookmarkedPostIds || [] };
 
 
     const moderationInput: IntelligentContentModerationInput = { content: data.content, sensitivityLevel: 'medium' };
@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
             if (!finalCategory && categorizationResult.category) {
                 finalCategory = categorizationResult.category;
             }
-            if (finalTagsArray.length === 0 && categorizationResult.tags.length > 0) {
+            if (finalTagsArray.length === 0 && categorizationResult.tags && categorizationResult.tags.length > 0) {
                 finalTagsArray = [...new Set([...finalTagsArray, ...categorizationResult.tags])];
             }
         } catch (aiError) {
@@ -88,9 +88,9 @@ export async function POST(request: NextRequest) {
       tags: finalTagsArray,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      likedBy: [], 
+      likedBy: [] as ObjectId[], 
       likeCount: 0,
-      commentIds: [], 
+      commentIds: [] as ObjectId[], 
       commentCount: 0,
       status: data.isDraft ? 'draft' : (data.scheduledAt ? 'scheduled' : 'published'),
       scheduledAt: data.scheduledAt ? new Date(data.scheduledAt).toISOString() : undefined,
@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
         authorId: newPostDocument.authorId, 
         author: currentUser, 
         comments: [], 
-        likedBy: [], // Return as empty string array for client if needed, or ObjectIds
+        likedBy: [], 
         likeCount: 0,
         commentIds: [],
         commentCount: 0
@@ -137,14 +137,11 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const authorId = searchParams.get('authorId');
     const bookmarkedById = searchParams.get('bookmarkedById');
-    const forUserId = searchParams.get('forUserId'); // To determine 'isLikedByCurrentUser' and 'isBookmarkedByCurrentUser'
+    const forUserId = searchParams.get('forUserId'); 
 
-    let query: any = { status: 'published' }; // Default to published posts
+    let query: any = { status: 'published' }; 
     if (authorId && ObjectId.isValid(authorId)) {
       query.authorId = new ObjectId(authorId);
-      // If fetching for a specific author, drafts/scheduled might be relevant
-      // For simplicity, keeping 'published' default unless specified otherwise
-      // query = { authorId: new ObjectId(authorId) }; 
     }
 
     let currentUser: User | null = null;
@@ -158,7 +155,7 @@ export async function GET(request: NextRequest) {
         if (userWithBookmarks && userWithBookmarks.bookmarkedPostIds && userWithBookmarks.bookmarkedPostIds.length > 0) {
             query._id = { $in: userWithBookmarks.bookmarkedPostIds.map(id => new ObjectId(id)) };
         } else {
-            return NextResponse.json([], { status: 200 }); // No bookmarked posts or user not found
+            return NextResponse.json([], { status: 200 }); 
         }
     }
 
@@ -172,10 +169,10 @@ export async function GET(request: NextRequest) {
         const authorForClient: User | undefined = authorDoc ? {
           ...authorDoc,
           id: authorDoc._id.toHexString(),
-          bookmarkedPostIds: authorDoc.bookmarkedPostIds?.map(id => new ObjectId(id)) || [],
+          bookmarkedPostIds: Array.isArray(authorDoc.bookmarkedPostIds) ? authorDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
         } : undefined;
         
-        // Fetch first 2 comments for the post
+        
         const recentCommentsDocs = await commentsCollection
             .find({ postId: postDoc._id })
             .sort({ createdAt: -1 })
@@ -190,25 +187,25 @@ export async function GET(request: NextRequest) {
                     id: commentDoc._id.toHexString(),
                     postId: commentDoc.postId,
                     authorId: commentDoc.authorId,
-                    author: commentAuthorDoc ? { ...commentAuthorDoc, id: commentAuthorDoc._id.toHexString() } : undefined,
+                    author: commentAuthorDoc ? { ...commentAuthorDoc, id: commentAuthorDoc._id.toHexString(), bookmarkedPostIds: commentAuthorDoc.bookmarkedPostIds || [] } : undefined,
                 } as Comment;
             })
         );
         
-        const isLikedByCurrentUser = currentUser ? postDoc.likedBy.some(id => id.equals(currentUser!._id!)) : false;
-        const isBookmarkedByCurrentUser = currentUser ? currentUser.bookmarkedPostIds?.some(id => id.equals(postDoc._id)) : false;
+        const isLikedByCurrentUser = currentUser && Array.isArray(postDoc.likedBy) ? postDoc.likedBy.some(id => id.equals(currentUser!._id!)) : false;
+        const isBookmarkedByCurrentUser = currentUser && Array.isArray(currentUser.bookmarkedPostIds) ? currentUser.bookmarkedPostIds.some(id => id.equals(postDoc._id)) : false;
 
         return {
           ...postDoc,
           id: postDoc._id.toHexString(),
           authorId: postDoc.authorId, 
-          author: authorForClient || { id: 'unknown', name: 'Unknown User', email:'', reputation: 0, joinedDate: new Date().toISOString() } as User,
-          likedBy: postDoc.likedBy.map(id => new ObjectId(id)), // Keep as ObjectId for server, convert if needed for client
-          likeCount: postDoc.likeCount,
+          author: authorForClient || { id: 'unknown', name: 'Unknown User', email:'', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds:[] } as User,
+          likedBy: Array.isArray(postDoc.likedBy) ? postDoc.likedBy.map(id => new ObjectId(id.toString())) : [],
+          likeCount: postDoc.likeCount || 0,
           isLikedByCurrentUser,
-          commentIds: postDoc.commentIds?.map((id: ObjectId | string) => typeof id === 'string' ? new ObjectId(id) : id) || [],
-          comments: recentCommentsPopulated.reverse(), // Show oldest of the two first
-          commentCount: postDoc.commentCount,
+          commentIds: Array.isArray(postDoc.commentIds) ? postDoc.commentIds.map((id: ObjectId | string) => typeof id === 'string' ? new ObjectId(id) : id) : [],
+          comments: recentCommentsPopulated.reverse(), 
+          commentCount: postDoc.commentCount || 0,
           isBookmarkedByCurrentUser,
         } as Post;
       })
@@ -217,8 +214,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(enrichedPosts, { status: 200 });
   } catch (error) {
     console.error('API Error fetching posts:', error);
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
-    return NextResponse.json({ message: errorMessage }, { status: 500 });
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred while fetching posts.';
+    return NextResponse.json({ message: errorMessage, posts: [], comments: [] }, { status: 500 });
   }
 }
-

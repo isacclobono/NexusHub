@@ -11,6 +11,7 @@ import { personalizeFeed, PersonalizeFeedInput } from '@/ai/flows/personalized-f
 import { useAuth } from '@/hooks/use-auth-provider';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
+import type { ObjectId } from 'mongodb';
 
 
 const PostSkeleton = () => (
@@ -49,7 +50,6 @@ export default function FeedPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // Pass currentUserId to API for deriving isLikedByCurrentUser and isBookmarkedByCurrentUser
       const postsResponse = await fetch(currentUserId ? `/api/posts?forUserId=${currentUserId}` : '/api/posts'); 
       if (!postsResponse.ok) {
         const errorData = await postsResponse.json();
@@ -58,16 +58,16 @@ export default function FeedPage() {
       
       const postsData: Post[] = await postsResponse.json();
       
-      // The API now handles deriving isLikedByCurrentUser and isBookmarkedByCurrentUser if forUserId is passed.
-      // So, the client-side enrichment logic previously here is no longer strictly needed if API does it.
-      // However, keeping it for robustness or if API doesn't cover all cases.
       let processedPosts = postsData;
-      if (isAuthenticated && user) {
+      if (isAuthenticated && user && Array.isArray(postsData)) {
         processedPosts = postsData.map(post => ({
           ...post,
-          isLikedByCurrentUser: post.likedBy?.some(id => id.toString() === user._id?.toString()),
-          isBookmarkedByCurrentUser: user.bookmarkedPostIds?.some(id => id.toString() === post._id?.toString())
+          isLikedByCurrentUser: user._id && Array.isArray(post.likedBy) ? post.likedBy.some(id => id.toString() === user._id!.toString()) : false,
+          isBookmarkedByCurrentUser: Array.isArray(user.bookmarkedPostIds) && post._id ? user.bookmarkedPostIds.some(id => id.toString() === (post._id! as ObjectId).toString()) : false,
         }));
+      } else if (!Array.isArray(postsData)) {
+          console.error("API did not return an array of posts:", postsData);
+          processedPosts = [];
       }
       
       setAllPosts(processedPosts);
@@ -79,31 +79,26 @@ export default function FeedPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [isAuthenticated, user]); // user object might change, triggering refetch
+  }, [isAuthenticated, user]);
 
   useEffect(() => {
-    if (!authLoading) { // Ensure auth state is resolved
-        fetchData(user?.id); // Pass user.id if available
+    if (!authLoading) { 
+        fetchData(user?.id); 
     }
-  }, [fetchData, authLoading, user?.id]); // Re-fetch if user.id changes
+  }, [fetchData, authLoading, user?.id]); 
   
   const handlePostBookmarkToggle = async (postId: string, isCurrentlyBookmarked: boolean) => {
-    await refreshUser(); // Refreshes user from DB, updates user.bookmarkedPostIds
-    // After user data is refreshed, re-fetch posts to update their bookmarked status in the UI
-    // The fetchData will use the updated user context.
+    await refreshUser(); 
     fetchData(user?.id);
   };
 
   const handlePostLikeToggle = async (postId: string, isCurrentlyLiked: boolean, updatedPostFromServer: Post) => {
-    // Optimistically update the specific post in the local state
     setDisplayedPosts(prevPosts => 
         prevPosts.map(p => p.id === postId ? { ...updatedPostFromServer } : p)
     );
     setAllPosts(prevPosts => 
         prevPosts.map(p => p.id === postId ? { ...updatedPostFromServer } : p)
     );
-    // No full fetchData needed if API returns the updated post, which it does.
-    // Parent (this page) doesn't need to do much more here as PostCard handles its state.
   };
 
 
@@ -121,7 +116,7 @@ export default function FeedPage() {
 
       const availablePostsSummary = allPosts
         .filter(p => p.status === 'published')
-        .map(p => `Title: ${p.title || 'Untitled Post'}\nDescription: ${p.content.substring(0,100)}...\nTags: ${p.tags?.join(', ')}\nCategory: ${p.category}`)
+        .map(p => `Title: ${p.title || 'Untitled Post'}\nDescription: ${p.content.substring(0,100)}...\nTags: ${Array.isArray(p.tags) ? p.tags.join(', ') : ''}\nCategory: ${p.category}`)
         .join('\n\n');
       
       if (!availablePostsSummary) {
@@ -149,11 +144,11 @@ export default function FeedPage() {
       const otherPosts = allPosts.filter(p => p.status === 'published' && !curatedPosts.some(cp => cp.id === p.id));
       
       let finalDisplayedPosts = [...curatedPosts, ...otherPosts];
-      if (isAuthenticated && user) { // Re-apply user-specific flags after reordering
+      if (isAuthenticated && user && Array.isArray(finalDisplayedPosts)) { 
          finalDisplayedPosts = finalDisplayedPosts.map(post => ({
           ...post,
-          isLikedByCurrentUser: post.likedBy?.some(id => id.toString() === user._id?.toString()),
-          isBookmarkedByCurrentUser: user.bookmarkedPostIds?.some(id => id.toString() === post._id?.toString())
+          isLikedByCurrentUser: user._id && Array.isArray(post.likedBy) ? post.likedBy.some(id => id.toString() === user._id!.toString()) : false,
+          isBookmarkedByCurrentUser: Array.isArray(user.bookmarkedPostIds) && post._id ? user.bookmarkedPostIds.some(id => id.toString() === (post._id! as ObjectId).toString()) : false,
         }));
       }
       setDisplayedPosts(finalDisplayedPosts);
