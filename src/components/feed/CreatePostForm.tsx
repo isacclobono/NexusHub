@@ -39,7 +39,7 @@ import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
 import type { Community } from '@/lib/types';
 
-const NO_COMMUNITY_VALUE = "__NONE__"; // Special value for "None" option
+const NO_COMMUNITY_VALUE = "__NONE__"; 
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
@@ -88,7 +88,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
     defaultValues: {
       content: '',
       isDraft: false,
-      communityId: preselectedCommunityId || '',
+      communityId: preselectedCommunityId || NO_COMMUNITY_VALUE,
     },
   });
 
@@ -203,7 +203,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
         }
       } else {
         toast.success(`Your post "${result.post?.title || 'Untitled'}" has been successfully created.`);
-        form.reset({ content: '', isDraft: false, communityId: preselectedCommunityId || '' }); 
+        form.reset({ content: '', isDraft: false, communityId: preselectedCommunityId || NO_COMMUNITY_VALUE }); 
         setSuggestedCategory(null);
         setSuggestedTags([]);
         setShowSchedule(false);
@@ -264,6 +264,9 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                       {...field}
                     />
                   </FormControl>
+                  <FormDescription>
+                    Note: A full rich text editor for advanced formatting is planned for a future update.
+                  </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -276,7 +279,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 render={({ field }) => (
                     <FormItem>
                     <FormLabel className="flex items-center"><UsersRound className="mr-2 h-4 w-4 text-muted-foreground"/>Post to a Community (Optional)</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ''} disabled={loadingCommunities}>
+                    <Select onValueChange={field.onChange} value={field.value || NO_COMMUNITY_VALUE} disabled={loadingCommunities}>
                         <FormControl>
                         <SelectTrigger>
                             <SelectValue placeholder={loadingCommunities ? "Loading communities..." : "Select a community (optional)"} />
@@ -489,7 +492,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
 
 
             <div className="flex justify-end space-x-2 pt-4">
-               <Button type="button" variant="outline" onClick={() => {form.reset({ content: '', isDraft: false, communityId: preselectedCommunityId || '' }); setShowSchedule(false); setSuggestedCategory(null); setSuggestedTags([]);}} disabled={isSubmitting}>
+               <Button type="button" variant="outline" onClick={() => {form.reset({ content: '', isDraft: false, communityId: preselectedCommunityId || NO_COMMUNITY_VALUE }); setShowSchedule(false); setSuggestedCategory(null); setSuggestedTags([]);}} disabled={isSubmitting}>
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting || authLoading} className="btn-gradient min-w-[120px]">
@@ -503,3 +506,5 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
     </Card>
   );
 }
+
+    

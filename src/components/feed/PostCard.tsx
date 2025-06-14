@@ -35,7 +35,7 @@ interface PostCardProps {
   onToggleBookmark?: (postId: string, isCurrentlyBookmarked: boolean) => Promise<void> | void;
   onToggleLike?: (postId: string, isCurrentlyLiked: boolean, updatedPost: Post) => Promise<void> | void;
   onPostDeleted?: (postId: string) => void;
-  onPostUpdated?: (updatedPost: Post) => void; // For status changes like publishing a draft
+  onPostUpdated?: (updatedPost: Post) => void; // For status changes like publishing a draft or general edits
 }
 
 
@@ -350,15 +350,16 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       const response = await fetch(`/api/posts/${post.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user!.id, status: 'published' }),
+        body: JSON.stringify({ userId: user!.id, status: 'published' }), // Assuming status update API
       });
       const result = await response.json();
-      if (!response.ok || !result.id) { // Check for result.id as GET returns the full post
+      if (!response.ok || !result.id) { 
         throw new Error(result.message || "Failed to publish draft.");
       }
       toast.success(`Draft "${result.title || 'Post'}" published successfully!`);
       if (onPostUpdated) {
-        onPostUpdated(result as Post);
+        // The result from PUT should be the full updated post object
+        onPostUpdated(result as Post); 
       }
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Could not publish draft.");
@@ -409,8 +410,8 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
                     </DropdownMenuItem>
                     {canCurrentUserManagePost && (
                       <>
-                        <DropdownMenuItem onClick={() => toast.info("Edit post feature coming soon!")} disabled={isDeletingPost || isPublishingDraft}>
-                            <Edit className="mr-2 h-4 w-4" /> Edit Post
+                        <DropdownMenuItem asChild disabled={isDeletingPost || isPublishingDraft}>
+                            <Link href={`/posts/${post.id}/edit`}><Edit className="mr-2 h-4 w-4" /> Edit Post</Link>
                         </DropdownMenuItem>
                         {post.status === 'draft' && (
                           <DropdownMenuItem onClick={handlePublishDraft} disabled={isPublishingDraft || isDeletingPost}>
@@ -557,3 +558,5 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
     </>
   );
 }
+
+    
