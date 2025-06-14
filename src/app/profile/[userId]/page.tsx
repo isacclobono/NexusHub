@@ -3,12 +3,12 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import type { User, Post, Comment as CommentType, Event as EventType, Badge as BadgeType } from '@/lib/types'; // Added CommentType, EventType
+import type { User, Post, Comment as CommentType, Event as EventType, Badge as BadgeType } from '@/lib/types'; 
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarDays, Edit3, Star, Loader2, AlertTriangle, MessageSquare, Activity, Award, Calendar as CalendarIconLucide } from 'lucide-react';
+import { CalendarDays, Edit3, Star, Loader2, AlertTriangle, MessageSquare, Activity, Award, Calendar as CalendarIconLucide, DollarSign } from 'lucide-react';
 import { PostCard } from '@/components/feed/PostCard';
 import { format, formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
@@ -17,6 +17,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
+import { Badge } from '@/components/ui/badge';
 
 const BadgeDisplayComponent = ({ badge }: { badge: BadgeType }) => (
   <TooltipProvider>
@@ -82,16 +83,23 @@ const ActivityCommentCard = ({ comment }: { comment: CommentType }) => (
   </Card>
 );
 
-const ActivityEventCard = ({ event }: { event: EventType }) => (
+const ActivityEventCard = ({ event }: { event: EventType }) => {
+  const isFreeEvent = event.price === undefined || event.price === null || event.price <= 0;
+  const displayPrice = isFreeEvent ? "Free" : `${new Intl.NumberFormat('en-US', { style: 'currency', currency: event.currency || 'USD' }).format(event.price || 0)}`;
+
+  return (
    <Card className="shadow-sm hover:shadow-md transition-shadow">
     <CardHeader className="p-4 pb-2">
       <CardTitle className="text-md font-headline">
         <Link href={`/events/${event.id}`} className="hover:text-primary">{event.title}</Link>
       </CardTitle>
-      <CardDescription className="text-xs text-primary flex items-center pt-1">
-        <CalendarIconLucide className="h-3 w-3 mr-1.5" />
-        {event.startTime ? format(new Date(event.startTime), "MMM d, yyyy 'at' h:mm a") : 'Date TBD'}
-      </CardDescription>
+      <div className="flex justify-between items-center">
+        <CardDescription className="text-xs text-primary flex items-center pt-1">
+          <CalendarIconLucide className="h-3 w-3 mr-1.5" />
+          {event.startTime ? format(new Date(event.startTime), "MMM d, yyyy 'at' h:mm a") : 'Date TBD'}
+        </CardDescription>
+        <Badge variant="outline" className="text-xs">{displayPrice}</Badge>
+      </div>
     </CardHeader>
     <CardContent className="p-4 pt-0">
       <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{event.description}</p>
@@ -102,11 +110,16 @@ const ActivityEventCard = ({ event }: { event: EventType }) => (
       </Button>
     </CardFooter>
   </Card>
-);
+ );
+};
 
 
-const OrganizedEventCard = ({ event }: { event: EventType }) => (
-  <Card className="shadow-sm hover:shadow-md transition-shadow">
+const OrganizedEventCard = ({ event }: { event: EventType }) => {
+  const isFreeEvent = event.price === undefined || event.price === null || event.price <= 0;
+  const displayPrice = isFreeEvent ? "Free" : `${new Intl.NumberFormat('en-US', { style: 'currency', currency: event.currency || 'USD' }).format(event.price || 0)}`;
+  
+  return (
+  <Card className="shadow-sm hover:shadow-md transition-shadow group">
     <Link href={`/events/${event.id}`} className="block relative h-40 w-full">
       <Image 
         src={event.imageUrl || `https://placehold.co/800x450.png`} 
@@ -114,8 +127,11 @@ const OrganizedEventCard = ({ event }: { event: EventType }) => (
         layout="fill" 
         objectFit="cover"
         data-ai-hint="event highlight"
-        className="rounded-t-lg"
+        className="rounded-t-lg transition-transform duration-300 group-hover:scale-105"
       />
+       <Badge variant="secondary" className="absolute top-2 right-2 text-sm bg-background/80 backdrop-blur-sm">
+            {displayPrice}
+       </Badge>
     </Link>
     <CardHeader className="p-4">
       <CardTitle className="text-lg font-headline hover:text-primary transition-colors">
@@ -135,7 +151,8 @@ const OrganizedEventCard = ({ event }: { event: EventType }) => (
       </Button>
     </CardFooter>
   </Card>
-);
+ );
+};
 
 
 export default function UserProfilePage() {

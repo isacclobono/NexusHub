@@ -20,6 +20,11 @@ const eventFormSchema = z.object({
   ),
   imageUrl: z.string().url({message: "Please enter a valid image URL e.g. https://placehold.co/image.png"}).optional(),
   communityId: z.string().optional().refine(val => !val || ObjectId.isValid(val), { message: "Invalid Community ID format." }),
+  price: z.preprocess(
+    (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
+    z.number().nonnegative("Price must be a positive number or zero.").optional()
+  ),
+  currency: z.string().max(5, "Currency code too long.").optional(),
 }).refine(data => new Date(data.endTime) > new Date(data.startTime), {
   message: "End date and time must be after start date and time.",
   path: ["endTime"], 
@@ -70,6 +75,8 @@ export async function POST(request: NextRequest) {
       imageUrl: data.imageUrl || `https://placehold.co/1200x400.png?text=${encodeURIComponent(data.title)}`,
       rsvpIds: [] as ObjectId[], 
       ...(data.communityId && { communityId: new ObjectId(data.communityId) }),
+      price: data.price,
+      currency: data.price && data.price > 0 ? (data.currency || 'USD') : undefined,
     };
 
     const eventsCollection = db.collection('events'); 
@@ -98,6 +105,8 @@ export async function POST(request: NextRequest) {
         rsvps: [],   
         communityId: newEventDocument.communityId ? newEventDocument.communityId.toHexString() as any : undefined, // Ensure string for client
         communityName: community?.name,
+        price: newEventDocument.price,
+        currency: newEventDocument.currency,
     };
 
     return NextResponse.json({ message: 'Event created successfully!', event: createdEventForClient }, { status: 201 });
@@ -150,8 +159,8 @@ export async function GET(request: NextRequest) {
           bio: organizerDoc.bio,
           reputation: organizerDoc.reputation,
           joinedDate: organizerDoc.joinedDate,
-          bookmarkedPostIds: [], // ensure it exists
-          communityIds: [], // ensure it exists
+          bookmarkedPostIds: [], 
+          communityIds: [], 
         } : undefined;
         
         let rsvpsForClient: User[] = [];
@@ -167,8 +176,8 @@ export async function GET(request: NextRequest) {
             bio: doc.bio,
             reputation: doc.reputation,
             joinedDate: doc.joinedDate,
-            bookmarkedPostIds: [], // ensure it exists
-            communityIds: [], // ensure it exists
+            bookmarkedPostIds: [], 
+            communityIds: [], 
           }));
         }
 
@@ -188,6 +197,8 @@ export async function GET(request: NextRequest) {
           _id: eventDoc._id, 
           communityId: eventDoc.communityId ? eventDoc.communityId.toHexString() : undefined,
           communityName: communityName,
+          price: eventDoc.price,
+          currency: eventDoc.currency,
         } as Event;
       })
     );
@@ -199,4 +210,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
-

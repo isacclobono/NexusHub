@@ -18,7 +18,7 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { Calendar as CalendarIcon, UploadCloud, Loader2, MapPin, AlertTriangle, UsersRound } from 'lucide-react';
+import { Calendar as CalendarIcon, UploadCloud, Loader2, MapPin, AlertTriangle, UsersRound, DollarSign } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
@@ -35,7 +35,7 @@ import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { Community } from '@/lib/types';
 
-const NO_COMMUNITY_VALUE = "__NONE__"; // Special value for "None" option
+const NO_COMMUNITY_VALUE = "__NONE__"; 
 
 const eventFormSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters.').max(100),
@@ -51,6 +51,11 @@ const eventFormSchema = z.object({
   ),
   imageUrl: z.string().url({message: "Please enter a valid image URL e.g. https://placehold.co/image.png"}).optional(),
   communityId: z.string().optional(),
+  price: z.preprocess(
+    (val) => (val === '' || val === undefined || val === null ? undefined : Number(val)),
+    z.number().nonnegative("Price must be a positive number or zero.").optional()
+  ),
+  currency: z.string().max(5, "Currency code too long.").optional(),
 }).refine(data => data.endTime > data.startTime, {
   message: "End date and time must be after start date and time.",
   path: ["endTime"],
@@ -77,7 +82,9 @@ export default function CreateEventPage() {
       category: '',
       tags: '',
       imageUrl: '',
-      communityId: preselectedCommunityId || '', // Default to preselected or empty (placeholder shows)
+      communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, 
+      price: undefined,
+      currency: 'USD',
     },
   });
 
@@ -138,6 +145,8 @@ export default function CreateEventPage() {
       endTime: data.endTime.toISOString(),
       imageUrl: data.imageUrl || `https://placehold.co/1200x400.png?text=${encodeURIComponent(data.title)}`,
       communityId: data.communityId === NO_COMMUNITY_VALUE ? undefined : data.communityId,
+      price: data.price === undefined || data.price === null ? undefined : Number(data.price),
+      currency: data.price && data.price > 0 ? (data.currency || 'USD') : undefined,
     };
 
     try {
@@ -157,7 +166,7 @@ export default function CreateEventPage() {
         }
       } else {
         toast.success(`Your event "${result.event.title}" has been successfully created.`);
-        form.reset({ title: '', description: '', location: '', category: '', tags: '', imageUrl: '', communityId: preselectedCommunityId || '' });
+        form.reset({ title: '', description: '', location: '', category: '', tags: '', imageUrl: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, price: undefined, currency: 'USD' });
         if (result.event.communityId) {
             router.push(`/communities/${result.event.communityId}`);
         } else {
@@ -238,7 +247,7 @@ export default function CreateEventPage() {
                 render={({ field }) => (
                     <FormItem>
                     <FormLabel className="flex items-center"><UsersRound className="mr-2 h-4 w-4 text-muted-foreground"/>Associate with a Community (Optional)</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value || ''} disabled={loadingCommunities}>
+                    <Select onValueChange={field.onChange} value={field.value || NO_COMMUNITY_VALUE} disabled={loadingCommunities}>
                         <FormControl>
                         <SelectTrigger>
                             <SelectValue placeholder={loadingCommunities ? "Loading communities..." : "Select a community (optional)"} />
@@ -398,6 +407,42 @@ export default function CreateEventPage() {
                   </FormItem>
                 )}
               />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <FormField
+                  control={form.control}
+                  name="price"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="flex items-center"><DollarSign className="mr-2 h-4 w-4 text-muted-foreground"/>Price (Optional)</FormLabel>
+                      <FormControl>
+                         <Input 
+                            type="number" 
+                            placeholder="Enter 0 for a free event" 
+                            {...field} 
+                            onChange={e => field.onChange(e.target.value === '' ? undefined : parseFloat(e.target.value))}
+                            min="0"
+                            step="0.01"
+                        />
+                      </FormControl>
+                      <FormDescription>Leave blank or enter 0 for a free event.</FormDescription>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                <FormField
+                  control={form.control}
+                  name="currency"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Currency (if priced)</FormLabel>
+                      <FormControl>
+                        <Input placeholder="e.g., USD, EUR" {...field} defaultValue="USD" />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
               <FormField
                 control={form.control}
                 name="category"

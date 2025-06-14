@@ -55,7 +55,7 @@ export interface Post {
   status?: 'published' | 'draft' | 'scheduled';
 
   communityId?: ObjectId; // ID of the community this post belongs to
-  communityName?: string; // For display purposes if needed
+  communityName?: string; // For display purposes
 }
 
 export interface Event {
@@ -81,6 +81,9 @@ export interface Event {
 
   communityId?: ObjectId; // ID of the community this event belongs to
   communityName?: string; // For display purposes
+
+  price?: number; // Price of the event ticket, 0 or undefined for free
+  currency?: string; // e.g., "USD", "EUR", defaults to USD if price is set
 }
 
 export interface EventFeedback {
