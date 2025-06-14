@@ -2,7 +2,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, Controller } from 'react-hook-form'; // Added Controller
+import { useForm, Controller } from 'react-hook-form';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
@@ -177,7 +177,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
       [{ 'header': [1, 2, 3, false] }],
       ['bold', 'italic', 'underline', 'strike'],
       [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      [{ 'color': [] }, { 'background': [] }], 
+      [{ 'color': [] }, { 'background': [] }],
       ['link'],
       ['clean']
     ],
@@ -268,26 +268,27 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 </FormItem>
               )}
             />
-            
+
             <Controller
               name="content"
               control={form.control}
               rules={{ required: "Content is required." }}
-              render={({ field: { onChange, onBlur, value, name } }) => (
+              render={({ field }) => (
                 <FormItem>
                   <FormLabel>Content</FormLabel>
                   <FormControl>
                     <ReactQuill
                       theme="snow"
-                      value={value}
-                      onChange={onChange}
-                      onBlur={onBlur}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      forwardedRef={field.ref}
                       placeholder="Share your thoughts with the community..."
                       modules={quillModules}
                       />
                   </FormControl>
                   <FormDescription>
-                    Use the editor above to format your post content.
+                    Use the editor above to format your post content. Rich text editor support coming soon!
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -530,4 +531,3 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
   );
 }
 
-    

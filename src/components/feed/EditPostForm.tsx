@@ -2,7 +2,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, Controller } from 'react-hook-form'; // Added Controller
+import { useForm, Controller } from 'react-hook-form';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
@@ -178,8 +178,8 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
       userId: user.id,
       title: data.title || undefined,
       content: data.content,
-      category: data.category, 
-      tags: data.tags, 
+      category: data.category,
+      tags: data.tags,
       communityId: data.communityId === NO_COMMUNITY_VALUE ? NO_COMMUNITY_VALUE : (data.communityId || null),
     };
 
@@ -244,21 +244,22 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
               name="content"
               control={form.control}
               rules={{ required: "Content is required." }}
-              render={({ field: { onChange, onBlur, value, name } }) => (
+              render={({ field }) => (
                 <FormItem>
                   <FormLabel>Content</FormLabel>
                   <FormControl>
                     <ReactQuill
                       theme="snow"
-                      value={value}
-                      onChange={onChange}
-                      onBlur={onBlur}
+                      value={field.value}
+                      onChange={field.onChange}
+                      onBlur={field.onBlur}
+                      forwardedRef={field.ref}
                       placeholder="Share your thoughts with the community..."
                       modules={quillModules}
                     />
                   </FormControl>
                    <FormDescription>
-                    Use the editor to format your post content.
+                    Use the editor to format your post content. Rich text editor support coming soon!
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -378,4 +379,3 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
   );
 }
 
-    
