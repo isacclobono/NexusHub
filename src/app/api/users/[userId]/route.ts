@@ -100,7 +100,7 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
     }
     
-    const updatePayloadSet: Partial<UserWithPasswordHash> = {
+    const updatePayloadSet: Partial<UserWithPasswordHash> & { updatedAt: string } = {
         updatedAt: new Date().toISOString()
     };
 
@@ -150,11 +150,15 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
 
     if (!updatedUserDoc) {
         console.error(`[API User PUT] User ${pathUserId} was matched for update, but could not be re-fetched.`);
-        // Even if re-fetch fails, if modifiedCount > 0 or (modifiedCount === 0 && matchedCount > 0 and something was intended to change), it was likely successful.
-        // It's safer to inform the user of success but with a caveat if the re-fetch fails.
-        if (updateResult.modifiedCount > 0 || (Object.keys(updatePayloadSet).length > 1)) { // more than just updatedAt
+        // Check if any actual data fields (besides updatedAt) were intended to be updated
+        const hasMeaningfulUpdates = Object.keys(updatePayloadSet).some(key => 
+          key !== 'updatedAt' && updatePayloadSet[key as keyof typeof updatePayloadSet] !== undefined
+        );
+
+        if (updateResult.modifiedCount > 0 || (updateResult.matchedCount > 0 && hasMeaningfulUpdates) ) {
              return NextResponse.json({ message: 'Profile update successful, but failed to re-fetch latest user details.' }, { status: 200 });
         }
+        // If nothing was modified and no meaningful updates were sent, and we can't refetch, it's an issue.
         return NextResponse.json({ message: 'Profile update operation failed. The document might not have been modified or an unexpected error occurred.' }, { status: 500 });
     }
 
