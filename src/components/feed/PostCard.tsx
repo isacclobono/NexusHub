@@ -17,21 +17,19 @@ interface PostCardProps {
   post: Post;
   onToggleBookmark?: (postId: string, isCurrentlyBookmarked: boolean) => Promise<void> | void;
   onToggleLike?: (postId: string, isCurrentlyLiked: boolean, updatedPost: Post) => Promise<void> | void;
-  // No onCommentAdded prop needed if PostCard manages its own state updates optimistically
 }
 
 
 const CommentItem = ({ comment }: { comment: CommentType }) => {
-  // Ensure author is an object, even if some fields are defaults
-  const commentAuthor = comment.author || { 
-    id: comment.authorId?.toString() || 'unknown', 
+  const commentAuthor = comment.author || {
+    id: comment.authorId?.toString() || 'unknown',
     _id: comment.authorId,
-    name: 'Unknown User', 
-    avatarUrl: undefined, 
-    email: '', 
-    reputation: 0, 
-    joinedDate: new Date().toISOString(), 
-    bookmarkedPostIds: [] 
+    name: 'Unknown User',
+    avatarUrl: undefined,
+    email: '',
+    reputation: 0,
+    joinedDate: new Date().toISOString(),
+    bookmarkedPostIds: []
   };
 
   return (
@@ -57,13 +55,12 @@ const CommentItem = ({ comment }: { comment: CommentType }) => {
 
 export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmarkProp, onToggleLike: onToggleLikeProp }: PostCardProps) {
   const { user, isAuthenticated } = useAuth();
-  const [post, setPost] = useState<Post>(initialPost); 
+  const [post, setPost] = useState<Post>(initialPost);
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
 
 
   useEffect(() => {
-    // Ensure comments is always an array for consistent rendering
     setPost(prevPost => ({
       ...initialPost,
       comments: Array.isArray(initialPost.comments) ? initialPost.comments : [],
@@ -75,8 +72,8 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
 
   const [isBookmarking, setIsBookmarking] = useState(false);
   const [isLiking, setIsLiking] = useState(false);
-  
-  const isBookmarkedByCurrentUser = isAuthenticated && user && post.id && Array.isArray(user.bookmarkedPostIds) ? 
+
+  const isBookmarkedByCurrentUser = isAuthenticated && user && post.id && Array.isArray(user.bookmarkedPostIds) ?
     user.bookmarkedPostIds.some(id => id.toString() === (post._id! as ObjectId | string).toString()) : false;
 
   const isLikedByCurrentUser = isAuthenticated && user && post.id && Array.isArray(post.likedBy) && user._id ?
@@ -86,13 +83,13 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
   const { author: postAuthorData, title, content, media, category, tags, createdAt } = post;
   const postComments = post.comments || [];
   const commentCount = post.commentCount || 0;
-  
-  const postAuthor = postAuthorData || { 
-    id: post.authorId?.toString() || 'unknown', 
+
+  const postAuthor = postAuthorData || {
+    id: post.authorId?.toString() || 'unknown',
     _id: post.authorId,
-    name: 'Unknown User', 
-    avatarUrl: undefined, 
-    reputation: 0, 
+    name: 'Unknown User',
+    avatarUrl: undefined,
+    reputation: 0,
     joinedDate: new Date().toISOString(),
     email: '',
     bookmarkedPostIds: []
@@ -109,7 +106,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
 
     setIsBookmarking(true);
     const currentlyBookmarked = isBookmarkedByCurrentUser;
-    
+
     setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: !currentlyBookmarked}));
 
 
@@ -118,21 +115,21 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user.id }), 
+        body: JSON.stringify({ userId: user.id }),
       });
 
       const result = await response.json();
       if (!response.ok) {
-        setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: currentlyBookmarked})); 
+        setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: currentlyBookmarked}));
         throw new Error(result.message || `Failed to ${currentlyBookmarked ? 'unbookmark' : 'bookmark'} post.`);
       }
       toast.success(result.message || `Post ${currentlyBookmarked ? 'unbookmarked' : 'bookmarked'}!`);
-      if (onToggleBookmarkProp) { 
+      if (onToggleBookmarkProp) {
         onToggleBookmarkProp(post.id, !currentlyBookmarked);
       }
 
     } catch (err) {
-      setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: currentlyBookmarked})); 
+      setPost(prevPost => ({...prevPost, isBookmarkedByCurrentUser: currentlyBookmarked}));
       toast.error(err instanceof Error ? err.message : 'An error occurred.');
       console.error("Bookmark error:", err);
     } finally {
@@ -155,7 +152,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
     setPost(prevPost => ({
       ...prevPost,
       likeCount: currentlyLiked ? (prevPost.likeCount || 0) - 1 : (prevPost.likeCount || 0) + 1,
-      likedBy: currentlyLiked 
+      likedBy: currentlyLiked
         ? (Array.isArray(prevPost.likedBy) ? prevPost.likedBy.filter(id => id.toString() !== user._id!.toString()) : [])
         : [...(Array.isArray(prevPost.likedBy) ? prevPost.likedBy : []), user._id! as ObjectId],
       isLikedByCurrentUser: !currentlyLiked
@@ -171,7 +168,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
           ...(currentlyLiked ? {} : { body: JSON.stringify({ userId: user._id.toString() }) }),
         }
       );
-      
+
       const result = await response.json();
 
       if (!response.ok || !result.post) {
@@ -183,15 +180,14 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
         }));
         throw new Error(result.message || `Failed to ${currentlyLiked ? 'unlike' : 'like'} post.`);
       }
-      
-      // Ensure all fields from API are updated, including potentially new `_id` if not present before.
+
       const updatedPostFromServer = {
         ...result.post,
         comments: Array.isArray(result.post.comments) ? result.post.comments : [],
         likedBy: Array.isArray(result.post.likedBy) ? result.post.likedBy : [],
       };
-      setPost(updatedPostFromServer); 
-      
+      setPost(updatedPostFromServer);
+
       toast.success(result.message || `Post ${currentlyLiked ? 'unliked' : 'liked'}!`);
       if (onToggleLikeProp) {
         onToggleLikeProp(post.id, !currentlyLiked, updatedPostFromServer);
@@ -232,12 +228,12 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       if (!response.ok || !result.comment) {
         throw new Error(result.message || "Failed to add comment.");
       }
-      
+
       const newCommentFromApi: CommentType = result.comment;
-      
+
       setPost(prevPost => ({
         ...prevPost,
-        comments: [newCommentFromApi, ...(prevPost.comments || [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), // Add new comment and re-sort
+        comments: [newCommentFromApi, ...(prevPost.comments || [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()),
         commentCount: (prevPost.commentCount || 0) + 1,
         commentIds: [...(prevPost.commentIds || []), newCommentFromApi._id!]
       }));
@@ -251,7 +247,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       setIsSubmittingComment(false);
     }
   };
-  
+
   const handleShare = async () => {
     const postUrl = `${window.location.origin}/posts/${post.id}`;
     const shareData = {
@@ -260,24 +256,39 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       url: postUrl,
     };
 
+    let sharedViaApi = false;
     if (navigator.share) {
       try {
         await navigator.share(shareData);
         toast.success('Post shared successfully!');
+        sharedViaApi = true; // Mark that sharing was attempted and succeeded or was aborted by user
+        return; 
       } catch (err) {
-        // Don't show error if user cancels share dialog
-        if ((err as Error).name !== 'AbortError') {
-            toast.error('Could not share post.');
-            console.error('Share API error:', err);
+        const shareError = err as Error;
+        if (shareError.name === 'AbortError') {
+          console.log('Share action cancelled by user.');
+          sharedViaApi = true; // User interacted with dialog
+          return; 
+        } else if (shareError.name === 'NotAllowedError') {
+          console.warn('Web Share API permission denied:', shareError);
+          toast.info('Sharing via system dialog failed due to permissions. Trying to copy link...');
+        } else {
+          console.error('Web Share API error:', shareError);
+          toast.error('Could not share using system dialog. Trying to copy link...');
         }
+        // If error was not AbortError, proceed to clipboard fallback
       }
-    } else {
-      try {
-        await navigator.clipboard.writeText(postUrl);
-        toast.success('Post link copied to clipboard!');
-      } catch (err) {
-        toast.error('Could not copy link. Please try again.');
-        console.error('Clipboard API error:', err);
+    }
+
+    // Fallback to clipboard copy if Web Share API is not available or failed (and wasn't aborted)
+    try {
+      await navigator.clipboard.writeText(postUrl);
+      toast.success('Post link copied to clipboard!');
+    } catch (copyError) {
+      console.error('Clipboard API error:', copyError);
+      // Only show error if Web Share wasn't available or explicitly failed before this.
+      if (!navigator.share || !sharedViaApi) {
+          toast.error('Could not copy link to clipboard.');
       }
     }
   };
@@ -367,8 +378,8 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
                         <AvatarFallback>{user?.name ? user.name.charAt(0) : 'U'}</AvatarFallback>
                     </Avatar>
                     <div className="flex-1">
-                        <Textarea 
-                            placeholder="Write a comment..." 
+                        <Textarea
+                            placeholder="Write a comment..."
                             value={newComment}
                             onChange={(e) => setNewComment(e.target.value)}
                             className="min-h-[60px] text-sm"
@@ -388,9 +399,9 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       </CardContent>
       <CardFooter className="p-4 flex justify-between items-center border-t">
         <div className="flex items-center space-x-4">
-          <Button 
-            variant="ghost" 
-            size="sm" 
+          <Button
+            variant="ghost"
+            size="sm"
             onClick={handleToggleLike}
             disabled={isLiking || !isAuthenticated}
             className={`text-muted-foreground hover:text-primary ${isLikedByCurrentUser ? 'text-primary' : ''}`}
@@ -402,11 +413,11 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
             <MessageCircle className="h-5 w-5 mr-1" /> {commentCount || 0}
           </Button>
         </div>
-        <Button 
-            variant="ghost" 
-            size="icon" 
-            onClick={handleToggleBookmark} 
-            disabled={isBookmarking || !isAuthenticated} 
+        <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleToggleBookmark}
+            disabled={isBookmarking || !isAuthenticated}
             className={`text-muted-foreground ${isBookmarkedByCurrentUser ? 'text-accent' : 'hover:text-accent'}`}
             title={isBookmarkedByCurrentUser ? 'Unbookmark' : 'Bookmark'}
         >
