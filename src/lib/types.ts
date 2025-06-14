@@ -20,7 +20,7 @@ export interface Comment {
   postId: ObjectId; 
   parentId?: ObjectId; 
   authorId: ObjectId; 
-  author?: User; // Populated on server
+  author: User; // Populated on server
   content: string;
   createdAt: string; // ISO Date String
   replyIds?: ObjectId[]; 
@@ -31,7 +31,7 @@ export interface Post {
   _id?: ObjectId;
   id?: string;
   authorId: ObjectId; 
-  author?: User; // Populated on server
+  author: User; // Populated on server
   title?: string;
   content: string;
   media?: { type: 'image' | 'video' | 'document'; url: string; name?: string }[];
@@ -45,7 +45,7 @@ export interface Post {
   isLikedByCurrentUser?: boolean; // Client-side state, derived based on current user
 
   commentIds: ObjectId[]; // Array of Comment ObjectIds
-  comments?: Comment[]; // Populated on server (e.g., recent comments for feed)
+  comments: Comment[]; // Populated on server (e.g., recent comments for feed)
   commentCount: number;
 
   isBookmarkedByCurrentUser?: boolean; // Client-side state, derived from user's bookmarks
@@ -63,9 +63,9 @@ export interface Event {
   endTime: string; // ISO Date String
   location?: string;
   organizerId: ObjectId; // ObjectId of the User who is the organizer
-  organizer?: User; // Populated User object
+  organizer: User; // Populated User object
   rsvpIds: ObjectId[]; // Array of User ObjectIds who RSVP'd
-  rsvps?: User[]; // Array of populated User objects for those who RSVP'd
+  rsvps: User[]; // Array of populated User objects for those who RSVP'd
   waitlistIds?: ObjectId[];
   waitlist?: User[];
   maxAttendees?: number;
@@ -116,9 +116,10 @@ export interface Notification {
   createdAt: string; // ISO Date String
   relatedEntityId?: ObjectId; // ObjectId of the related entity (e.g., PostId, EventId)
   actor?: { 
-    _id: ObjectId; // Changed from id to _id to match User structure
-    id: string; // Keep string id for client convenience after conversion
+    _id: ObjectId; 
+    id: string; 
     name: string;
     avatarUrl?: string;
   }
 }
+

@@ -5,7 +5,8 @@ import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2, Send, Share2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
@@ -16,16 +17,28 @@ interface PostCardProps {
   post: Post;
   onToggleBookmark?: (postId: string, isCurrentlyBookmarked: boolean) => Promise<void> | void;
   onToggleLike?: (postId: string, isCurrentlyLiked: boolean, updatedPost: Post) => Promise<void> | void;
+  // No onCommentAdded prop needed if PostCard manages its own state updates optimistically
 }
 
 
 const CommentItem = ({ comment }: { comment: CommentType }) => {
-  const commentAuthor = comment.author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined, email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [] };
+  // Ensure author is an object, even if some fields are defaults
+  const commentAuthor = comment.author || { 
+    id: comment.authorId?.toString() || 'unknown', 
+    _id: comment.authorId,
+    name: 'Unknown User', 
+    avatarUrl: undefined, 
+    email: '', 
+    reputation: 0, 
+    joinedDate: new Date().toISOString(), 
+    bookmarkedPostIds: [] 
+  };
+
   return (
     <div className="flex items-start space-x-3 pt-3">
       <Avatar className="h-8 w-8">
         <AvatarImage src={commentAuthor.avatarUrl || `https://placehold.co/32x32.png`} alt={commentAuthor.name} data-ai-hint="profile avatar small"/>
-        <AvatarFallback>{commentAuthor.name.charAt(0)}</AvatarFallback>
+        <AvatarFallback>{commentAuthor.name ? commentAuthor.name.charAt(0) : 'U'}</AvatarFallback>
       </Avatar>
       <div className="flex-1 text-sm bg-muted/50 p-2.5 rounded-md">
         <div className="flex items-center justify-between">
@@ -36,7 +49,7 @@ const CommentItem = ({ comment }: { comment: CommentType }) => {
                 {comment.createdAt ? formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true }) : 'Just now'}
             </p>
         </div>
-        <p className="text-foreground/90 mt-1">{comment.content}</p>
+        <p className="text-foreground/90 mt-1 whitespace-pre-wrap break-words">{comment.content}</p>
       </div>
     </div>
   );
@@ -44,10 +57,19 @@ const CommentItem = ({ comment }: { comment: CommentType }) => {
 
 export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmarkProp, onToggleLike: onToggleLikeProp }: PostCardProps) {
   const { user, isAuthenticated } = useAuth();
-  const [post, setPost] = useState(initialPost); 
+  const [post, setPost] = useState<Post>(initialPost); 
+  const [newComment, setNewComment] = useState('');
+  const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+
 
   useEffect(() => {
-    setPost(initialPost);
+    // Ensure comments is always an array for consistent rendering
+    setPost(prevPost => ({
+      ...initialPost,
+      comments: Array.isArray(initialPost.comments) ? initialPost.comments : [],
+      likedBy: Array.isArray(initialPost.likedBy) ? initialPost.likedBy : [],
+      commentIds: Array.isArray(initialPost.commentIds) ? initialPost.commentIds : [],
+    }));
   }, [initialPost]);
 
 
@@ -55,16 +77,19 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
   const [isLiking, setIsLiking] = useState(false);
   
   const isBookmarkedByCurrentUser = isAuthenticated && user && post.id && Array.isArray(user.bookmarkedPostIds) ? 
-    user.bookmarkedPostIds.some(id => id.toString() === (post._id! as ObjectId).toString()) : false;
+    user.bookmarkedPostIds.some(id => id.toString() === (post._id! as ObjectId | string).toString()) : false;
 
   const isLikedByCurrentUser = isAuthenticated && user && post.id && Array.isArray(post.likedBy) && user._id ?
     post.likedBy.some(likedById => likedById.toString() === user._id!.toString()) : false;
 
 
-  const { author: postAuthorData, title, content, media, category, tags, createdAt, comments: postComments, commentCount } = post;
+  const { author: postAuthorData, title, content, media, category, tags, createdAt } = post;
+  const postComments = post.comments || [];
+  const commentCount = post.commentCount || 0;
   
   const postAuthor = postAuthorData || { 
     id: post.authorId?.toString() || 'unknown', 
+    _id: post.authorId,
     name: 'Unknown User', 
     avatarUrl: undefined, 
     reputation: 0, 
@@ -159,10 +184,17 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
         throw new Error(result.message || `Failed to ${currentlyLiked ? 'unlike' : 'like'} post.`);
       }
       
-      setPost(result.post); 
+      // Ensure all fields from API are updated, including potentially new `_id` if not present before.
+      const updatedPostFromServer = {
+        ...result.post,
+        comments: Array.isArray(result.post.comments) ? result.post.comments : [],
+        likedBy: Array.isArray(result.post.likedBy) ? result.post.likedBy : [],
+      };
+      setPost(updatedPostFromServer); 
+      
       toast.success(result.message || `Post ${currentlyLiked ? 'unliked' : 'liked'}!`);
       if (onToggleLikeProp) {
-        onToggleLikeProp(post.id, !currentlyLiked, result.post);
+        onToggleLikeProp(post.id, !currentlyLiked, updatedPostFromServer);
       }
 
     } catch (err) {
@@ -179,6 +211,78 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
     }
   };
 
+  const handleCommentSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!isAuthenticated || !user || !user.id || !post.id) {
+      toast.error("Please log in to comment.");
+      return;
+    }
+    if (!newComment.trim()) {
+      toast.error("Comment cannot be empty.");
+      return;
+    }
+    setIsSubmittingComment(true);
+    try {
+      const response = await fetch(`/api/posts/${post.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, content: newComment }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.comment) {
+        throw new Error(result.message || "Failed to add comment.");
+      }
+      
+      const newCommentFromApi: CommentType = result.comment;
+      
+      setPost(prevPost => ({
+        ...prevPost,
+        comments: [newCommentFromApi, ...(prevPost.comments || [])].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()), // Add new comment and re-sort
+        commentCount: (prevPost.commentCount || 0) + 1,
+        commentIds: [...(prevPost.commentIds || []), newCommentFromApi._id!]
+      }));
+      setNewComment('');
+      toast.success("Comment added!");
+
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not add comment.");
+      console.error("Comment submission error:", err);
+    } finally {
+      setIsSubmittingComment(false);
+    }
+  };
+  
+  const handleShare = async () => {
+    const postUrl = `${window.location.origin}/posts/${post.id}`;
+    const shareData = {
+      title: post.title || 'Check out this post on NexusHub!',
+      text: post.content ? post.content.substring(0, 100) + (post.content.length > 100 ? '...' : '') : 'Interesting content from NexusHub.',
+      url: postUrl,
+    };
+
+    if (navigator.share) {
+      try {
+        await navigator.share(shareData);
+        toast.success('Post shared successfully!');
+      } catch (err) {
+        // Don't show error if user cancels share dialog
+        if ((err as Error).name !== 'AbortError') {
+            toast.error('Could not share post.');
+            console.error('Share API error:', err);
+        }
+      }
+    } else {
+      try {
+        await navigator.clipboard.writeText(postUrl);
+        toast.success('Post link copied to clipboard!');
+      } catch (err) {
+        toast.error('Could not copy link. Please try again.');
+        console.error('Clipboard API error:', err);
+      }
+    }
+  };
+
+
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-subtle hover:shadow-md transition-shadow duration-300">
       <CardHeader className="p-4">
@@ -186,7 +290,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
           <Link href={`/profile/${postAuthor.id}`} className="flex items-center space-x-3 group">
             <Avatar className="h-10 w-10">
               <AvatarImage src={postAuthor.avatarUrl || `https://placehold.co/40x40.png`} alt={postAuthor.name} data-ai-hint="profile avatar" />
-              <AvatarFallback>{postAuthor.name.charAt(0)}</AvatarFallback>
+              <AvatarFallback>{postAuthor.name ? postAuthor.name.charAt(0) : 'U'}</AvatarFallback>
             </Avatar>
             <div>
               <p className="font-semibold text-sm font-headline group-hover:underline">{postAuthor.name}</p>
@@ -196,10 +300,16 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
               </p>
             </div>
           </Link>
-          <Button variant="ghost" size="icon" className="ml-auto">
-            <MoreHorizontal className="h-5 w-5" />
-            <span className="sr-only">More options</span>
-          </Button>
+          <div className="ml-auto">
+             <Button variant="ghost" size="icon" onClick={handleShare} title="Share post">
+              <Share2 className="h-5 w-5 text-muted-foreground hover:text-primary" />
+              <span className="sr-only">Share</span>
+            </Button>
+            <Button variant="ghost" size="icon" title="More options">
+              <MoreHorizontal className="h-5 w-5 text-muted-foreground hover:text-primary" />
+              <span className="sr-only">More options</span>
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="p-4 pt-0">
@@ -233,21 +343,48 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
           </div>
         )}
 
-        {displayComments && displayComments.length > 0 && (
+        {(displayComments.length > 0 || (commentCount || 0) > 2) && (
           <div className="mt-4 pt-4 border-t">
-            <h4 className="text-sm font-semibold text-muted-foreground mb-1">Comments:</h4>
+            {displayComments.length > 0 && <h4 className="text-sm font-semibold text-muted-foreground mb-1">Comments:</h4>}
             <div className="space-y-2">
               {displayComments.map(comment => (
                 <CommentItem key={comment.id || comment._id?.toString()} comment={comment} />
               ))}
             </div>
-            {(commentCount || 0) > 2 && post.id && (
+            {(commentCount || 0) > displayComments.length && post.id && (
               <Button variant="link" asChild className="text-xs p-0 h-auto mt-2">
                 <Link href={`/posts/${post.id}`}>View all {commentCount} comments</Link>
               </Button>
             )}
           </div>
         )}
+
+        {isAuthenticated && (
+            <form onSubmit={handleCommentSubmit} className="mt-4 pt-4 border-t">
+                <div className="flex items-start space-x-3">
+                    <Avatar className="h-9 w-9 mt-1">
+                        <AvatarImage src={user?.avatarUrl || `https://placehold.co/36x36.png`} alt={user?.name} data-ai-hint="profile avatar comment"/>
+                        <AvatarFallback>{user?.name ? user.name.charAt(0) : 'U'}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1">
+                        <Textarea 
+                            placeholder="Write a comment..." 
+                            value={newComment}
+                            onChange={(e) => setNewComment(e.target.value)}
+                            className="min-h-[60px] text-sm"
+                            disabled={isSubmittingComment}
+                        />
+                        <div className="mt-2 flex justify-end">
+                            <Button type="submit" size="sm" disabled={isSubmittingComment || !newComment.trim()} className="btn-gradient">
+                                {isSubmittingComment ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <Send className="h-4 w-4 mr-1" />}
+                                {isSubmittingComment ? 'Sending...' : 'Comment'}
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            </form>
+        )}
+
       </CardContent>
       <CardFooter className="p-4 flex justify-between items-center border-t">
         <div className="flex items-center space-x-4">
@@ -280,3 +417,4 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
     </Card>
   );
 }
+

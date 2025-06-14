@@ -61,7 +61,7 @@ export async function POST(request: NextRequest, { params }: CommentRouteParams)
       return NextResponse.json({ message: 'Author not found.' }, { status: 404 });
     }
 
-    const newCommentDoc = {
+    const newCommentDoc: Omit<DbComment, '_id'> = {
       postId: postObjectId,
       authorId: authorObjectId,
       content,
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest, { params }: CommentRouteParams)
     const updatePostResult = await postsCollection.updateOne(
       { _id: postObjectId },
       { 
-        $addToSet: { commentIds: insertResult.insertedId },
+        $push: { commentIds: insertResult.insertedId }, // Use $push to add to array
         $inc: { commentCount: 1 }
       }
     );
@@ -90,11 +90,17 @@ export async function POST(request: NextRequest, { params }: CommentRouteParams)
         console.warn(`Comment created (id: ${insertResult.insertedId}), but failed to update post (id: ${postObjectId}) comment list/count.`);
     }
     
+    const authorForClient: User = {
+        ...author,
+        id: author._id!.toHexString(),
+        bookmarkedPostIds: Array.isArray(author.bookmarkedPostIds) ? author.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
+    };
+    
     const createdCommentForClient: Comment = {
         ...newCommentDoc,
         _id: insertResult.insertedId,
         id: insertResult.insertedId.toHexString(),
-        author: { ...author, id: author._id!.toHexString(), bookmarkedPostIds: author.bookmarkedPostIds || [] },
+        author: authorForClient,
     };
 
     return NextResponse.json({ message: 'Comment added successfully!', comment: createdCommentForClient }, { status: 201 });
@@ -126,12 +132,22 @@ export async function GET(request: NextRequest, { params }: CommentRouteParams) 
     const populatedComments: Comment[] = await Promise.all(
       commentDocs.map(async (commentDoc) => {
         const authorDoc = await usersCollection.findOne({ _id: commentDoc.authorId }, { projection: { passwordHash: 0 } });
+        const authorForClient: User | undefined = authorDoc ? { 
+            ...authorDoc, 
+            id: authorDoc._id!.toHexString(),
+            bookmarkedPostIds: Array.isArray(authorDoc.bookmarkedPostIds) ? authorDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
+        } : undefined;
+        
+        if (!authorForClient) {
+            console.warn(`Author not found for comment ${commentDoc._id}, authorId: ${commentDoc.authorId}`);
+        }
+
         return {
           ...commentDoc,
           id: commentDoc._id.toHexString(),
           authorId: commentDoc.authorId,
           postId: commentDoc.postId,
-          author: authorDoc ? { ...authorDoc, id: authorDoc._id!.toHexString(), bookmarkedPostIds: authorDoc.bookmarkedPostIds || [] } : undefined,
+          author: authorForClient || { id: commentDoc.authorId.toHexString(), name: 'Unknown User', email:'', reputation:0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [] } as User, // Fallback author
         } as Comment;
       })
     );
