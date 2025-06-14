@@ -64,10 +64,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                       tooltip={item.title}
                       variant="default"
                     >
-                      <a>
+                      <>
                         <item.icon />
                         <span>{item.title}</span>
-                      </a>
+                      </>
                     </SidebarMenuButton>
                   </Link>
                 </SidebarMenuItem>
@@ -80,18 +80,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
            {user && (
              <Link href={`/profile/${user.id}`} asChild>
               <SidebarMenuButton asChild tooltip="Profile" variant="ghost" className="justify-start">
-                <a>
+                <>
                   <Avatar className="h-8 w-8 mr-2">
                     <AvatarImage src={user.avatarUrl} alt={user.name} />
                     <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
                   </Avatar>
                   <span className="truncate">{user.name}</span>
-                </a>
+                </>
               </SidebarMenuButton>
             </Link>
            )}
           {resolvedUserNavItems.map((item) => (
-             item.href !== `/profile/${user?.id}` && // Avoid duplicate profile link
+             item.href !== `/profile/${user?.id}` &&
             <SidebarMenuItem key={item.title}>
               <Link href={item.href} asChild>
                 <SidebarMenuButton
@@ -100,10 +100,10 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
                   tooltip={item.title}
                   variant="ghost"
                 >
-                  <a>
+                  <>
                     <item.icon />
                     <span>{item.title}</span>
-                  </a>
+                  </>
                 </SidebarMenuButton>
               </Link>
             </SidebarMenuItem>
