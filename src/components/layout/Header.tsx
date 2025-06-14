@@ -16,12 +16,14 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { SidebarTrigger } from '@/components/ui/sidebar';
-import { useAuth } from '@/hooks/use-auth';
-import { useRouter } from 'next/navigation'; // For search redirection
+import { useAuth } from '@/hooks/use-auth-provider';
+import { useRouter } from 'next/navigation';
+import { useToast } from '@/hooks/use-toast';
 
 export function Header() {
-  const { user, loading } = useAuth();
+  const { user, loading, logout } = useAuth();
   const router = useRouter();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = React.useState('');
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -29,6 +31,15 @@ export function Header() {
     if (searchQuery.trim()) {
       router.push(`/search?q=${encodeURIComponent(searchQuery.trim())}`);
     }
+  };
+
+  const handleLogout = () => {
+    logout();
+    toast({
+      title: "Logged Out",
+      description: "You have been successfully logged out.",
+    });
+    router.push('/login');
   };
 
 
@@ -66,7 +77,7 @@ export function Header() {
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon" className="rounded-full">
                 <Avatar className="h-8 w-8">
-                  <AvatarImage src={user.avatarUrl} alt={user.name} data-ai-hint="profile avatar small"/>
+                  <AvatarImage src={user.avatarUrl || `https://placehold.co/32x32.png`} alt={user.name} data-ai-hint="profile avatar small"/>
                   <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
                 </Avatar>
                 <span className="sr-only">Toggle user menu</span>
@@ -82,7 +93,7 @@ export function Header() {
                 <Link href="/settings"><Settings className="mr-2 h-4 w-4" />Settings</Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => alert('Logout functionality not implemented yet.')} className="text-destructive focus:text-destructive focus:bg-destructive/10">
+              <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive focus:bg-destructive/10 cursor-pointer">
                 <LogOut className="mr-2 h-4 w-4" />Logout
               </DropdownMenuItem>
             </DropdownMenuContent>

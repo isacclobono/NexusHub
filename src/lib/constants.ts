@@ -1,6 +1,6 @@
 
 import type { NavItem } from './types';
-import { Home, MessageSquareText, CalendarDays, Users, Settings, Search, Bookmark, LogOut, UserCircle } from 'lucide-react';
+import { Home, MessageSquareText, CalendarDays, Users, Settings, Search, Bookmark, LogOut, UserCircle, UserPlus, LogIn } from 'lucide-react'; // Added UserPlus, LogIn
 
 export const APP_NAME = 'NexusHub';
 
@@ -38,10 +38,12 @@ export const SIDENAV_ITEMS: NavItem[] = [
   },
 ];
 
-export const SIDENAV_USER_ITEMS: NavItem[] = [
+// SIDENAV_USER_ITEMS is now dynamically generated in AppShell.tsx based on auth state
+// This constant can be removed or kept for reference, but AppShell won't directly use it in the same way.
+export const SIDENAV_USER_ITEMS_TEMPLATE: NavItem[] = [
  {
-    title: 'Profile', // This specific item is handled by UserProfileButtonContentWrapper if user is logged in
-    href: '/profile/me', 
+    title: 'Profile',
+    href: '/profile/me', // Actual href will be /profile/:userId
     icon: UserCircle, 
   },
   {
@@ -50,11 +52,22 @@ export const SIDENAV_USER_ITEMS: NavItem[] = [
     icon: Settings,
   },
   {
-    title: 'Logout', // This will be conditionally rendered or handled by auth state
-    href: '#logout', // Placeholder, actual logout handled by auth context or action
+    title: 'Logout',
+    href: '#logout', // Handled by onClick
     icon: LogOut,
   },
+   {
+    title: 'Login',
+    href: '/login',
+    icon: LogIn,
+  },
+  {
+    title: 'Register',
+    href: '/register',
+    icon: UserPlus,
+  },
 ];
+
 
 export const CATEGORIES = [
   'Technology',

@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, MessageSquarePlus, SlidersHorizontal, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { personalizeFeed, PersonalizeFeedInput } from '@/ai/flows/personalized-feed-curation';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth } from '@/hooks/use-auth-provider';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
 

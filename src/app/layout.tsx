@@ -5,7 +5,8 @@ import './globals.css';
 import { Toaster } from '@/components/ui/toaster';
 import { SidebarProvider } from '@/components/ui/sidebar';
 import AppShell from '@/components/layout/AppShell';
-import { TooltipProvider } from "@/components/ui/tooltip"; // Added for global tooltip provider
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { AuthProvider } from '@/hooks/use-auth-provider';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -32,16 +33,18 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable} h-full`}>
-      <head />
+      
       <body className="font-body antialiased h-full bg-background text-foreground">
-        <TooltipProvider delayDuration={100}>
-          <SidebarProvider defaultOpen={true}>
-            <AppShell>
-              {children}
-            </AppShell>
-          </SidebarProvider>
-        </TooltipProvider>
-        <Toaster />
+        <AuthProvider> {/* Wrap with AuthProvider */}
+          <TooltipProvider delayDuration={100}>
+            <SidebarProvider defaultOpen={true}>
+              <AppShell>
+                {children}
+              </AppShell>
+            </SidebarProvider>
+          </TooltipProvider>
+          <Toaster />
+        </AuthProvider>
       </body>
     </html>
   );

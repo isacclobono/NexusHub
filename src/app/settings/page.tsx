@@ -7,12 +7,23 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { User, Bell, Palette, Lock } from 'lucide-react';
+import { User, Bell, Palette, Lock, Loader2, AlertTriangle } from 'lucide-react';
 import { useToast } from "@/hooks/use-toast";
-import { Textarea } from "@/components/ui/textarea"; // Using ShadCN Textarea
+import { Textarea } from "@/components/ui/textarea";
+import { useAuth } from "@/hooks/use-auth-provider";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function SettingsPage() {
   const { toast } = useToast();
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
+  const router = useRouter();
+
+  useEffect(() => {
+    if (!authLoading && !isAuthenticated) {
+      router.push('/login?redirect=/settings'); // Redirect to login if not authenticated
+    }
+  }, [authLoading, isAuthenticated, router]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -22,6 +33,28 @@ export default function SettingsPage() {
       description: "Your preferences have been updated.",
     });
   };
+
+  if (authLoading || !isAuthenticated) {
+    return (
+      <div className="container mx-auto py-8 flex justify-center items-center min-h-[calc(100vh-200px)]">
+        {authLoading ? (
+          <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        ) : (
+          <div className="text-center">
+             <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-destructive" />
+            <p className="text-lg text-muted-foreground">Please log in to view settings.</p>
+             <Button onClick={() => router.push('/login?redirect=/settings')} className="mt-4">Login</Button>
+          </div>
+        )}
+      </div>
+    );
+  }
+  
+  // Ensure user is not null before accessing its properties
+  const displayName = user?.name || '';
+  const userEmail = (user as any)?.email || 'user@example.com'; // Assuming email might be on user object
+  const userBio = user?.bio || '';
+
 
   return (
     <div className="container mx-auto py-8">
@@ -39,11 +72,11 @@ export default function SettingsPage() {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="displayName">Display Name</Label>
-                <Input id="displayName" defaultValue="Current User Name" />
+                <Input id="displayName" defaultValue={displayName} />
               </div>
               <div>
                 <Label htmlFor="email">Email Address</Label>
-                <Input id="email" type="email" defaultValue="user@example.com" disabled />
+                <Input id="email" type="email" defaultValue={userEmail} disabled />
               </div>
             </div>
             <div>
@@ -51,7 +84,7 @@ export default function SettingsPage() {
               <Textarea
                 id="bio"
                 placeholder="Tell us a little about yourself..."
-                defaultValue="Current user bio goes here..."
+                defaultValue={userBio}
               />
             </div>
              <Button variant="outline" type="button">Change Profile Picture</Button>

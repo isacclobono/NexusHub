@@ -14,7 +14,7 @@ import { format } from 'date-fns';
 import Image from 'next/image';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from '@/components/ui/skeleton';
-import { useAuth } from '@/hooks/use-auth';
+import { useAuth } from '@/hooks/use-auth-provider';
 
 
 const BadgeDisplayComponent = ({ badge }: { badge: BadgeType }) => (
