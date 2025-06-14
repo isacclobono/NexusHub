@@ -5,23 +5,25 @@ import { ObjectId } from 'mongodb';
 import type { User } from '@/lib/types';
 import { z } from 'zod';
 
+// Interface for user document in DB, potentially including passwordHash
 interface UserWithPasswordHash extends Omit<User, 'id' | 'bookmarkedPostIds'> {
   _id: ObjectId;
-  passwordHash?: string;
-  bookmarkedPostIds?: ObjectId[];
+  passwordHash?: string; // Optional, as it's not always present/used
+  bookmarkedPostIds?: ObjectId[]; // Ensure this is an array of ObjectIds
   notificationPreferences?: {
     emailNewPosts?: boolean;
     eventReminders?: boolean;
     mentionNotifications?: boolean;
   };
   privacy?: 'public' | 'private';
-  updatedAt?: string; 
+  updatedAt?: string;
 }
 
 interface UserParams {
   params: { userId: string };
 }
 
+// Zod schema for validating profile update data
 const profileUpdateSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters.").max(50, "Name cannot exceed 50 characters.").optional(),
   bio: z.string().max(300, "Bio cannot exceed 300 characters.").optional().nullable(),
@@ -48,7 +50,7 @@ export async function GET(request: NextRequest, { params }: UserParams) {
 
     const userDoc = await usersCollection.findOne(
       { _id: new ObjectId(userId) },
-      { projection: { passwordHash: 0 } }
+      { projection: { passwordHash: 0 } } // Exclude passwordHash from being sent to client
     );
 
     if (!userDoc) {
@@ -59,8 +61,8 @@ export async function GET(request: NextRequest, { params }: UserParams) {
       ...userDoc,
       id: userDoc._id.toHexString(),
       bookmarkedPostIds: Array.isArray(userDoc.bookmarkedPostIds) ? userDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
-      notificationPreferences: userDoc.notificationPreferences || { emailNewPosts: true, eventReminders: true, mentionNotifications: false },
-      privacy: userDoc.privacy || 'public',
+      notificationPreferences: userDoc.notificationPreferences || { emailNewPosts: true, eventReminders: true, mentionNotifications: false }, // Default if not set
+      privacy: userDoc.privacy || 'public', // Default to public if not set
     };
 
     return NextResponse.json(userForClient, { status: 200 });
@@ -93,24 +95,26 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     const usersCollection = db.collection<UserWithPasswordHash>('users');
     const userObjectId = new ObjectId(pathUserId);
 
-    const existingUser = await usersCollection.findOne({ _id: userObjectId }, { projection: { name: 1, avatarUrl: 1 } });
+    const existingUser = await usersCollection.findOne({ _id: userObjectId }, { projection: { name: 1, avatarUrl: 1 } }); 
     if (!existingUser) {
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
     }
-
-    const updatePayload: { $set: Partial<UserWithPasswordHash> } = {
-        $set: { updatedAt: new Date().toISOString() }
+    
+    const updatePayload: any = { // Using 'any' for $set to allow dynamic keys
+        $set: {
+            updatedAt: new Date().toISOString()
+        }
     };
 
     if (validatedData.name !== undefined) {
       updatePayload.$set.name = validatedData.name;
     }
     
-    if (validatedData.bio !== undefined) {
-      updatePayload.$set.bio = validatedData.bio === null ? '' : validatedData.bio;
+    if (validatedData.bio !== undefined) { 
+      updatePayload.$set.bio = validatedData.bio === null ? '' : validatedData.bio; 
     }
 
-    if (validatedData.avatarUrl !== undefined) {
+    if (validatedData.avatarUrl !== undefined) { 
       if (validatedData.avatarUrl === null || validatedData.avatarUrl === '') {
         const finalNameForAvatar = validatedData.name !== undefined ? validatedData.name : existingUser.name;
         updatePayload.$set.avatarUrl = `https://placehold.co/100x100.png?text=${(finalNameForAvatar || 'U').charAt(0)}`;
@@ -120,10 +124,25 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     }
 
     if (validatedData.notificationPreferences !== undefined) {
+      // Ensure we only update fields that are actually present in notificationPreferences
+      const prefsToSet: Record<string, boolean> = {};
+      if (validatedData.notificationPreferences.emailNewPosts !== undefined) {
+        prefsToSet['notificationPreferences.emailNewPosts'] = validatedData.notificationPreferences.emailNewPosts;
+      }
+      if (validatedData.notificationPreferences.eventReminders !== undefined) {
+        prefsToSet['notificationPreferences.eventReminders'] = validatedData.notificationPreferences.eventReminders;
+      }
+      if (validatedData.notificationPreferences.mentionNotifications !== undefined) {
+        prefsToSet['notificationPreferences.mentionNotifications'] = validatedData.notificationPreferences.mentionNotifications;
+      }
+      // If user sends an empty object for notificationPreferences, we might still want to set defaults or just ignore it.
+      // Current logic relies on the schema providing defaults if the object is present but keys are missing.
+      // For $set, it's better to explicitly set the whole sub-document or individual fields.
+      // Let's set the whole sub-document, ensuring defaults for any missing keys.
       updatePayload.$set.notificationPreferences = {
-        emailNewPosts: validatedData.notificationPreferences.emailNewPosts ?? true,
-        eventReminders: validatedData.notificationPreferences.eventReminders ?? true,
-        mentionNotifications: validatedData.notificationPreferences.mentionNotifications ?? false,
+        emailNewPosts: validatedData.notificationPreferences.emailNewPosts ?? existingUser.notificationPreferences?.emailNewPosts ?? true,
+        eventReminders: validatedData.notificationPreferences.eventReminders ?? existingUser.notificationPreferences?.eventReminders ?? true,
+        mentionNotifications: validatedData.notificationPreferences.mentionNotifications ?? existingUser.notificationPreferences?.mentionNotifications ?? false,
       };
     }
 
@@ -133,22 +152,25 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
         
     const updateResult = await usersCollection.updateOne(
       { _id: userObjectId },
-      updatePayload 
+      updatePayload
     );
 
     if (updateResult.matchedCount === 0) {
       return NextResponse.json({ message: 'User not found during update operation.' }, { status: 404 });
     }
     
-    // After update, fetch the document to return to the client
+    // If modifiedCount is 0 but matchedCount is 1, it means no actual data changed (e.g., same values submitted).
+    // Still, we want to return the current user state.
+    
     const updatedUserDoc = await usersCollection.findOne(
         { _id: userObjectId },
         { projection: { passwordHash: 0 } }
     );
 
     if (!updatedUserDoc) {
-        console.error(`User ${pathUserId} updated, but could not be re-fetched.`);
-        return NextResponse.json({ message: 'Profile update operation failed. The document might not have been modified or an unexpected error occurred.' }, { status: 500 });
+        // This should ideally not happen if matchedCount > 0
+        console.error(`User ${pathUserId} was matched for update, but could not be re-fetched.`);
+        return NextResponse.json({ message: 'Profile update successful, but failed to re-fetch user details.' }, { status: 200 });
     }
 
     const updatedUserForClient: User = {
@@ -164,7 +186,7 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
   } catch (error) {
     console.error(`API Error updating user ${pathUserId}:`, error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
-    if (error instanceof Error && error.message.toLowerCase().includes("input must be a 24 character hex string")) {
+    if (error instanceof Error && (error.message.toLowerCase().includes("input must be a 24 character hex string") || error.message.toLowerCase().includes("invalid objectid"))) {
         return NextResponse.json({ message: 'Invalid User ID format provided in path.' }, { status: 400 });
     }
     return NextResponse.json({ message: errorMessage }, { status: 500 });
