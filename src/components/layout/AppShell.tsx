@@ -1,3 +1,4 @@
+
 'use client';
 
 import * as React from 'react';
@@ -47,16 +48,18 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           <SidebarContent className="p-2">
             <SidebarMenu>
                <SidebarMenuItem>
-                <Link href="/posts/create" passHref legacyBehavior>
-                  <Button className="w-full btn-gradient" size="lg">
-                    <PlusCircle className="mr-2 h-5 w-5" />
-                    Create Post
+                 <Link href="/posts/create" passHref>
+                  <Button asChild className="w-full btn-gradient" size="lg">
+                    <a>
+                      <PlusCircle className="mr-2 h-5 w-5" />
+                      Create Post
+                    </a>
                   </Button>
-                </Link>
+                  </Link>
               </SidebarMenuItem>
               {SIDENAV_ITEMS.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <Link href={item.href} passHref legacyBehavior>
+                  <Link href={item.href} asChild>
                     <SidebarMenuButton
                       asChild
                       isActive={pathname === item.href}
@@ -77,7 +80,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <SidebarSeparator />
         <SidebarFooter className="p-2">
            {user && (
-             <Link href={`/profile/${user.id}`} passHref legacyBehavior>
+             <Link href={`/profile/${user.id}`} asChild>
               <SidebarMenuButton asChild tooltip="Profile" variant="ghost" className="justify-start">
                 <a>
                   <Avatar className="h-8 w-8 mr-2">
@@ -92,7 +95,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           {resolvedUserNavItems.map((item) => (
              item.href !== `/profile/${user?.id}` && // Avoid duplicate profile link
             <SidebarMenuItem key={item.title}>
-              <Link href={item.href} passHref legacyBehavior>
+              <Link href={item.href} asChild>
                 <SidebarMenuButton
                   asChild
                   isActive={pathname === item.href}
