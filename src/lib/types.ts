@@ -18,6 +18,7 @@ export interface Comment {
   _id?: ObjectId;
   id?: string;
   postId: ObjectId; 
+  postTitle?: string; // For displaying in activity feeds
   parentId?: ObjectId; 
   authorId: ObjectId; 
   author: User; // Populated on server
@@ -86,7 +87,7 @@ export interface EventFeedback {
   createdAt: string; // ISO Date String
 }
 
-export interface Badge { // Kept for UserProfilePage, data still from JSON for now
+export interface Badge {
   id: string; 
   name: string;
   description: string;
@@ -107,14 +108,14 @@ export interface NavItem {
 export interface Notification {
   _id?: ObjectId;
   id?: string;
-  userId: ObjectId; // Target user ObjectId
+  userId: ObjectId; 
   type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like';
   title: string;
   message: string;
-  link?: string; // Link to the relevant content
+  link?: string; 
   isRead: boolean;
   createdAt: string; // ISO Date String
-  relatedEntityId?: ObjectId; // ObjectId of the related entity (e.g., PostId, EventId)
+  relatedEntityId?: ObjectId; 
   actor?: { 
     _id: ObjectId; 
     id: string; 
@@ -122,4 +123,3 @@ export interface Notification {
     avatarUrl?: string;
   }
 }
-

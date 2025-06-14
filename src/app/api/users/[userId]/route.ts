@@ -46,7 +46,6 @@ export async function GET(request: NextRequest, { params }: UserParams) {
     const userForClient: User = {
       ...userDoc,
       id: userDoc._id.toHexString(),
-      // Ensure bookmarkedPostIds is an array of ObjectIds if it exists, or empty array
       bookmarkedPostIds: Array.isArray(userDoc.bookmarkedPostIds) ? userDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
     };
 
@@ -66,10 +65,9 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     return NextResponse.json({ message: 'Valid User ID in path is required.' }, { status: 400 });
   }
 
-  // In a real app, you'd get the authenticated user's ID from a session/token
-  // For now, we'll assume the client is honest or this is handled by a higher-level auth middleware
-  // const authenticatedUserId = "get_this_from_session_or_token"; 
-  // if (pathUserId !== authenticatedUserId) {
+  // Basic Authorization: In a real app, get current user ID from session/token and verify ownership
+  // For example: const { currentUserId } = await getSessionFromRequest(request);
+  // if (pathUserId !== currentUserId) {
   //   return NextResponse.json({ message: 'Unauthorized to update this profile.' }, { status: 403 });
   // }
 
@@ -87,8 +85,12 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
 
     const updateData: Partial<UserWithPasswordHash> = {};
     if (name !== undefined) updateData.name = name;
-    if (bio !== undefined) updateData.bio = bio ?? ''; // Handle null to empty string
-    if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl ?? `https://placehold.co/100x100.png?text=${name ? name.charAt(0) : 'U'}`;
+    if (bio !== undefined) updateData.bio = bio === null ? '' : bio; // Store null as empty string
+    if (avatarUrl !== undefined) {
+        updateData.avatarUrl = avatarUrl === null || avatarUrl === '' 
+            ? `https://placehold.co/100x100.png?text=${(name || (await usersCollection.findOne({_id: new ObjectId(pathUserId)}))?.name || 'U').charAt(0)}` 
+            : avatarUrl;
+    }
 
 
     if (Object.keys(updateData).length === 0) {
@@ -101,7 +103,7 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
       { returnDocument: 'after', projection: { passwordHash: 0 } }
     );
 
-    if (!result.value) {
+    if (!result.value) { // findOneAndUpdate returns 'value' not 'ok' or 'matchedCount'
       return NextResponse.json({ message: 'User not found or update failed.' }, { status: 404 });
     }
     
@@ -110,7 +112,6 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
         id: result.value._id.toHexString(),
         bookmarkedPostIds: Array.isArray(result.value.bookmarkedPostIds) ? result.value.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
     };
-
 
     return NextResponse.json({ message: 'Profile updated successfully!', user: updatedUserForClient }, { status: 200 });
 

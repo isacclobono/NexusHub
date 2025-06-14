@@ -3,20 +3,20 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import type { User, Post, Badge as BadgeType } from '@/lib/types';
+import type { User, Post, Comment as CommentType, Event as EventType, Badge as BadgeType } from '@/lib/types'; // Added CommentType, EventType
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarDays, Edit3, Star, Loader2, AlertTriangle } from 'lucide-react';
+import { CalendarDays, Edit3, Star, Loader2, AlertTriangle, MessageSquare, Activity, Award, Calendar as CalendarIconLucide } from 'lucide-react';
 import { PostCard } from '@/components/feed/PostCard';
-import { format } from 'date-fns';
+import { format, formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
+import Link from 'next/link';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
-
 
 const BadgeDisplayComponent = ({ badge }: { badge: BadgeType }) => (
   <TooltipProvider>
@@ -70,37 +70,109 @@ const ProfileSkeleton = () => (
   </div>
 );
 
+const ActivityCommentCard = ({ comment }: { comment: CommentType }) => (
+  <Card className="shadow-sm hover:shadow-md transition-shadow">
+    <CardContent className="p-4">
+      <p className="text-sm text-muted-foreground mb-1">
+        Commented on <Link href={`/posts/${comment.postId.toString()}`} className="text-primary hover:underline font-medium">{comment.postTitle || "a post"}</Link>
+        <span className="ml-2 text-xs">{formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}</span>
+      </p>
+      <p className="text-foreground line-clamp-3">{comment.content}</p>
+    </CardContent>
+  </Card>
+);
+
+const ActivityEventCard = ({ event }: { event: EventType }) => (
+   <Card className="shadow-sm hover:shadow-md transition-shadow">
+    <CardHeader className="p-4 pb-2">
+      <CardTitle className="text-md font-headline">
+        <Link href={`/events/${event.id}`} className="hover:text-primary">{event.title}</Link>
+      </CardTitle>
+      <CardDescription className="text-xs text-primary flex items-center pt-1">
+        <CalendarIconLucide className="h-3 w-3 mr-1.5" />
+        {event.startTime ? format(new Date(event.startTime), "MMM d, yyyy 'at' h:mm a") : 'Date TBD'}
+      </CardDescription>
+    </CardHeader>
+    <CardContent className="p-4 pt-0">
+      <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{event.description}</p>
+    </CardContent>
+    <CardFooter className="p-4 border-t">
+      <Button asChild size="xs" variant="link" className="p-0 h-auto text-primary">
+        <Link href={`/events/${event.id}`}>View Event</Link>
+      </Button>
+    </CardFooter>
+  </Card>
+);
+
+
+const OrganizedEventCard = ({ event }: { event: EventType }) => (
+  <Card className="shadow-sm hover:shadow-md transition-shadow">
+    <Link href={`/events/${event.id}`} className="block relative h-40 w-full">
+      <Image 
+        src={event.imageUrl || `https://placehold.co/800x450.png`} 
+        alt={event.title} 
+        layout="fill" 
+        objectFit="cover"
+        data-ai-hint="event highlight"
+        className="rounded-t-lg"
+      />
+    </Link>
+    <CardHeader className="p-4">
+      <CardTitle className="text-lg font-headline hover:text-primary transition-colors">
+        <Link href={`/events/${event.id}`}>{event.title}</Link>
+      </CardTitle>
+      <CardDescription className="text-sm text-primary flex items-center pt-1">
+        <CalendarDays className="h-4 w-4 mr-2" />
+        {event.startTime ? format(new Date(event.startTime), "MMM d, yyyy 'at' h:mm a") : 'Date TBD'}
+      </CardDescription>
+    </CardHeader>
+    <CardContent className="p-4 pt-0">
+      <p className="text-xs text-muted-foreground line-clamp-2">Attendees: {event.rsvps?.length || 0}{event.maxAttendees ? ` / ${event.maxAttendees}` : ''}</p>
+    </CardContent>
+     <CardFooter className="p-4 border-t">
+      <Button asChild size="sm" className="w-full btn-gradient">
+        <Link href={`/events/${event.id}`}>View & Manage</Link>
+      </Button>
+    </CardFooter>
+  </Card>
+);
+
 
 export default function UserProfilePage() {
   const params = useParams();
   const router = useRouter();
   const routeUserId = params.userId as string;
   
-  const { user: authUser, loading: authLoading } = useAuth();
+  const { user: authUser, loading: authLoading, refreshUser } = useAuth();
   const [profileUser, setProfileUser] = useState<User | null>(null);
+  
   const [userPosts, setUserPosts] = useState<Post[]>([]);
+  const [loadingPosts, setLoadingPosts] = useState(true);
+  const [postsError, setPostsError] = useState<string|null>(null);
+
+  const [userComments, setUserComments] = useState<CommentType[]>([]);
+  const [loadingComments, setLoadingComments] = useState(true);
+  const [commentsError, setCommentsError] = useState<string|null>(null);
+  
+  const [rsvpdEvents, setRsvpdEvents] = useState<EventType[]>([]);
+  const [loadingRsvpdEvents, setLoadingRsvpdEvents] = useState(true);
+  const [rsvpdEventsError, setRsvpdEventsError] = useState<string|null>(null);
+
+  const [organizedEvents, setOrganizedEvents] = useState<EventType[]>([]);
+  const [loadingOrganizedEvents, setLoadingOrganizedEvents] = useState(true);
+  const [organizedEventsError, setOrganizedEventsError] = useState<string|null>(null);
+
   const [userBadges, setUserBadges] = useState<BadgeType[]>([]); 
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [loadingProfile, setLoadingProfile] = useState(true);
+  const [profileError, setProfileError] = useState<string | null>(null);
 
   const userIdToFetch = routeUserId === 'me' && authUser ? authUser.id : routeUserId;
 
-  const fetchProfileData = useCallback(async (currentUserId: string | undefined) => {
-    if (!currentUserId || currentUserId === 'me' && !authUser && !authLoading) {
-        if (currentUserId === 'me' && !authUser && !authLoading) {
-            setError("Cannot load 'me' profile. User not authenticated.");
-        } else if (!currentUserId) {
-             setError("User ID is missing.");
-        }
-        setIsLoading(false);
-        return;
-    }
-    
-    setIsLoading(true);
-    setError(null);
-
+  const fetchProfileData = useCallback(async (currentProfileId: string) => {
+    setLoadingProfile(true);
+    setProfileError(null);
     try {
-      const userResponse = await fetch(`/api/users/${currentUserId}`);
+      const userResponse = await fetch(`/api/users/${currentProfileId}`);
       if (!userResponse.ok) {
         const errorData = await userResponse.json();
         throw new Error(errorData.message || `Failed to fetch user data: ${userResponse.statusText}`);
@@ -108,53 +180,120 @@ export default function UserProfilePage() {
       const foundUser: User = await userResponse.json();
       setProfileUser(foundUser);
 
-      if (foundUser && foundUser.id) {
-        // Fetch posts by this user (authorId is an ObjectId in DB, foundUser.id is string)
-        const postsResponse = await fetch(`/api/posts?authorId=${foundUser.id}`); 
-        if (!postsResponse.ok) throw new Error(`Failed to fetch posts: ${postsResponse.statusText}`);
-        const allPostsData: Post[] = await postsResponse.json();
-        setUserPosts(allPostsData.filter(p => p.status === 'published'));
-        
-        // Badges are still fetched from JSON for demo
-        const badgesResponse = await fetch('/api/data/badges.json'); // This remains static for now
-        if (!badgesResponse.ok) throw new Error(`Failed to fetch badges: ${badgesResponse.statusText}`);
+      // Badges remain static for now
+      const badgesResponse = await fetch('/api/data/badges.json'); 
+      if (!badgesResponse.ok) console.warn(`Failed to fetch badges: ${badgesResponse.statusText}`);
+      else {
         const badgesData: BadgeType[] = await badgesResponse.json();
         setUserBadges(foundUser.id === authUser?.id ? badgesData : badgesData.slice(0, Math.floor(Math.random() * badgesData.length + 1))); 
-      } else {
-        setError("User not found.");
-        setProfileUser(null);
       }
+
     } catch (e) {
-      console.error("Failed to fetch profile data:", e);
-      setError(e instanceof Error ? e.message : "Failed to load profile.");
+      console.error("Failed to fetch profile user data:", e);
+      setProfileError(e instanceof Error ? e.message : "Failed to load profile.");
       setProfileUser(null);
     } finally {
-      setIsLoading(false);
+      setLoadingProfile(false);
     }
-  }, [authUser, authLoading]); 
+  }, [authUser]);
+
+  const fetchUserPosts = useCallback(async (currentProfileId: string) => {
+    setLoadingPosts(true);
+    setPostsError(null);
+    try {
+      const forUserIdParam = authUser ? `&forUserId=${authUser.id}` : "";
+      const postsResponse = await fetch(`/api/posts?authorId=${currentProfileId}${forUserIdParam}`); 
+      if (!postsResponse.ok) {
+          const errorData = await postsResponse.json();
+          throw new Error(errorData.message || `Failed to fetch posts`);
+      }
+      const postsData: Post[] = await postsResponse.json();
+      setUserPosts(postsData.filter(p => p.status === 'published'));
+    } catch (e) {
+        setPostsError(e instanceof Error ? e.message : "Failed to load posts.");
+    } finally {
+        setLoadingPosts(false);
+    }
+  }, [authUser]);
   
+  const fetchUserComments = useCallback(async (currentProfileId: string) => {
+    setLoadingComments(true);
+    setCommentsError(null);
+    try {
+        const commentsResponse = await fetch(`/api/users/${currentProfileId}/comments`);
+        if(!commentsResponse.ok) {
+            const errorData = await commentsResponse.json();
+            throw new Error(errorData.message || `Failed to fetch comments`);
+        }
+        setUserComments(await commentsResponse.json());
+    } catch(e) {
+        setCommentsError(e instanceof Error ? e.message : "Failed to load comments.");
+    } finally {
+        setLoadingComments(false);
+    }
+  }, []);
+
+  const fetchRsvpdEvents = useCallback(async (currentProfileId: string) => {
+    setLoadingRsvpdEvents(true);
+    setRsvpdEventsError(null);
+    try {
+        const eventsResponse = await fetch(`/api/events?rsvpdBy=${currentProfileId}`);
+        if(!eventsResponse.ok) {
+            const errorData = await eventsResponse.json();
+            throw new Error(errorData.message || `Failed to fetch RSVP'd events`);
+        }
+        setRsvpdEvents(await eventsResponse.json());
+    } catch(e) {
+        setRsvpdEventsError(e instanceof Error ? e.message : "Failed to load RSVP'd events.");
+    } finally {
+        setLoadingRsvpdEvents(false);
+    }
+  }, []);
+
+  const fetchOrganizedEvents = useCallback(async (currentProfileId: string) => {
+    setLoadingOrganizedEvents(true);
+    setOrganizedEventsError(null);
+    try {
+        const eventsResponse = await fetch(`/api/events?organizerId=${currentProfileId}`);
+        if(!eventsResponse.ok) {
+            const errorData = await eventsResponse.json();
+            throw new Error(errorData.message || `Failed to fetch organized events`);
+        }
+        setOrganizedEvents(await eventsResponse.json());
+    } catch(e) {
+        setOrganizedEventsError(e instanceof Error ? e.message : "Failed to load organized events.");
+    } finally {
+        setLoadingOrganizedEvents(false);
+    }
+  }, []);
+
+
   useEffect(() => {
     if (!authLoading && userIdToFetch) {
       fetchProfileData(userIdToFetch);
+      fetchUserPosts(userIdToFetch);
+      fetchUserComments(userIdToFetch);
+      fetchRsvpdEvents(userIdToFetch);
+      fetchOrganizedEvents(userIdToFetch);
     } else if (routeUserId === 'me' && !authUser && !authLoading) {
         toast.error("Please log in to view your profile.");
         router.push(`/login?redirect=/profile/me`);
     }
-  }, [userIdToFetch, authLoading, authUser, fetchProfileData, router, routeUserId]);
+  }, [userIdToFetch, authLoading, authUser, fetchProfileData, fetchUserPosts, fetchUserComments, fetchRsvpdEvents, fetchOrganizedEvents, router, routeUserId]);
 
 
-  if (authLoading || isLoading) {
+  if (authLoading || loadingProfile) {
     return <ProfileSkeleton />;
   }
 
-  if (error) {
+  if (profileError) {
     return (
         <div className="container mx-auto py-8 text-center">
             <div className="flex items-center justify-center bg-destructive/10 text-destructive border border-destructive/30 p-4 rounded-md max-w-md mx-auto">
             <AlertTriangle className="h-6 w-6 mr-3" />
             <div>
                 <h2 className="font-semibold">Error loading profile</h2>
-                <p className="text-sm">{error}</p>
+                <p className="text-sm">{profileError}</p>
             </div>
             </div>
         </div>
@@ -184,7 +323,7 @@ export default function UserProfilePage() {
     <div className="container mx-auto py-8">
       <Card className="mb-8 shadow-xl overflow-hidden">
         <div className="h-40 md:h-48 bg-gradient-to-r from-primary via-accent to-purple-600 relative">
-          <Image src="https://placehold.co/1200x250.png" alt="Profile banner" layout="fill" objectFit="cover" data-ai-hint="abstract banner pattern" className="opacity-50"/>
+          <Image src="https://placehold.co/1200x250.png" alt="Profile banner" layout="fill" objectFit="cover" data-ai-hint="abstract pattern" className="opacity-50"/>
         </div>
         <CardContent className="p-6 pt-0 relative">
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6 -mt-16 md:-mt-20">
@@ -202,7 +341,7 @@ export default function UserProfilePage() {
             </div>
             {isOwnProfile && (
               <div className="pt-4 md:pt-20">
-                <Button variant="outline" onClick={() => toast.error("Edit profile not implemented.")}><Edit3 className="h-4 w-4 mr-2" /> Edit Profile</Button>
+                <Button variant="outline" asChild><Link href="/settings"><Edit3 className="h-4 w-4 mr-2" /> Edit Profile</Link></Button>
               </div>
             )}
           </div>
@@ -210,26 +349,55 @@ export default function UserProfilePage() {
       </Card>
 
       <Tabs defaultValue="posts" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 mb-6">
-          <TabsTrigger value="posts">Posts ({userPosts.length})</TabsTrigger>
-          <TabsTrigger value="activity" disabled>Activity</TabsTrigger>
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6">
+          <TabsTrigger value="posts">Posts ({loadingPosts ? '...' : userPosts.length})</TabsTrigger>
+          <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="badges">Badges ({userBadges.length})</TabsTrigger>
-          <TabsTrigger value="events" disabled>Events</TabsTrigger>
+          <TabsTrigger value="events">My Events ({loadingOrganizedEvents ? '...' : organizedEvents.length})</TabsTrigger>
         </TabsList>
+        
         <TabsContent value="posts">
-          {userPosts.length > 0 ? (
+          {loadingPosts && <div className="space-y-4"><Skeleton className="h-48 w-full" /><Skeleton className="h-48 w-full" /></div>}
+          {postsError && <p className="text-destructive text-center py-10">{postsError}</p>}
+          {!loadingPosts && !postsError && userPosts.length > 0 && (
             <div className="space-y-6">
               {userPosts.map(post => (
-                <PostCard key={post.id!} post={post} />
+                <PostCard key={post.id!} post={post} onToggleBookmark={refreshUser} onToggleLike={refreshUser}/>
               ))}
             </div>
-          ) : (
+          )}
+          {!loadingPosts && !postsError && userPosts.length === 0 && (
             <p className="text-muted-foreground text-center py-10">This user hasn't made any posts yet.</p>
           )}
         </TabsContent>
+
         <TabsContent value="activity">
-          <p className="text-muted-foreground text-center py-10">Activity feed coming soon!</p>
+            <div className="space-y-6">
+                <section>
+                    <h3 className="text-xl font-semibold mb-3 font-headline flex items-center"><MessageSquare className="mr-2 h-5 w-5 text-primary"/>Recent Comments</h3>
+                    {loadingComments && <div className="space-y-2"><Skeleton className="h-20 w-full"/><Skeleton className="h-20 w-full"/></div>}
+                    {commentsError && <p className="text-destructive text-center py-5">{commentsError}</p>}
+                    {!loadingComments && !commentsError && userComments.length > 0 ? (
+                        userComments.map(comment => <ActivityCommentCard key={comment.id} comment={comment} />)
+                    ) : (
+                       !loadingComments && !commentsError && <p className="text-muted-foreground text-center py-5">No recent comments.</p>
+                    )}
+                </section>
+                <section>
+                    <h3 className="text-xl font-semibold mb-3 font-headline flex items-center"><Activity className="mr-2 h-5 w-5 text-primary"/>Events Attending</h3>
+                    {loadingRsvpdEvents && <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><Skeleton className="h-32 w-full"/><Skeleton className="h-32 w-full"/></div>}
+                    {rsvpdEventsError && <p className="text-destructive text-center py-5">{rsvpdEventsError}</p>}
+                     {!loadingRsvpdEvents && !rsvpdEventsError && rsvpdEvents.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {rsvpdEvents.map(event => <ActivityEventCard key={event.id} event={event} />)}
+                        </div>
+                    ) : (
+                       !loadingRsvpdEvents && !rsvpdEventsError && <p className="text-muted-foreground text-center py-5">Not RSVP'd to any upcoming events.</p>
+                    )}
+                </section>
+            </div>
         </TabsContent>
+
          <TabsContent value="badges">
           {userBadges.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
@@ -238,11 +406,30 @@ export default function UserProfilePage() {
               ))}
             </div>
           ) : (
-             <p className="text-muted-foreground text-center py-10">This user has not earned any badges yet.</p>
+             <p className="text-muted-foreground text-center py-10 flex flex-col items-center">
+                <Award className="h-12 w-12 mb-3 text-muted-foreground/50"/>
+                This user has not earned any badges yet.
+             </p>
           )}
         </TabsContent>
+
         <TabsContent value="events">
-          <p className="text-muted-foreground text-center py-10">Event participation history coming soon!</p>
+          <h3 className="text-xl font-semibold mb-4 font-headline flex items-center"><CalendarIconLucide className="mr-2 h-5 w-5 text-primary"/>Events Organized</h3>
+          {loadingOrganizedEvents && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"><Skeleton className="h-64 w-full"/><Skeleton className="h-64 w-full"/></div>}
+          {organizedEventsError && <p className="text-destructive text-center py-10">{organizedEventsError}</p>}
+          {!loadingOrganizedEvents && !organizedEventsError && organizedEvents.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {organizedEvents.map(event => (
+                <OrganizedEventCard key={event.id} event={event} />
+              ))}
+            </div>
+          ) : (
+            !loadingOrganizedEvents && !organizedEventsError && 
+            <p className="text-muted-foreground text-center py-10 flex flex-col items-center">
+                <CalendarIconLucide className="h-12 w-12 mb-3 text-muted-foreground/50"/>
+                This user hasn't organized any events.
+            </p>
+          )}
         </TabsContent>
       </Tabs>
     </div>

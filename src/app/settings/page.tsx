@@ -8,19 +8,19 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { User as UserIcon, Bell, Palette, Lock, Loader2, AlertTriangle } from 'lucide-react'; // Renamed User to UserIcon
+import { User as UserIcon, Bell, Palette, Lock, Loader2, AlertTriangle } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth-provider";
 import { useRouter } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 
 const profileFormSchema = z.object({
   name: z.string().min(2, "Name must be at least 2 characters.").max(50, "Name cannot exceed 50 characters."),
-  bio: z.string().max(300, "Bio cannot exceed 300 characters.").optional(),
-  avatarUrl: z.string().url("Please enter a valid URL for your avatar.").optional().or(z.literal('')),
+  bio: z.string().max(300, "Bio cannot exceed 300 characters.").optional().nullable(), // Allow null for bio
+  avatarUrl: z.string().url("Please enter a valid URL for your avatar.").optional().nullable().or(z.literal('')), // Allow null or empty for avatar
 });
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
@@ -31,13 +31,12 @@ export default function SettingsPage() {
   const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
   const [isSubmittingPreferences, setIsSubmittingPreferences] = useState(false);
 
-
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
-      name: user?.name || '',
-      bio: user?.bio || '',
-      avatarUrl: user?.avatarUrl || '',
+      name: '',
+      bio: '',
+      avatarUrl: '',
     }
   });
   
@@ -62,17 +61,25 @@ export default function SettingsPage() {
     }
     setIsSubmittingProfile(true);
     try {
+      // Ensure bio and avatarUrl are passed as null if empty or truly null
+      const payload = {
+        ...data,
+        bio: data.bio === '' ? null : data.bio,
+        avatarUrl: data.avatarUrl === '' ? null : data.avatarUrl,
+      };
+
       const response = await fetch(`/api/users/${user.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(data),
+        body: JSON.stringify(payload),
       });
       const result = await response.json();
       if (!response.ok) {
         throw new Error(result.message || "Failed to update profile.");
       }
       toast.success("Profile updated successfully!");
-      await refreshUser(); // Refresh user context to get updated data
+      await refreshUser(); 
+      form.reset(result.user); // Reset form with new user data from response
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "An unknown error occurred.");
     } finally {
@@ -83,9 +90,8 @@ export default function SettingsPage() {
   const handlePreferencesSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setIsSubmittingPreferences(true);
-    // Simulate API call
     setTimeout(() => {
-        toast.success("Your preferences have been updated.");
+        toast.success("Your preferences have been updated (UI only).");
         setIsSubmittingPreferences(false);
     }, 1000);
   };
@@ -211,7 +217,8 @@ export default function SettingsPage() {
                     if (checked) document.documentElement.classList.add('dark');
                     else document.documentElement.classList.remove('dark');
                     toast.success(`Dark mode ${checked ? 'enabled' : 'disabled'}.`);
-                }} defaultChecked={typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches} />
+                    // Optionally persist this preference to localStorage or backend
+                }} defaultChecked={typeof window !== 'undefined' && window.localStorage.getItem('theme') === 'dark'} />
               </div>
               <p className="text-xs text-muted-foreground mt-2">Toggle dark or light theme.</p>
             </AccordionContent>
