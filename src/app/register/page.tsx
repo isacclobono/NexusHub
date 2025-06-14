@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { useToast } from "@/hooks/use-toast";
+import toast from 'react-hot-toast';
 import { UserPlus, Loader2, LogIn, AlertTriangle } from "lucide-react";
 import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
@@ -19,7 +19,6 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
   const router = useRouter();
   const { register } = useAuth();
 
@@ -29,21 +28,13 @@ export default function RegisterPage() {
     if (password !== confirmPassword) {
       const msg = "Passwords do not match. Please re-enter.";
       setError(msg);
-      toast({
-        title: "Password Mismatch",
-        description: msg,
-        variant: "destructive",
-      });
+      toast.error(msg);
       return;
     }
     if (password.length < 8) {
         const msg = "Password must be at least 8 characters long.";
         setError(msg);
-        toast({
-            title: "Password Too Short",
-            description: msg,
-            variant: "destructive",
-        });
+        toast.error(msg);
         return;
     }
 
@@ -52,20 +43,13 @@ export default function RegisterPage() {
     const result = await register(name, email, password);
 
     if (result.success) {
-      toast({
-        title: "Registration Successful!",
-        description: result.message || "You can now log in with your new account.",
-        duration: 7000,
-      });
-      router.push('/login'); // Redirect to login page after successful registration
+      toast.success(result.message || "You can now log in with your new account.", { duration: 7000 });
+      console.warn("Registration simulation: User data is NOT being persistently stored in users.json on the client-side. Manual addition to users.json is needed for login testing of this new user if not using a backend.");
+      router.push('/login'); 
     } else {
       const regError = result.message || "Could not register user. Please try again.";
       setError(regError);
-      toast({
-        title: "Registration Failed",
-        description: regError,
-        variant: "destructive",
-      });
+      toast.error(regError);
     }
     setIsLoading(false);
   };

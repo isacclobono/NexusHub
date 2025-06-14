@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -22,7 +23,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import React, { useState } from 'react';
-import { useToast } from '@/hooks/use-toast';
+import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
 import {
   Select,
@@ -40,9 +41,9 @@ const eventFormSchema = z.object({
   endTime: z.date({ required_error: "End date and time are required."}),
   location: z.string().optional(),
   category: z.string().optional(),
-  tags: z.string().optional(), // Comma-separated
+  tags: z.string().optional(), 
   maxAttendees: z.number().int().positive().optional(),
-  imageUrl: z.any().optional(), // Placeholder for file upload
+  imageUrl: z.any().optional(), 
 }).refine(data => data.endTime > data.startTime, {
   message: "End date and time must be after start date and time.",
   path: ["endTime"],
@@ -52,7 +53,7 @@ type EventFormValues = z.infer<typeof eventFormSchema>;
 
 export default function CreateEventPage() {
   const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
+  
 
   const form = useForm<EventFormValues>({
     resolver: zodResolver(eventFormSchema),
@@ -65,10 +66,10 @@ export default function CreateEventPage() {
   async function onSubmit(data: EventFormValues) {
     setIsLoading(true);
     console.log('Event data:', data);
-    // Simulate API call
+    
     await new Promise(resolve => setTimeout(resolve, 1500));
     setIsLoading(false);
-    toast({ title: 'Event Created!', description: `Your event "${data.title}" has been successfully created.` });
+    toast.success(`Your event "${data.title}" has been successfully created.`);
     form.reset();
   }
 
@@ -144,7 +145,6 @@ export default function CreateEventPage() {
                             onSelect={field.onChange}
                             initialFocus
                           />
-                           {/* Add Time Picker here if needed */}
                         </PopoverContent>
                       </Popover>
                       <FormMessage />
@@ -183,7 +183,6 @@ export default function CreateEventPage() {
                             onSelect={field.onChange}
                             initialFocus
                           />
-                          {/* Add Time Picker here if needed */}
                         </PopoverContent>
                       </Popover>
                       <FormMessage />

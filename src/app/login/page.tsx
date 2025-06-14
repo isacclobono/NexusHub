@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter }
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { useToast } from "@/hooks/use-toast";
+import toast from 'react-hot-toast';
 import { LogIn, Loader2, UserPlus, AlertTriangle } from "lucide-react";
 import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
@@ -17,7 +17,6 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { toast } = useToast();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { login } = useAuth();
@@ -30,19 +29,13 @@ export default function LoginPage() {
     const success = await login(email, password);
 
     if (success) {
-      toast({
-        title: "Login Successful",
-        description: "Welcome back!",
-      });
+      toast.success("Welcome back!");
       const redirectUrl = searchParams.get('redirect') || '/feed';
       router.push(redirectUrl);
     } else {
-      setError("Invalid email or password. Please try again.");
-      toast({
-        title: "Login Failed",
-        description: "Invalid email or password. Please try again.",
-        variant: "destructive",
-      });
+      const errorMessage = "Invalid email or password. Please try again.";
+      setError(errorMessage);
+      toast.error(errorMessage);
     }
     setIsLoading(false);
   };
@@ -82,7 +75,7 @@ export default function LoginPage() {
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
                 <Button variant="link" size="sm" className="p-0 h-auto text-xs text-primary hover:text-accent" disabled={isLoading} asChild>
-                   <Link href="#"><span>Forgot password?</span></Link>
+                   <Link href="#"><span className="inline-flex items-center justify-center">Forgot password?</span></Link>
                 </Button>
               </div>
               <Input

@@ -18,12 +18,11 @@ import {
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
-import { useToast } from '@/hooks/use-toast';
+import toast from 'react-hot-toast';
 
 export function Header() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
-  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = React.useState('');
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -35,10 +34,7 @@ export function Header() {
 
   const handleLogout = () => {
     logout();
-    toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out.",
-    });
+    toast.success("You have been successfully logged out.");
     router.push('/login');
   };
 
@@ -49,7 +45,6 @@ export function Header() {
         <SidebarTrigger />
       </div>
       <div className="hidden md:block">
-         {/* Logo can be here if sidebar is collapsible to offcanvas */}
       </div>
       <div className="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
         <form onSubmit={handleSearchSubmit} className="ml-auto flex-1 sm:flex-initial">
@@ -65,8 +60,10 @@ export function Header() {
             />
           </div>
         </form>
-        <Button variant="ghost" size="icon" className="rounded-full" aria-label="Notifications">
-          <Bell className="h-5 w-5" />
+        <Button variant="ghost" size="icon" className="rounded-full" aria-label="Notifications" asChild>
+          <Link href="/notifications">
+            <Bell className="h-5 w-5" />
+          </Link>
         </Button>
         {loading ? (
             <Button variant="ghost" size="icon" className="rounded-full" disabled>

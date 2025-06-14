@@ -18,9 +18,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, UploadCloud, Sparkles, ShieldCheck, Lightbulb, Calendar as CalendarIcon } from 'lucide-react';
+import { Loader2, UploadCloud, Sparkles, Lightbulb, Calendar as CalendarIcon } from 'lucide-react';
 import React, { useState, useCallback } from 'react';
-import { useToast } from '@/hooks/use-toast';
+import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
 import {
   Select,
@@ -30,8 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { categorizeContent as callCategorizeContentAI } from '@/ai/flows/smart-content-categorization';
-import { intelligentContentModeration as callIntelligentContentModerationAI } from '@/ai/flows/intelligent-content-moderation';
-import type { CategorizeContentOutput, IntelligentContentModerationOutput } from '@/lib/types'; // Assuming these types exist or define them
+import type { CategorizeContentOutput } from '@/lib/types';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -66,14 +65,12 @@ const GenAICallout = ({ icon: Icon, title, children }: { icon: React.ElementType
 
 
 export function CreatePostForm() {
-  const [isSubmitting, setIsSubmitting] = useState(false); // Renamed from isLoading to avoid confusion
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCategorizing, setIsCategorizing] = useState(false);
-  // Removed isModerating as it's part of the submit flow in API
   const [suggestedCategory, setSuggestedCategory] = useState<string | null>(null);
   const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
   const [showSchedule, setShowSchedule] = useState(false);
-  const { toast } = useToast();
-  const { user } = useAuth(); // Get current user for authorId
+  const { user } = useAuth();
 
   const form = useForm<PostFormValues>({
     resolver: zodResolver(postFormSchema),
@@ -86,7 +83,7 @@ export function CreatePostForm() {
   const handleSuggestCategoryAndTags = useCallback(async () => {
     const content = form.getValues('content');
     if (!content || content.trim().length < 20) {
-      toast({ title: "Content too short", description: "Please write at least 20 characters to get suggestions.", variant: "destructive" });
+      toast.error("Content too short. Please write at least 20 characters to get suggestions.");
       return;
     }
     setIsCategorizing(true);
@@ -94,14 +91,14 @@ export function CreatePostForm() {
       const result = await callCategorizeContentAI({ content });
       setSuggestedCategory(result.category);
       setSuggestedTags(result.tags);
-      toast({ title: "Suggestions Ready!", description: "AI has suggested a category and tags for your post." });
+      toast.success("AI has suggested a category and tags for your post.");
     } catch (error) {
       console.error("Error suggesting category/tags:", error);
-      toast({ title: "Suggestion Failed", description: "Could not get AI suggestions. Please try again.", variant: "destructive" });
+      toast.error("Could not get AI suggestions. Please try again.");
     } finally {
       setIsCategorizing(false);
     }
-  }, [form, toast]);
+  }, [form]);
 
   const applySuggestion = (type: 'category' | 'tags') => {
     if (type === 'category' && suggestedCategory) {
@@ -117,18 +114,16 @@ export function CreatePostForm() {
 
   async function onSubmit(data: PostFormValues) {
     if (!user) {
-      toast({ title: 'Authentication Error', description: 'You must be logged in to create a post.', variant: 'destructive'});
+      toast.error('You must be logged in to create a post.');
       return;
     }
     setIsSubmitting(true);
 
     const finalData = { 
       ...data,
-      userId: user.id, // Add userId to the data sent to API
+      userId: user.id, 
       scheduledAt: (showSchedule && data.scheduledAt) ? data.scheduledAt.toISOString() : undefined,
-      // Media handling: if (data.media && data.media[0]) { finalData.mediaFile = data.media[0]; }
     };
-    // delete finalData.media; // Don't send FileList object directly if not handled by API
 
     try {
       const response = await fetch('/api/posts', {
@@ -141,17 +136,12 @@ export function CreatePostForm() {
 
       if (!response.ok) {
         if (result.isFlagged) {
-           toast({
-            title: "Content Moderation Alert",
-            description: result.message || "Post flagged, please revise.",
-            variant: "destructive",
-            duration: 7000,
-          });
+           toast.error(result.message || "Post flagged by moderation, please revise.", { duration: 7000 });
         } else {
           throw new Error(result.message || `Error: ${response.status}`);
         }
       } else {
-        toast({ title: 'Post Created!', description: `Your post "${result.post?.title || 'Untitled'}" has been successfully created.` });
+        toast.success(`Your post "${result.post?.title || 'Untitled'}" has been successfully created.`);
         form.reset();
         setSuggestedCategory(null);
         setSuggestedTags([]);
@@ -160,7 +150,7 @@ export function CreatePostForm() {
     } catch (error) {
       console.error("Error submitting post:", error);
       const errorMessage = error instanceof Error ? error.message : 'Please try again later.';
-      toast({ title: 'An unexpected error occurred', description: errorMessage, variant: 'destructive' });
+      toast.error(`An unexpected error occurred: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
     }
@@ -360,10 +350,10 @@ export function CreatePostForm() {
                                 selected={field.value}
                                 onSelect={(date) => {
                                     const newDate = date ? new Date(date) : undefined;
-                                    if (newDate && field.value) { // Preserve time if date is already set
+                                    if (newDate && field.value) { 
                                         newDate.setHours(field.value.getHours());
                                         newDate.setMinutes(field.value.getMinutes());
-                                    } else if (newDate) { // Set default time for new date
+                                    } else if (newDate) { 
                                         newDate.setHours(9,0,0,0);
                                     }
                                     field.onChange(newDate);

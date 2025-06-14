@@ -13,7 +13,7 @@ import Link from 'next/link';
 import { format } from 'date-fns';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useAuth } from '@/hooks/use-auth-provider';
-import { useToast } from '@/hooks/use-toast';
+import toast from 'react-hot-toast';
 
 const EventDetailSkeleton = () => (
   <div className="container mx-auto py-8">
@@ -57,7 +57,7 @@ export default function EventDetailPage() {
   const params = useParams();
   const eventId = params.eventId as string;
   const { user: currentUser, loading: authLoading } = useAuth();
-  const { toast } = useToast();
+  
 
   const [event, setEvent] = useState<Event | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -102,23 +102,20 @@ export default function EventDetailPage() {
   }, [eventId]);
 
   useEffect(() => {
-    if (!authLoading) { // Only fetch if auth state is resolved
+    if (!authLoading) { 
         fetchEventDetails();
     }
   }, [eventId, authLoading, fetchEventDetails]);
 
   const handleRSVP = () => {
-    // Mock RSVP functionality
     if (!currentUser) {
-        toast({ title: "Login Required", description: "Please login to RSVP for events.", variant: "destructive" });
+        toast.error("Please login to RSVP for events.");
         return;
     }
     if (event && event.rsvps?.some(u => u.id === currentUser.id)) {
-        toast({ title: "Already RSVP'd", description: "You have already RSVP'd to this event." });
+        toast("You have already RSVP'd to this event.");
     } else {
-        toast({ title: "RSVP Successful!", description: `You've RSVP'd for ${event?.title}.`});
-        // In a real app, update the event state and call an API
-        // For demo, we could add current user to rsvps if event is not null
+        toast.success(`You've RSVP'd for ${event?.title}.`);
         if (event) {
             setEvent(prev => prev ? ({ ...prev, rsvps: [...(prev.rsvps || []), currentUser], rsvpIds: [...prev.rsvpIds, currentUser.id] }) : null);
         }
@@ -271,7 +268,7 @@ export default function EventDetailPage() {
                         <h3 className="text-md font-semibold mb-2">Organizer Actions</h3>
                         <div className="flex space-x-2">
                             <Button variant="outline" size="sm"><Edit className="mr-2 h-4 w-4"/> Edit Event</Button>
-                            <Button variant="destructive" size="sm" onClick={() => toast({title: "Delete Action (Not Implemented)", description: "This event would be deleted.", variant:"destructive"})}><Trash2 className="mr-2 h-4 w-4" /> Delete Event</Button>
+                            <Button variant="destructive" size="sm" onClick={() => toast.error("This event would be deleted (Not Implemented).")}><Trash2 className="mr-2 h-4 w-4" /> Delete Event</Button>
                         </div>
                     </div>
                 )}

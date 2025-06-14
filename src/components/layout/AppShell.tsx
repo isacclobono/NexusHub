@@ -27,16 +27,17 @@ import { PlusCircle, LogOut, UserCircle, Settings as SettingsIcon, LogIn, UserPl
 import type { NavItem } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { useToast } from '@/hooks/use-toast';
+import toast from 'react-hot-toast';
 
 
 const SidebarButtonContentWrapper = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { item: NavItem | { icon: React.ElementType; title: string }, isActive?: boolean, asChild?: boolean }
->(({ item, isActive, asChild: _removedAsChild, ...props }, ref) => {
+  React.HTMLAttributes<HTMLDivElement> & { item: NavItem | { icon: React.ElementType; title: string }, isActive?: boolean }
+>(({ item, isActive, ...props }, ref) => {
+  const { asChild: _removedAsChild, ...rest } = props; // Destructure and remove asChild
   const IconComponent = item.icon;
   return (
-    <div ref={ref} {...props} className={cn("flex items-center w-full", props.className)}>
+    <div ref={ref} {...rest} className={cn("flex items-center w-full", props.className)}>
       <IconComponent className={cn("mr-2 h-5 w-5", isActive && "text-primary")} />
       <span className={cn(isActive && "font-semibold")}>{item.title}</span>
     </div>
@@ -46,26 +47,27 @@ SidebarButtonContentWrapper.displayName = 'SidebarButtonContentWrapper';
 
 const UserProfileButtonContentWrapper = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { user?: { avatarUrl?: string, name: string } | null, loading?: boolean, asChild?: boolean }
->(({ user, loading, asChild: _removedAsChild, ...props }, ref) => {
+  React.HTMLAttributes<HTMLDivElement> & { user?: { avatarUrl?: string, name: string } | null, loading?: boolean }
+>(({ user, loading, ...props }, ref) => {
+  const { asChild: _removedAsChild, ...rest } = props; // Destructure and remove asChild
   if (loading) {
     return (
-      <div ref={ref} {...props} className={cn("flex items-center w-full", props.className)}>
+      <div ref={ref} {...rest} className={cn("flex items-center w-full", props.className)}>
         <Skeleton className="h-8 w-8 rounded-full mr-2" />
         <Skeleton className="h-5 w-24" />
       </div>
     );
   }
-  if (!user) { // Should not happen if this component is rendered conditionally
+  if (!user) { 
      return (
-      <div ref={ref} {...props} className={cn("flex items-center w-full", props.className)}>
+      <div ref={ref} {...rest} className={cn("flex items-center w-full", props.className)}>
         <LogIn className="h-5 w-5 mr-2 text-muted-foreground" />
         <span>Login / Sign Up</span>
       </div>
     );
   }
   return (
-    <div ref={ref} {...props} className={cn("flex items-center w-full", props.className)}>
+    <div ref={ref} {...rest} className={cn("flex items-center w-full", props.className)}>
       <Avatar className="h-8 w-8 mr-2 border">
         <AvatarImage src={user.avatarUrl || `https://placehold.co/32x32.png`} alt={user.name} data-ai-hint="profile avatar small"/>
         <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
@@ -81,19 +83,15 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, loading: authLoading, logout, isAuthenticated } = useAuth();
   const router = useRouter();
-  const { toast } = useToast();
 
   const handleLogout = () => {
     logout();
-    toast({
-      title: "Logged Out",
-      description: "You have been successfully logged out.",
-    });
+    toast.success("You have been successfully logged out.");
     router.push('/login');
   };
 
   const userNavItems: NavItem[] = React.useMemo(() => {
-    if (authLoading) return []; // Or return skeleton items
+    if (authLoading) return []; 
     if (isAuthenticated && user) {
       return [
         { title: 'Profile', href: `/profile/${user.id}`, icon: UserCircle },
@@ -105,7 +103,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       { title: 'Login', href: '/login', icon: LogIn },
       { title: 'Register', href: '/register', icon: UserPlus }
     ];
-  }, [user, authLoading, isAuthenticated, handleLogout, router]);
+  }, [user, authLoading, isAuthenticated, router]);
 
 
   return (

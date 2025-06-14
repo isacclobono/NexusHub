@@ -8,30 +8,25 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { User, Bell, Palette, Lock, Loader2, AlertTriangle } from 'lucide-react';
-import { useToast } from "@/hooks/use-toast";
+import toast from 'react-hot-toast';
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth-provider";
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 
 export default function SettingsPage() {
-  const { toast } = useToast();
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
-      router.push('/login?redirect=/settings'); // Redirect to login if not authenticated
+      router.push('/login?redirect=/settings'); 
     }
   }, [authLoading, isAuthenticated, router]);
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    // In a real app, you'd save these settings
-    toast({
-      title: "Settings Saved",
-      description: "Your preferences have been updated.",
-    });
+    toast.success("Your preferences have been updated.");
   };
 
   if (authLoading || !isAuthenticated) {
@@ -50,9 +45,8 @@ export default function SettingsPage() {
     );
   }
   
-  // Ensure user is not null before accessing its properties
   const displayName = user?.name || '';
-  const userEmail = (user as any)?.email || 'user@example.com'; // Assuming email might be on user object
+  const userEmail = (user as any)?.email || 'user@example.com'; 
   const userBio = user?.bio || '';
 
 

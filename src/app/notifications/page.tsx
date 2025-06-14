@@ -10,7 +10,7 @@ import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useToast } from '@/hooks/use-toast';
+import toast from 'react-hot-toast';
 
 const NotificationItemSkeleton = () => (
   <div className="flex items-start space-x-4 p-4 border-b">
@@ -61,23 +61,18 @@ export default function NotificationsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { user, loading: authLoading } = useAuth();
-  const { toast } = useToast();
+  
 
   const fetchNotifications = useCallback(async () => {
     if (!user) return;
     setIsLoading(true);
     setError(null);
     try {
-      // In a real app, you would fetch notifications for the current user.
-      // For this demo, we'll fetch all notifications and filter client-side,
-      // or assume notifications.json is user-specific (which it isn't set up to be yet).
       const response = await fetch('/api/data/notifications.json');
       if (!response.ok) {
         throw new Error(`Failed to fetch notifications: ${response.statusText}`);
       }
       let allNotifications: Notification[] = await response.json();
-      // Filter for the current user, or show all if no specific user ID is in notifications.
-      // This assumes notifications have a userId field.
       allNotifications = allNotifications.filter(n => n.userId === user.id);
       setNotifications(allNotifications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
     } catch (e) {
@@ -98,27 +93,25 @@ export default function NotificationsPage() {
   }, [authLoading, user, fetchNotifications]);
 
   const handleToggleRead = async (id: string) => {
-    // SIMULATED: In a real app, call an API to update read status
     setNotifications(prev =>
       prev.map(n => (n.id === id ? { ...n, isRead: !n.isRead } : n))
     );
-    toast({ title: "Notification status updated (simulated)." });
+    toast("Notification status updated (simulated).");
   };
 
   const handleDelete = async (id: string) => {
-    // SIMULATED: In a real app, call an API to delete
     setNotifications(prev => prev.filter(n => n.id !== id));
-    toast({ title: "Notification deleted (simulated).", variant: "destructive" });
+    toast.error("Notification deleted (simulated).");
   };
 
   const handleMarkAllRead = () => {
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-    toast({ title: "All notifications marked as read (simulated)." });
+    toast("All notifications marked as read (simulated).");
   };
   
   const handleDeleteAll = () => {
     setNotifications([]);
-    toast({ title: "All notifications deleted (simulated).", variant: "destructive"});
+    toast.error("All notifications deleted (simulated).");
   };
 
 
