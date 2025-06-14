@@ -18,10 +18,9 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, UploadCloud, Sparkles, ShieldCheck, Lightbulb } from 'lucide-react'; // Added Lightbulb
+import { Loader2, UploadCloud, Sparkles, ShieldCheck, Lightbulb, Calendar as CalendarIcon } from 'lucide-react';
 import React, { useState, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
-import { createPostAction } from '@/lib/actions/postActions';
 import { CATEGORIES } from '@/lib/constants';
 import {
   Select,
@@ -30,14 +29,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { categorizeContent, CategorizeContentInput } from '@/ai/flows/smart-content-categorization';
-import { intelligentContentModeration, IntelligentContentModerationInput } from '@/ai/flows/intelligent-content-moderation';
+import { categorizeContent as callCategorizeContentAI } from '@/ai/flows/smart-content-categorization';
+import { intelligentContentModeration as callIntelligentContentModerationAI } from '@/ai/flows/intelligent-content-moderation';
+import type { CategorizeContentOutput, IntelligentContentModerationOutput } from '@/lib/types'; // Assuming these types exist or define them
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { Calendar as CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
+import { useAuth } from '@/hooks/use-auth-provider';
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
@@ -66,13 +66,14 @@ const GenAICallout = ({ icon: Icon, title, children }: { icon: React.ElementType
 
 
 export function CreatePostForm() {
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false); // Renamed from isLoading to avoid confusion
   const [isCategorizing, setIsCategorizing] = useState(false);
-  const [isModerating, setIsModerating] = useState(false);
+  // Removed isModerating as it's part of the submit flow in API
   const [suggestedCategory, setSuggestedCategory] = useState<string | null>(null);
   const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
   const [showSchedule, setShowSchedule] = useState(false);
   const { toast } = useToast();
+  const { user } = useAuth(); // Get current user for authorId
 
   const form = useForm<PostFormValues>({
     resolver: zodResolver(postFormSchema),
@@ -90,7 +91,7 @@ export function CreatePostForm() {
     }
     setIsCategorizing(true);
     try {
-      const result = await categorizeContent({ content });
+      const result = await callCategorizeContentAI({ content });
       setSuggestedCategory(result.category);
       setSuggestedTags(result.tags);
       toast({ title: "Suggestions Ready!", description: "AI has suggested a category and tags for your post." });
@@ -115,48 +116,53 @@ export function CreatePostForm() {
 
 
   async function onSubmit(data: PostFormValues) {
-    setIsLoading(true);
-    setIsModerating(true);
+    if (!user) {
+      toast({ title: 'Authentication Error', description: 'You must be logged in to create a post.', variant: 'destructive'});
+      return;
+    }
+    setIsSubmitting(true);
+
+    const finalData = { 
+      ...data,
+      userId: user.id, // Add userId to the data sent to API
+      scheduledAt: (showSchedule && data.scheduledAt) ? data.scheduledAt.toISOString() : undefined,
+      // Media handling: if (data.media && data.media[0]) { finalData.mediaFile = data.media[0]; }
+    };
+    // delete finalData.media; // Don't send FileList object directly if not handled by API
 
     try {
-      const moderationInput: IntelligentContentModerationInput = { content: data.content, sensitivityLevel: 'medium' };
-      const moderationResult = await intelligentContentModeration(moderationInput);
-      setIsModerating(false);
+      const response = await fetch('/api/posts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalData),
+      });
 
-      if (moderationResult.isFlagged) {
-        toast({
-          title: "Content Moderation Alert",
-          description: `Your post has been flagged: ${moderationResult.reason}. Please revise your content.`,
-          variant: "destructive",
-          duration: 7000,
-        });
-        setIsLoading(false);
-        return;
-      }
+      const result = await response.json();
 
-      // If scheduling is shown but no date is set, clear it before submitting
-      const finalData = { ...data };
-      if (!showSchedule || !finalData.scheduledAt) {
-        finalData.scheduledAt = undefined;
-      }
-      
-      const result = await createPostAction(finalData);
-      if (result.success) {
-        toast({ title: 'Post Action Successful!', description: `Your post "${result.post?.title || 'Untitled'}" has been processed.` });
+      if (!response.ok) {
+        if (result.isFlagged) {
+           toast({
+            title: "Content Moderation Alert",
+            description: result.message || "Post flagged, please revise.",
+            variant: "destructive",
+            duration: 7000,
+          });
+        } else {
+          throw new Error(result.message || `Error: ${response.status}`);
+        }
+      } else {
+        toast({ title: 'Post Created!', description: `Your post "${result.post?.title || 'Untitled'}" has been successfully created.` });
         form.reset();
         setSuggestedCategory(null);
         setSuggestedTags([]);
         setShowSchedule(false);
-      } else {
-        toast({ title: 'Error', description: result.error, variant: 'destructive' });
       }
     } catch (error) {
-      console.error(error);
+      console.error("Error submitting post:", error);
       const errorMessage = error instanceof Error ? error.message : 'Please try again later.';
       toast({ title: 'An unexpected error occurred', description: errorMessage, variant: 'destructive' });
     } finally {
-      setIsLoading(false);
-      setIsModerating(false);
+      setIsSubmitting(false);
     }
   }
 
@@ -200,11 +206,11 @@ export function CreatePostForm() {
             />
 
             <GenAICallout icon={Lightbulb} title="AI Content Assistant">
-              Enhance your post with AI! Click to get category & tag suggestions. Content is automatically checked for moderation.
+              Enhance your post with AI! Click to get category & tag suggestions. Content is automatically checked for moderation upon submission.
             </GenAICallout>
 
             <div className="flex items-center gap-4">
-              <Button type="button" variant="outline" onClick={handleSuggestCategoryAndTags} disabled={isCategorizing || isLoading || isModerating}>
+              <Button type="button" variant="outline" onClick={handleSuggestCategoryAndTags} disabled={isCategorizing || isSubmitting}>
                 {isCategorizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                 Suggest Category & Tags
               </Button>
@@ -291,7 +297,7 @@ export function CreatePostForm() {
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
-                      disabled={showSchedule && !!form.getValues("scheduledAt")}
+                      disabled={(showSchedule && !!form.getValues("scheduledAt")) || isSubmitting}
                     />
                   </FormControl>
                 </FormItem>
@@ -313,10 +319,11 @@ export function CreatePostForm() {
                         if (!checked) {
                             form.setValue("scheduledAt", undefined, {shouldValidate: true});
                         }
-                        if (checked) { // If scheduling, ensure it's not a draft
+                        if (checked) { 
                             form.setValue("isDraft", false);
                         }
                     }}
+                    disabled={isSubmitting}
                 />
                 </FormControl>
             </FormItem>
@@ -352,13 +359,19 @@ export function CreatePostForm() {
                                 mode="single"
                                 selected={field.value}
                                 onSelect={(date) => {
-                                    field.onChange(date);
-                                    if(date) form.setValue("isDraft", false); // Cannot be draft if scheduled
+                                    const newDate = date ? new Date(date) : undefined;
+                                    if (newDate && field.value) { // Preserve time if date is already set
+                                        newDate.setHours(field.value.getHours());
+                                        newDate.setMinutes(field.value.getMinutes());
+                                    } else if (newDate) { // Set default time for new date
+                                        newDate.setHours(9,0,0,0);
+                                    }
+                                    field.onChange(newDate);
+                                    if(newDate) form.setValue("isDraft", false); 
                                 }}
                                 initialFocus
-                                disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} // Disable past dates
+                                disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} 
                             />
-                            {/* Basic Time Picker (conceptual) - would need a proper time picker component for full functionality */}
                             <div className="p-2 border-t">
                                 <Input type="time" 
                                     defaultValue={field.value ? format(field.value, "HH:mm") : "09:00"}
@@ -382,12 +395,12 @@ export function CreatePostForm() {
 
 
             <div className="flex justify-end space-x-2 pt-4">
-               <Button type="button" variant="outline" onClick={() => {form.reset(); setShowSchedule(false);}} disabled={isLoading || isModerating}>
+               <Button type="button" variant="outline" onClick={() => {form.reset(); setShowSchedule(false);}} disabled={isSubmitting}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isLoading || isModerating} className="btn-gradient min-w-[120px]">
-                {isModerating ? <ShieldCheck className="mr-2 h-4 w-4 animate-pulse" /> : (isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null)}
-                {isModerating ? 'Checking...' : (isLoading ? 'Submitting...' : (form.getValues('isDraft') ? 'Save Draft' : (form.getValues('scheduledAt') ? 'Schedule Post' : 'Publish Post')))}
+              <Button type="submit" disabled={isSubmitting} className="btn-gradient min-w-[120px]">
+                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isSubmitting ? 'Submitting...' : (form.getValues('isDraft') ? 'Save Draft' : (form.getValues('scheduledAt') ? 'Schedule Post' : 'Publish Post'))}
               </Button>
             </div>
           </form>

@@ -2,8 +2,8 @@
 export interface User {
   id: string;
   name: string;
-  email: string; // Made email mandatory for registration/login
-  password?: string; // Added for login simulation and API storage
+  email: string; 
+  password?: string; 
   avatarUrl?: string;
   bio?: string;
   reputation: number;
@@ -11,7 +11,7 @@ export interface User {
 }
 
 export interface Reaction {
-  id?: string; // Optional: if reactions need unique IDs
+  id?: string; 
   emoji: string;
   count: number;
   reactedByCurrentUser?: boolean;
@@ -43,7 +43,7 @@ export interface Post {
   updatedAt?: string; // ISO Date String
   reactions: Reaction[];
   commentIds?: string[];
-  comments?: Comment[]; // Can hold enriched comments
+  comments?: Comment[]; 
   commentCount: number;
   isBookmarked?: boolean;
   scheduledAt?: string; // ISO Date String
@@ -96,5 +96,17 @@ export interface NavItem {
   external?: boolean;
   label?: string;
   variant?: 'default' | 'ghost';
-  onClick?: () => void; // Added for logout
+  onClick?: () => void; 
+}
+
+export interface Notification {
+  id: string;
+  userId: string; // User to whom the notification is addressed
+  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system';
+  title: string;
+  message: string;
+  link?: string; // Optional link to the relevant content
+  isRead: boolean;
+  createdAt: string; // ISO Date String
+  relatedEntityId?: string; // e.g., postId, eventId
 }
