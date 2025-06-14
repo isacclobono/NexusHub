@@ -95,51 +95,34 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     const usersCollection = db.collection<UserWithPasswordHash>('users');
     const userObjectId = new ObjectId(pathUserId);
 
-    const existingUser = await usersCollection.findOne({ _id: userObjectId }, { projection: { name: 1, avatarUrl: 1 } }); 
+    const existingUser = await usersCollection.findOne({ _id: userObjectId }, { projection: { name: 1, avatarUrl: 1, notificationPreferences: 1, privacy: 1 } }); 
     if (!existingUser) {
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
     }
     
-    const updatePayload: any = { // Using 'any' for $set to allow dynamic keys
-        $set: {
-            updatedAt: new Date().toISOString()
-        }
+    const updatePayloadSet: Partial<UserWithPasswordHash> = {
+        updatedAt: new Date().toISOString()
     };
 
     if (validatedData.name !== undefined) {
-      updatePayload.$set.name = validatedData.name;
+      updatePayloadSet.name = validatedData.name;
     }
     
     if (validatedData.bio !== undefined) { 
-      updatePayload.$set.bio = validatedData.bio === null ? '' : validatedData.bio; 
+      updatePayloadSet.bio = validatedData.bio === null ? '' : validatedData.bio; 
     }
 
     if (validatedData.avatarUrl !== undefined) { 
       if (validatedData.avatarUrl === null || validatedData.avatarUrl === '') {
         const finalNameForAvatar = validatedData.name !== undefined ? validatedData.name : existingUser.name;
-        updatePayload.$set.avatarUrl = `https://placehold.co/100x100.png?text=${(finalNameForAvatar || 'U').charAt(0)}`;
+        updatePayloadSet.avatarUrl = `https://placehold.co/100x100.png?text=${(finalNameForAvatar || 'U').charAt(0)}`;
       } else {
-        updatePayload.$set.avatarUrl = validatedData.avatarUrl;
+        updatePayloadSet.avatarUrl = validatedData.avatarUrl;
       }
     }
 
     if (validatedData.notificationPreferences !== undefined) {
-      // Ensure we only update fields that are actually present in notificationPreferences
-      const prefsToSet: Record<string, boolean> = {};
-      if (validatedData.notificationPreferences.emailNewPosts !== undefined) {
-        prefsToSet['notificationPreferences.emailNewPosts'] = validatedData.notificationPreferences.emailNewPosts;
-      }
-      if (validatedData.notificationPreferences.eventReminders !== undefined) {
-        prefsToSet['notificationPreferences.eventReminders'] = validatedData.notificationPreferences.eventReminders;
-      }
-      if (validatedData.notificationPreferences.mentionNotifications !== undefined) {
-        prefsToSet['notificationPreferences.mentionNotifications'] = validatedData.notificationPreferences.mentionNotifications;
-      }
-      // If user sends an empty object for notificationPreferences, we might still want to set defaults or just ignore it.
-      // Current logic relies on the schema providing defaults if the object is present but keys are missing.
-      // For $set, it's better to explicitly set the whole sub-document or individual fields.
-      // Let's set the whole sub-document, ensuring defaults for any missing keys.
-      updatePayload.$set.notificationPreferences = {
+      updatePayloadSet.notificationPreferences = {
         emailNewPosts: validatedData.notificationPreferences.emailNewPosts ?? existingUser.notificationPreferences?.emailNewPosts ?? true,
         eventReminders: validatedData.notificationPreferences.eventReminders ?? existingUser.notificationPreferences?.eventReminders ?? true,
         mentionNotifications: validatedData.notificationPreferences.mentionNotifications ?? existingUser.notificationPreferences?.mentionNotifications ?? false,
@@ -147,30 +130,32 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     }
 
     if (validatedData.privacy !== undefined) {
-      updatePayload.$set.privacy = validatedData.privacy;
+      updatePayloadSet.privacy = validatedData.privacy;
     }
         
     const updateResult = await usersCollection.updateOne(
       { _id: userObjectId },
-      updatePayload
+      { $set: updatePayloadSet }
     );
 
     if (updateResult.matchedCount === 0) {
-      return NextResponse.json({ message: 'User not found during update operation.' }, { status: 404 });
+      return NextResponse.json({ message: 'User not found during update operation. No changes made.' }, { status: 404 });
     }
     
-    // If modifiedCount is 0 but matchedCount is 1, it means no actual data changed (e.g., same values submitted).
-    // Still, we want to return the current user state.
-    
+    // After update, fetch the user to return the latest state
     const updatedUserDoc = await usersCollection.findOne(
         { _id: userObjectId },
         { projection: { passwordHash: 0 } }
     );
 
     if (!updatedUserDoc) {
-        // This should ideally not happen if matchedCount > 0
-        console.error(`User ${pathUserId} was matched for update, but could not be re-fetched.`);
-        return NextResponse.json({ message: 'Profile update successful, but failed to re-fetch user details.' }, { status: 200 });
+        console.error(`[API User PUT] User ${pathUserId} was matched for update, but could not be re-fetched.`);
+        // Even if re-fetch fails, if modifiedCount > 0 or (modifiedCount === 0 && matchedCount > 0 and something was intended to change), it was likely successful.
+        // It's safer to inform the user of success but with a caveat if the re-fetch fails.
+        if (updateResult.modifiedCount > 0 || (Object.keys(updatePayloadSet).length > 1)) { // more than just updatedAt
+             return NextResponse.json({ message: 'Profile update successful, but failed to re-fetch latest user details.' }, { status: 200 });
+        }
+        return NextResponse.json({ message: 'Profile update operation failed. The document might not have been modified or an unexpected error occurred.' }, { status: 500 });
     }
 
     const updatedUserForClient: User = {
@@ -184,8 +169,8 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     return NextResponse.json({ message: 'Profile updated successfully!', user: updatedUserForClient }, { status: 200 });
 
   } catch (error) {
-    console.error(`API Error updating user ${pathUserId}:`, error);
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    console.error(`[API User PUT Error] Error updating user ${pathUserId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred during profile update.';
     if (error instanceof Error && (error.message.toLowerCase().includes("input must be a 24 character hex string") || error.message.toLowerCase().includes("invalid objectid"))) {
         return NextResponse.json({ message: 'Invalid User ID format provided in path.' }, { status: 400 });
     }
