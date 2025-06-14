@@ -3,22 +3,8 @@
 
 import React, { createContext, useState, useEffect, useCallback, useContext, ReactNode } from 'react';
 import type { User } from '@/lib/types';
-
-// Helper to fetch users from the static JSON file (for login check)
-async function fetchAllUsers(): Promise<User[]> {
-  try {
-    // Add cache-busting parameter to ensure fresh data after registration
-    const response = await fetch(`/api/data/users.json?v=${Date.now()}`);
-    if (!response.ok) {
-      console.error(`HTTP error! status: ${response.status}`);
-      return [];
-    }
-    return await response.json();
-  } catch (error) {
-    console.error("Could not fetch users:", error);
-    return [];
-  }
-}
+import getDb from '@/lib/mongodb'; // We can't use getDb directly in client components. Login will call an API.
+import bcrypt from 'bcryptjs'; // bcrypt also cannot be used directly on client for comparison with DB hash.
 
 interface AuthContextType {
   user: User | null;
@@ -40,7 +26,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const storedUser = sessionStorage.getItem('currentUser');
       if (storedUser) {
-        setUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser);
+        // Ensure _id is correctly handled if it exists from MongoDB responses
+        if (parsedUser._id && !parsedUser.id) {
+          parsedUser.id = typeof parsedUser._id === 'string' ? parsedUser._id : parsedUser._id.toString();
+        }
+        setUser(parsedUser);
       } else {
         setUser(null);
       }
@@ -67,28 +58,36 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const login = async (emailOrUsername: string, pass: string): Promise<boolean> => {
     setLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 750)); // Simulate API delay
     try {
-      const allUsers = await fetchAllUsers();
-      const normalizedInput = emailOrUsername.toLowerCase();
-      
-      const foundUser = allUsers.find(u =>
-        u.email?.toLowerCase() === normalizedInput || // Ensure email is checked
-        u.name.toLowerCase() === normalizedInput
-      );
+      // Client-side login will now call an API route for authentication
+      const response = await fetch('/api/login', { // Assuming /api/login route will be created
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: emailOrUsername.toLowerCase(), password: pass }),
+      });
 
-      if (foundUser && foundUser.password === pass) { // Check password
-        setUser(foundUser);
-        sessionStorage.setItem('currentUser', JSON.stringify(foundUser));
+      const result = await response.json();
+
+      if (response.ok && result.user) {
+        const loggedInUser = result.user;
+        // Ensure _id is mapped to id if not already present
+        if (loggedInUser._id && !loggedInUser.id) {
+            loggedInUser.id = typeof loggedInUser._id === 'string' ? loggedInUser._id : loggedInUser._id.toString();
+        }
+        setUser(loggedInUser);
+        sessionStorage.setItem('currentUser', JSON.stringify(loggedInUser));
         setLoading(false);
         return true;
+      } else {
+        setLoading(false);
+        // Use message from API if available, otherwise a generic one
+        throw new Error(result.message || "Login failed");
       }
-      setLoading(false);
-      return false;
     } catch (error) {
       console.error("Login error:", error);
       setLoading(false);
-      return false;
+      // Rethrow or handle as appropriate for UI
+      throw error; // Let the login page handle displaying this error
     }
   };
 
@@ -100,7 +99,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ name, email, password: pass }), // pass 'password' field
+        body: JSON.stringify({ name, email, password: pass }),
       });
 
       const result = await response.json();
@@ -108,8 +107,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       if (!response.ok) {
         return { success: false, message: result.message || `Registration failed with status: ${response.status}` };
       }
-      // Do not automatically log in the user after registration for this flow.
-      // User will be redirected to login page.
       return { success: true, message: result.message, user: result.user };
     } catch (error) {
       console.error("Registration API call error:", error);
@@ -123,6 +120,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     setUser(null);
     sessionStorage.removeItem('currentUser');
+    // Optionally call a /api/logout endpoint if server-side session needs cleanup
   };
 
   return (

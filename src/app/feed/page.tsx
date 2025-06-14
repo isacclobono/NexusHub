@@ -2,7 +2,7 @@
 'use client';
 
 import { PostCard } from '@/components/feed/PostCard';
-import type { Post, User, Comment as CommentType } from '@/lib/types';
+import type { Post, User } from '@/lib/types';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, MessageSquarePlus, SlidersHorizontal, AlertTriangle } from 'lucide-react';
@@ -38,7 +38,8 @@ const PostSkeleton = () => (
 export default function FeedPage() {
   const [allPosts, setAllPosts] = useState<Post[]>([]); 
   const [displayedPosts, setDisplayedPosts] = useState<Post[]>([]);
-  const [allUsers, setAllUsers] = useState<User[]>([]);
+  // AllUsers is not directly fetched here anymore, PostCard will handle its own author data if needed
+  // Or, API for posts should return enriched author data.
   const [isLoading, setIsLoading] = useState(true);
   const [isCurating, setIsCurating] = useState(false);
   const [curationReasoning, setCurationReasoning] = useState<string | null>(null);
@@ -49,37 +50,17 @@ export default function FeedPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const [postsResponse, usersResponse] = await Promise.all([
-        fetch('/api/data/posts.json'),
-        fetch('/api/data/users.json')
-      ]);
-
-      if (!postsResponse.ok) throw new Error(`Failed to fetch posts: ${postsResponse.statusText}`);
-      if (!usersResponse.ok) throw new Error(`Failed to fetch users: ${usersResponse.statusText}`);
+      // Fetch posts from the API route (which now uses MongoDB)
+      const postsResponse = await fetch('/api/posts');
+      if (!postsResponse.ok) {
+        const errorData = await postsResponse.json();
+        throw new Error(errorData.message || `Failed to fetch posts: ${postsResponse.statusText}`);
+      }
       
       const postsData: Post[] = await postsResponse.json();
-      const usersData: User[] = await usersResponse.json();
-      setAllUsers(usersData);
-
-      const enrichedPosts = postsData.map(post => {
-        const author = usersData.find(u => u.id === post.authorId) || 
-                       { id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: new Date().toISOString() } as User;
-        
-        const comments = post.comments?.map(comment => ({
-          ...comment,
-          author: usersData.find(u => u.id === comment.authorId) || 
-                  { id: 'unknown', name: 'Unknown Commenter', reputation: 0, joinedDate: new Date().toISOString() } as User
-        })) || [];
-
-        return {
-          ...post,
-          author,
-          comments,
-        };
-      });
-      
-      setAllPosts(enrichedPosts);
-      setDisplayedPosts(enrichedPosts.filter(p => p.status === 'published'));
+      // Assuming postsData from API now includes enriched author and comment author details
+      setAllPosts(postsData);
+      setDisplayedPosts(postsData.filter(p => p.status === 'published'));
 
     } catch (e) {
       console.error("Error fetching feed data:", e);
@@ -95,14 +76,13 @@ export default function FeedPage() {
 
   const handlePersonalizeFeed = async () => {
     if (!user || allPosts.length === 0) {
-      if(!user) setError("Please log in to personalize your feed."); // Example user feedback
+      if(!user) setError("Please log in to personalize your feed.");
       return;
     }
     setIsCurating(true);
     setCurationReasoning(null);
     setError(null);
     try {
-      // Ensure userHistory uses dynamic user data if available, or a generic fallback.
       const userHistory = user?.bio ? `User ${user.name} has interests: ${user.bio.substring(0,100)}...` 
                         : `User ${user.name} has shown interest in general community topics.`;
 
@@ -129,7 +109,7 @@ export default function FeedPage() {
       const curatedPosts = allPosts.filter(p => 
         p.status === 'published' && 
         ( (p.title && curatedTitles.includes(p.title.toLowerCase())) || 
-          curatedTitles.some(ct => p.content.toLowerCase().includes(ct.substring(0, Math.min(ct.length, 20) ))) // More robust content check
+          curatedTitles.some(ct => p.content.toLowerCase().includes(ct.substring(0, Math.min(ct.length, 20) )))
         )
       );
       
@@ -163,7 +143,7 @@ export default function FeedPage() {
     );
   }
 
-  if (error && displayedPosts.length === 0) { // Only show full page error if no posts can be displayed
+  if (error && displayedPosts.length === 0) {
     return (
       <div className="container mx-auto py-8 text-center">
         <div className="flex items-center justify-center bg-destructive/10 text-destructive border border-destructive/30 p-4 rounded-md max-w-md mx-auto">
@@ -196,7 +176,7 @@ export default function FeedPage() {
         </div>
       </div>
       
-      {error && ( // Display non-blocking error as a notice if posts are still visible
+      {error && (
          <div className="mb-6 p-3 bg-destructive/10 text-destructive border border-destructive/30 rounded-lg text-sm flex items-center">
           <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0" />
           <p>{error}</p>
@@ -213,7 +193,8 @@ export default function FeedPage() {
       {displayedPosts.length > 0 ? (
         <div className="space-y-6">
           {displayedPosts.map((post) => (
-            <PostCard key={post.id} post={post} allUsers={allUsers} />
+            // PostCard will use post.author which is now enriched by the API
+            <PostCard key={post.id} post={post} /> 
           ))}
         </div>
       ) : (

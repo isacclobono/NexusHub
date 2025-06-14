@@ -1,9 +1,12 @@
 
+import type { ObjectId } from 'mongodb';
+
 export interface User {
-  id: string;
+  _id?: ObjectId; // MongoDB uses _id
+  id?: string; // string representation of _id, often used on client
   name: string;
-  email: string; 
-  password?: string; 
+  email: string;
+  // password field should not be sent to client, handled server-side
   avatarUrl?: string;
   bio?: string;
   reputation: number;
@@ -11,29 +14,31 @@ export interface User {
 }
 
 export interface Reaction {
-  id?: string; 
+  id?: string;
   emoji: string;
   count: number;
   reactedByCurrentUser?: boolean;
 }
 
 export interface Comment {
-  id: string;
-  postId?: string; 
-  parentId?: string; 
-  authorId: string; 
-  author?: User; 
+  _id?: ObjectId;
+  id?: string;
+  postId?: string | ObjectId;
+  parentId?: string | ObjectId;
+  authorId: string | ObjectId;
+  author?: User;
   content: string;
   createdAt: string; // ISO Date String
   reactions: Reaction[];
-  replyIds?: string[]; 
-  replies?: Comment[]; 
+  replyIds?: string[] | ObjectId[];
+  replies?: Comment[];
 }
 
 export interface Post {
-  id: string;
-  authorId: string; 
-  author?: User; 
+  _id?: ObjectId;
+  id?: string;
+  authorId: string | ObjectId;
+  author?: User;
   title?: string;
   content: string;
   media?: { type: 'image' | 'video' | 'document'; url: string; name?: string }[];
@@ -42,8 +47,8 @@ export interface Post {
   createdAt: string; // ISO Date String
   updatedAt?: string; // ISO Date String
   reactions: Reaction[];
-  commentIds?: string[];
-  comments?: Comment[]; 
+  commentIds?: string[] | ObjectId[];
+  comments?: Comment[];
   commentCount: number;
   isBookmarked?: boolean;
   scheduledAt?: string; // ISO Date String
@@ -51,38 +56,40 @@ export interface Post {
 }
 
 export interface Event {
-  id: string;
+  _id?: ObjectId;
+  id?: string;
   title: string;
   description: string;
   imageUrl?: string;
   startTime: string; // ISO Date String
   endTime: string; // ISO Date String
   location?: string;
-  organizerId: string; 
-  organizer?: User; // Enriched on client or by API
-  rsvpIds: string[]; 
-  rsvps?: User[]; // Enriched on client or by API
-  waitlistIds?: string[];
-  waitlist?: User[]; 
+  organizerId: string | ObjectId;
+  organizer?: User;
+  rsvpIds: (string | ObjectId)[]; // Array of user IDs
+  rsvps?: User[];
+  waitlistIds?: (string | ObjectId)[];
+  waitlist?: User[];
   maxAttendees?: number;
   category?: string;
   tags?: string[];
-  feedbackIds?: string[];
+  feedbackIds?: (string | ObjectId)[];
   feedback?: EventFeedback[];
 }
 
 export interface EventFeedback {
-  id: string;
-  eventId: string; 
-  userId: string; 
-  user?: User; 
+  _id?: ObjectId;
+  id?: string;
+  eventId: string | ObjectId;
+  userId: string | ObjectId;
+  user?: User;
   rating: number; // e.g., 1-5 stars
   comment?: string;
   createdAt: string; // ISO Date String
 }
 
 export interface Badge {
-  id: string;
+  id: string; // For badges, we might keep them simple, maybe not in DB for this demo
   name: string;
   description: string;
   iconUrl: string;
@@ -96,21 +103,22 @@ export interface NavItem {
   external?: boolean;
   label?: string;
   variant?: 'default' | 'ghost';
-  onClick?: () => void; 
+  onClick?: () => void;
 }
 
 export interface Notification {
-  id: string;
-  userId: string; // User to whom the notification is addressed
+  _id?: ObjectId;
+  id?: string;
+  userId: string | ObjectId;
   type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp';
   title: string;
   message: string;
-  link?: string; // Optional link to the relevant content
+  link?: string;
   isRead: boolean;
   createdAt: string; // ISO Date String
-  relatedEntityId?: string; // e.g., postId, eventId
-  actor?: { // Optional: User who performed the action causing the notification
-    id: string;
+  relatedEntityId?: string | ObjectId;
+  actor?: {
+    id: string | ObjectId;
     name: string;
     avatarUrl?: string;
   }

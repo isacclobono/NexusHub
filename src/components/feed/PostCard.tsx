@@ -1,16 +1,16 @@
 
-import type { Post, Comment as CommentType, User } from '@/lib/types'; // Added User
+import type { Post, Comment as CommentType, User } from '@/lib/types';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, CornerDownRight } from 'lucide-react';
+import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface PostCardProps {
   post: Post;
-  allUsers?: User[]; // Optional: pass all users for enriching comment authors
+  allUsers?: User[]; // Kept for potential future use if comments are not pre-enriched
 }
 
 const ReactionDisplay = ({ reactions }: { reactions: Post['reactions'] }) => (
@@ -34,7 +34,8 @@ const MediaIcon = ({ type }: { type: 'image' | 'video' | 'document' }) => {
 };
 
 const CommentItem = ({ comment }: { comment: CommentType }) => {
-  const commentAuthor = comment.author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined };
+  // Assuming comment.author is now pre-enriched by the API
+  const commentAuthor = comment.author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined, email: '', reputation: 0, joinedDate: new Date().toISOString() };
   return (
     <div className="flex items-start space-x-3 pt-3">
       <Avatar className="h-8 w-8">
@@ -57,18 +58,12 @@ const CommentItem = ({ comment }: { comment: CommentType }) => {
 };
 
 export function PostCard({ post, allUsers }: PostCardProps) {
+  // Assuming post.author is now pre-enriched by the API
   const { author, title, content, media, category, tags, createdAt, reactions, comments: postComments, commentCount, isBookmarked } = post;
-  const postAuthor = author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined, reputation: 0, joinedDate: '' };
+  const postAuthor = author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined, reputation: 0, joinedDate: '', email: '' };
 
-  // Enrich comment authors if allUsers is provided and comments exist
-  const enrichedComments = postComments?.map(comment => {
-    if (comment.author) return comment; // Already enriched
-    const commentAuthorUser = allUsers?.find(u => u.id === comment.authorId);
-    return {
-      ...comment,
-      author: commentAuthorUser || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined, reputation: 0, joinedDate: '' }
-    };
-  }).slice(0, 2); // Show max 2 comments for brevity
+  // Comments are also assumed to be pre-enriched by the API if present
+  const enrichedComments = postComments?.slice(0, 2); 
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-subtle hover:shadow-md transition-shadow duration-300">
@@ -128,13 +123,12 @@ export function PostCard({ post, allUsers }: PostCardProps) {
             <h4 className="text-sm font-semibold text-muted-foreground mb-1">Comments:</h4>
             <div className="space-y-2">
               {enrichedComments.map(comment => (
-                <CommentItem key={comment.id} comment={comment} />
+                <CommentItem key={comment.id || comment._id?.toString()} comment={comment} />
               ))}
             </div>
             {commentCount > 2 && (
               <Button variant="link" asChild className="text-xs p-0 h-auto mt-2">
-                {/* This link would go to a full post detail page if implemented */}
-                <Link href={`/posts/${post.id}`}>View all {commentCount} comments</Link>
+                <Link href={`/posts/${post.id || post._id?.toString()}`}>View all {commentCount} comments</Link>
               </Button>
             )}
           </div>

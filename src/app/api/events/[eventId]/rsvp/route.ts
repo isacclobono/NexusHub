@@ -1,33 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import fs from 'fs/promises';
-import path from 'path';
+import getDb from '@/lib/mongodb';
+import { ObjectId } from 'mongodb';
 import type { Event, User } from '@/lib/types';
-
-const eventsFilePath = path.join(process.cwd(), 'public', 'api', 'data', 'events.json');
-const usersFilePath = path.join(process.cwd(), 'public', 'api', 'data', 'users.json'); // For user validation
-
-async function readData<T>(filePath: string): Promise<T[]> {
-  try {
-    const data = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(data) as T[];
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return [];
-    }
-    console.error(`Error reading ${filePath}:`, error);
-    throw new Error(`Could not read data from ${filePath}.`);
-  }
-}
-
-async function writeData<T>(filePath: string, data: T[]): Promise<void> {
-  try {
-    await fs.writeFile(filePath, JSON.stringify(data, null, 2), 'utf-8');
-  } catch (error) {
-    console.error(`Error writing ${filePath}:`, error);
-    throw new Error(`Could not save data to ${filePath}.`);
-  }
-}
 
 interface RsvpParams {
   params: { eventId: string };
@@ -40,52 +15,77 @@ export async function POST(request: NextRequest, { params }: RsvpParams) {
   }
 
   try {
-    const { userId } = await request.json(); // User ID should be sent by the client
+    const { userId } = await request.json();
     if (!userId) {
       return NextResponse.json({ message: 'User ID is required to RSVP.' }, { status: 400 });
     }
 
-    const allUsers = await readData<User>(usersFilePath);
-    const currentUser = allUsers.find(u => u.id === userId);
+    const db = await getDb();
+    const usersCollection = db.collection<User>('users');
+    const eventsCollection = db.collection<Omit<Event, 'id' | '_id' | 'rsvps' | 'organizer'> & { _id: ObjectId, organizerId: ObjectId, rsvpIds: ObjectId[] }>('events');
+
+
+    const currentUser = await usersCollection.findOne({ _id: new ObjectId(userId) });
     if (!currentUser) {
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
     }
 
-    const events = await readData<Event>(eventsFilePath);
-    const eventIndex = events.findIndex(e => e.id === eventId);
+    const eventObjectId = new ObjectId(eventId);
+    const event = await eventsCollection.findOne({ _id: eventObjectId });
 
-    if (eventIndex === -1) {
+    if (!event) {
       return NextResponse.json({ message: 'Event not found.' }, { status: 404 });
     }
-
-    const event = events[eventIndex];
+    
+    const userObjectId = new ObjectId(userId);
 
     // Check if already RSVP'd
-    if (event.rsvpIds.includes(userId)) {
-      // Optionally allow un-RSVP by removing the ID, or just return a message
-      // For now, let's assume RSVP is idempotent or we don't support un-RSVP via this POST
-      return NextResponse.json({ message: 'User already RSVP\'d to this event.', event }, { status: 200 });
+    const isAlreadyRsvpd = event.rsvpIds.some(id => id.equals(userObjectId));
+
+    if (isAlreadyRsvpd) {
+      return NextResponse.json({ message: 'User already RSVP\'d to this event.', event: { ...event, id: event._id.toHexString() } }, { status: 200 });
     }
 
-    // Check max attendees
     if (event.maxAttendees && event.rsvpIds.length >= event.maxAttendees) {
-      return NextResponse.json({ message: 'Event is full. Cannot RSVP.' }, { status: 409 }); // 409 Conflict
+      return NextResponse.json({ message: 'Event is full. Cannot RSVP.' }, { status: 409 });
     }
 
-    event.rsvpIds.push(userId);
-    events[eventIndex] = event;
+    const updateResult = await eventsCollection.updateOne(
+      { _id: eventObjectId },
+      { $addToSet: { rsvpIds: userObjectId } } // Use $addToSet to prevent duplicate userId
+    );
 
-    await writeData<Event>(eventsFilePath, events);
-
+    if (updateResult.modifiedCount === 0 && updateResult.matchedCount === 0) {
+        return NextResponse.json({ message: 'Event not found or RSVP failed.' }, { status: 404 });
+    }
+    
+    // Fetch the updated event to return complete data including the new RSVP
+    const updatedEvent = await eventsCollection.findOne({ _id: eventObjectId });
+    if (!updatedEvent) {
+        return NextResponse.json({ message: 'Failed to fetch updated event details.' }, { status: 500 });
+    }
+    
     // Enrich event with organizer and rsvp user objects for the response
-    const organizer = allUsers.find(u => u.id === event.organizerId);
-    const rsvps = event.rsvpIds.map(id => allUsers.find(u => u.id === id)).filter(Boolean) as User[];
-    const enrichedEvent = {
-        ...event,
-        organizer: organizer || { id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: new Date().toISOString() } as User,
-        rsvps
-    };
+    const organizerDoc = await usersCollection.findOne({ _id: updatedEvent.organizerId });
+    const organizerForClient: User | undefined = organizerDoc ? {
+        id: organizerDoc._id!.toHexString(), _id: organizerDoc._id, name: organizerDoc.name, email: organizerDoc.email, 
+        avatarUrl: organizerDoc.avatarUrl, bio: organizerDoc.bio, reputation: organizerDoc.reputation, joinedDate: organizerDoc.joinedDate,
+    } : undefined;
 
+    const rsvpUserDocs = await usersCollection.find({ _id: { $in: updatedEvent.rsvpIds } }).toArray();
+    const rsvpsForClient = rsvpUserDocs.map(doc => ({
+        id: doc._id!.toHexString(), _id: doc._id, name: doc.name, email: doc.email,
+        avatarUrl: doc.avatarUrl, bio: doc.bio, reputation: doc.reputation, joinedDate: doc.joinedDate,
+    }));
+
+    const enrichedEvent: Event = {
+        ...updatedEvent,
+        id: updatedEvent._id.toHexString(),
+        organizerId: updatedEvent.organizerId.toHexString(),
+        organizer: organizerForClient || { id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: new Date().toISOString(), email: "" } as User,
+        rsvpIds: updatedEvent.rsvpIds.map(id => id.toHexString()),
+        rsvps: rsvpsForClient,
+    };
 
     return NextResponse.json({ message: 'Successfully RSVP\'d to event!', event: enrichedEvent }, { status: 200 });
 

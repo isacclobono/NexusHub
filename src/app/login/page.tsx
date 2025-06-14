@@ -26,18 +26,21 @@ export default function LoginPage() {
     setIsLoading(true);
     setError(null);
 
-    const success = await login(email, password);
-
-    if (success) {
-      toast.success("Welcome back!");
-      const redirectUrl = searchParams.get('redirect') || '/feed';
-      router.push(redirectUrl);
-    } else {
-      const errorMessage = "Invalid email or password. Please try again.";
+    try {
+      const success = await login(email, password);
+      if (success) {
+        toast.success("Welcome back!");
+        const redirectUrl = searchParams.get('redirect') || '/feed';
+        router.push(redirectUrl);
+      }
+      // If login throws an error, it will be caught below
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : "Invalid email or password. Please try again.";
       setError(errorMessage);
       toast.error(errorMessage);
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   };
 
   return (
