@@ -3,19 +3,34 @@
   {
     "id": "post1",
     "authorId": "user1",
-    "title": "Exploring the New AI Landscape",
-    "content": "The field of Artificial Intelligence is rapidly evolving. From large language models to generative art, the possibilities seem endless. This post dives into some of the latest trends and what they mean for developers and creators alike. We will cover advancements in NLP, computer vision, and reinforcement learning.",
-    "media": [{ "type": "image", "url": "https://placehold.co/600x400.png", "name": "AI Brain" }],
-    "category": "Technology",
-    "tags": ["AI", "Machine Learning", "Innovation"],
-    "createdAt": "2024-07-20T10:00:00Z",
-    "reactions": [
-      { "emoji": "👍", "count": 15, "reactedByCurrentUser": true },
-      { "emoji": "❤️", "count": 22 },
-      { "emoji": "😂", "count": 8 },
-      { "emoji": "🤯", "count": 5 }
+    "title": "Exploring the New JavaScript Features in ES2023",
+    "content": "ES2023 is packed with exciting new features for JavaScript developers. From new array methods like `toReversed()`, `toSorted()`, `toSpliced()`, and `with()` to improvements in WeakMap usage with symbols, there's a lot to explore. These additions aim to make code more readable and immutable operations more straightforward. Let's dive into some examples and see how they can improve our daily coding tasks.\n\nFor instance, `Array.prototype.toSorted()` provides a non-mutating alternative to `sort()`, which is fantastic for functional programming paradigms.",
+    "media": [
+      { "type": "image", "url": "https://placehold.co/800x450.png", "name": "ES2023 Abstract" }
     ],
-    "commentIds": ["comment1", "comment2"],
+    "category": "Technology",
+    "tags": ["JavaScript", "ES2023", "WebDevelopment"],
+    "createdAt": "2023-10-26T10:00:00Z",
+    "reactions": [{ "emoji": "👍", "count": 15 }, { "emoji": "💡", "count": 8 }],
+    "commentIds": ["comment1-1", "comment1-2"],
+    "comments": [
+      {
+        "id": "comment1-1",
+        "postId": "post1",
+        "authorId": "user2",
+        "content": "Great overview! Really excited about the new array methods.",
+        "createdAt": "2023-10-26T10:30:00Z",
+        "reactions": [{ "emoji": "❤️", "count": 3 }]
+      },
+      {
+        "id": "comment1-2",
+        "postId": "post1",
+        "authorId": "user3",
+        "content": "The non-mutating methods are a game-changer for state management.",
+        "createdAt": "2023-10-26T11:00:00Z",
+        "reactions": [{ "emoji": "👍", "count": 2 }]
+      }
+    ],
     "commentCount": 2,
     "isBookmarked": true,
     "status": "published"
@@ -23,34 +38,76 @@
   {
     "id": "post2",
     "authorId": "user2",
-    "title": "Community Garden Project Update",
-    "content": "Our community garden is flourishing! Thanks to all the volunteers who helped with planting and weeding. We are expecting a bountiful harvest this season. Check out the latest pictures of our tomatoes, cucumbers, and herbs. Next meet-up is this Saturday at 9 AM.",
-    "media": [
-        { "type": "image", "url": "https://placehold.co/600x300.png", "name": "Garden" },
-        { "type": "image", "url": "https://placehold.co/600x350.png", "name": "Vegetables" }
+    "title": "The Future of AI in Community Management",
+    "content": "Artificial intelligence is poised to revolutionize how online communities are managed. From automated content moderation and spam detection to personalized feed curation and intelligent insights for community managers, AI tools can significantly enhance user experience and reduce manual workload. However, ethical considerations and the need for human oversight remain paramount. What are your thoughts on the balance between AI automation and human touch in community platforms?",
+    "category": "AI",
+    "tags": ["AI", "Community", "FutureTech"],
+    "createdAt": "2023-10-25T14:30:00Z",
+    "reactions": [{ "emoji": "🤔", "count": 12 }, { "emoji": "🚀", "count": 5 }],
+    "commentIds": ["comment2-1"],
+    "comments": [
+      {
+        "id": "comment2-1",
+        "postId": "post2",
+        "authorId": "user1",
+        "content": "Interesting perspective. I think AI should be a tool to assist human moderators, not replace them entirely.",
+        "createdAt": "2023-10-25T15:00:00Z",
+        "reactions": [{ "emoji": "👍", "count": 5 }]
+      }
     ],
-    "category": "Community",
-    "tags": ["Gardening", "Local", "Volunteering"],
-    "createdAt": "2024-07-19T14:00:00Z",
-    "reactions": [
-      { "emoji": "🌱", "count": 30 },
-      { "emoji": "❤️", "count": 18 }
-    ],
-    "commentIds": ["comment1_post2"],
     "commentCount": 1,
+    "isBookmarked": false,
     "status": "published"
   },
   {
     "id": "post3",
-    "authorId": "user1",
-    "title": "My Upcoming Talk on Web Performance",
-    "content": "Excited to announce I'll be speaking at WebConf Global next month! My talk will focus on cutting-edge techniques for optimizing web application performance. Prepping my slides now - wish me luck! This is a draft post I plan to schedule.",
-    "category": "Web Development",
-    "tags": ["Performance", "Speaking", "Conference"],
-    "createdAt": "2024-07-21T09:00:00Z",
-    "reactions": [],
+    "authorId": "user3",
+    "title": "Tips for Effective Remote Collaboration",
+    "content": "Working remotely has become the new norm for many. To make it effective, clear communication channels, regular check-ins, and the right set of tools are crucial. Don't forget about virtual team-building activities to maintain morale and connection! What are your go-to strategies for successful remote work?",
+    "media": [
+      { "type": "image", "url": "https://placehold.co/800x400.png", "name": "Remote Work Setup" },
+      { "type": "document", "url": "https://placehold.co/document.pdf", "name": "RemoteWorkChecklist.pdf" }
+    ],
+    "category": "Productivity",
+    "tags": ["RemoteWork", "Collaboration", "Tips"],
+    "createdAt": "2023-10-24T09:15:00Z",
+    "reactions": [{ "emoji": "👏", "count": 20 }],
     "commentIds": [],
+    "comments": [],
     "commentCount": 0,
-    "status": "draft"
+    "isBookmarked": true,
+    "status": "published"
+  },
+  {
+    "id": "post4",
+    "authorId": "user1",
+    "content": "Just launched a new side project! It's a small app to help track personal reading goals. Built with Next.js and Tailwind CSS. Check it out and let me know your feedback! #SideProject #NextJS #TailwindCSS",
+    "category": "Projects",
+    "tags": ["SideProject", "WebDev", "Showcase"],
+    "createdAt": "2023-10-23T18:00:00Z",
+    "reactions": [{ "emoji": "🎉", "count": 18 }, { "emoji": "👀", "count": 7 }],
+    "commentIds": [],
+    "comments": [],
+    "commentCount": 0,
+    "isBookmarked": false,
+    "status": "published"
+  },
+  {
+    "id": "post5",
+    "authorId": "user4",
+    "title": "Understanding Quantum Computing: A Beginner's Guide",
+    "content": "Quantum computing promises to solve problems currently intractable for classical computers. This post breaks down the basic concepts like qubits, superposition, and entanglement in an accessible way. No prior physics degree required!",
+    "media": [
+      { "type": "image", "url": "https://placehold.co/700x400.png", "name": "Quantum Abstract" }
+    ],
+    "category": "Science",
+    "tags": ["QuantumComputing", "Science", "Education"],
+    "createdAt": "2023-10-22T11:00:00Z",
+    "reactions": [{ "emoji": "🤯", "count": 25 }, { "emoji": "👍", "count": 10 }],
+    "commentIds": [],
+    "comments": [],
+    "commentCount": 0,
+    "isBookmarked": true,
+    "status": "published"
   }
 ]

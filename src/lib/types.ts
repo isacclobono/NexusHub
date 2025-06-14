@@ -5,10 +5,11 @@ export interface User {
   avatarUrl?: string;
   bio?: string;
   reputation: number;
-  joinedDate: string;
+  joinedDate: string; // ISO Date String
 }
 
 export interface Reaction {
+  id?: string; // Optional: if reactions need unique IDs
   emoji: string;
   count: number;
   reactedByCurrentUser?: boolean;
@@ -16,34 +17,34 @@ export interface Reaction {
 
 export interface Comment {
   id: string;
-  postId?: string; // Added for linking comment to post
-  parentId?: string; // For replies
-  authorId: string; // Changed from User object to ID
-  author?: User; // Optional: populated after fetching
+  postId?: string; 
+  parentId?: string; 
+  authorId: string; 
+  author?: User; 
   content: string;
-  createdAt: string;
+  createdAt: string; // ISO Date String
   reactions: Reaction[];
-  replyIds?: string[]; // IDs of replies
-  replies?: Comment[]; // Optional: populated after fetching
+  replyIds?: string[]; 
+  replies?: Comment[]; 
 }
 
 export interface Post {
   id: string;
-  authorId: string; // Changed from User object to ID
-  author?: User; // Optional: populated after fetching
+  authorId: string; 
+  author?: User; 
   title?: string;
   content: string;
   media?: { type: 'image' | 'video' | 'document'; url: string; name?: string }[];
   category?: string;
   tags?: string[];
-  createdAt: string;
-  updatedAt?: string;
+  createdAt: string; // ISO Date String
+  updatedAt?: string; // ISO Date String
   reactions: Reaction[];
-  commentIds?: string[]; // IDs of top-level comments
-  comments?: Comment[]; // Optional: populated after fetching
+  commentIds?: string[];
+  comments?: Comment[]; // Can hold enriched comments
   commentCount: number;
   isBookmarked?: boolean;
-  scheduledAt?: string;
+  scheduledAt?: string; // ISO Date String
   status?: 'published' | 'draft' | 'scheduled';
 }
 
@@ -52,30 +53,30 @@ export interface Event {
   title: string;
   description: string;
   imageUrl?: string;
-  startTime: string;
-  endTime: string;
+  startTime: string; // ISO Date String
+  endTime: string; // ISO Date String
   location?: string;
-  organizerId: string; // Changed from User object to ID
-  organizer?: User; // Optional: populated after fetching
-  rsvpIds: string[]; // Changed from User objects to IDs
-  rsvps?: User[]; // Optional: populated after fetching
-  waitlistIds: string[]; // Changed from User objects to IDs
-  waitlist?: User[]; // Optional: populated after fetching
+  organizerId: string; 
+  organizer?: User; 
+  rsvpIds: string[]; 
+  rsvps?: User[]; 
+  waitlistIds?: string[];
+  waitlist?: User[]; 
   maxAttendees?: number;
   category?: string;
   tags?: string[];
-  feedbackIds?: string[]; // IDs of feedback
-  feedback?: EventFeedback[]; // Optional: populated after fetching
+  feedbackIds?: string[];
+  feedback?: EventFeedback[];
 }
 
 export interface EventFeedback {
   id: string;
-  eventId: string; // Added for linking
-  userId: string; // Changed from User object to ID
-  user?: User; // Optional: populated after fetching
-  rating: number;
+  eventId: string; 
+  userId: string; 
+  user?: User; 
+  rating: number; // e.g., 1-5 stars
   comment?: string;
-  createdAt: string;
+  createdAt: string; // ISO Date String
 }
 
 export interface Badge {

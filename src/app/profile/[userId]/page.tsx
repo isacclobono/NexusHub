@@ -3,12 +3,12 @@
 
 import { useParams } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import type { User, Post, Badge as BadgeType } from '@/lib/types';
+import type { User, Post, Badge as BadgeType, Comment as CommentType } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarDays, Edit3, Star, Loader2 } from 'lucide-react';
+import { CalendarDays, Edit3, Star, Loader2, AlertTriangle } from 'lucide-react';
 import { PostCard } from '@/components/feed/PostCard';
 import { format } from 'date-fns';
 import Image from 'next/image';
@@ -21,8 +21,8 @@ const BadgeDisplayComponent = ({ badge }: { badge: BadgeType }) => (
   <TooltipProvider>
     <Tooltip>
       <TooltipTrigger asChild>
-        <div className="flex flex-col items-center p-2 border rounded-lg bg-secondary/50 hover:shadow-md transition-shadow w-24 h-24 justify-center">
-          <Image src={badge.iconUrl} alt={badge.name} width={32} height={32} className="mb-1 rounded-full" data-ai-hint="badge achievement" />
+        <div className="flex flex-col items-center p-2 border rounded-lg bg-card hover:shadow-md transition-shadow w-24 h-24 justify-center cursor-default">
+          <Image src={badge.iconUrl} alt={badge.name} width={32} height={32} className="mb-1 rounded-full" data-ai-hint="badge achievement"/>
           <p className="text-xs font-medium text-center truncate w-full">{badge.name}</p>
         </div>
       </TooltipTrigger>
@@ -37,16 +37,16 @@ const BadgeDisplayComponent = ({ badge }: { badge: BadgeType }) => (
 const ProfileSkeleton = () => (
   <div className="container mx-auto py-8">
     <Card className="mb-8 shadow-lg overflow-hidden">
-      <Skeleton className="h-40 bg-muted" />
+      <Skeleton className="h-40 bg-muted/50" />
       <CardContent className="p-6 pt-0 relative">
-        <div className="flex flex-col md:flex-row items-center md:items-start gap-6 -mt-16">
-          <Skeleton className="h-32 w-32 rounded-full border-4 border-card shadow-md" />
-          <div className="flex-1 pt-16 text-center md:text-left">
-            <Skeleton className="h-8 w-48 mb-2" />
-            <Skeleton className="h-4 w-64 mb-2" />
-            <Skeleton className="h-4 w-32 mb-4" />
+        <div className="flex flex-col md:flex-row items-center md:items-start gap-6 -mt-16 md:-mt-20">
+          <Skeleton className="h-32 w-32 md:h-40 md:w-40 rounded-full border-4 border-card shadow-lg" />
+          <div className="flex-1 pt-4 md:pt-20 text-center md:text-left">
+            <Skeleton className="h-8 w-48 mb-2 mx-auto md:mx-0" />
+            <Skeleton className="h-4 w-64 mb-2 mx-auto md:mx-0" />
+            <Skeleton className="h-4 w-32 mb-4 mx-auto md:mx-0" />
           </div>
-          <div className="pt-16">
+          <div className="pt-4 md:pt-20">
             <Skeleton className="h-10 w-32" />
           </div>
         </div>
@@ -54,10 +54,10 @@ const ProfileSkeleton = () => (
     </Card>
     <Tabs defaultValue="posts" className="w-full">
       <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full rounded-md" />
+        <Skeleton className="h-10 w-full rounded-md" />
+        <Skeleton className="h-10 w-full rounded-md" />
+        <Skeleton className="h-10 w-full rounded-md" />
       </TabsList>
       <TabsContent value="posts">
         <div className="space-y-6">
@@ -78,6 +78,7 @@ export default function UserProfilePage() {
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [userBadges, setUserBadges] = useState<BadgeType[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]); // For enriching post comments
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -99,6 +100,7 @@ export default function UserProfilePage() {
       if (!badgesResponse.ok) throw new Error(`Failed to fetch badges: ${badgesResponse.statusText}`);
       
       const usersData: User[] = await usersResponse.json();
+      setAllUsers(usersData); // Store all users for comment enrichment
       const postsData: Post[] = await postsResponse.json();
       const badgesData: BadgeType[] = await badgesResponse.json();
 
@@ -108,12 +110,21 @@ export default function UserProfilePage() {
       if (foundUser) {
         const enrichedPosts = postsData
           .filter(p => p.authorId === foundUser.id && p.status === 'published')
-          .map(post => ({
-            ...post,
-            author: foundUser, // Already have the author info
-          }));
+          .map(post => {
+            const comments = post.comments?.map(comment => ({
+                ...comment,
+                author: usersData.find(u => u.id === comment.authorId) || 
+                        { id: 'unknown', name: 'Unknown Commenter', reputation: 0, joinedDate: new Date().toISOString() } as User
+            })) || [];
+            return {
+                ...post,
+                author: foundUser,
+                comments,
+            };
+          });
         setUserPosts(enrichedPosts);
-        setUserBadges(badgesData.slice(0, Math.floor(Math.random() * badgesData.length + 1))); // Random badges for demo
+        // Assign all badges to the user for demo purposes on their own profile or a sample selection
+        setUserBadges(foundUser.id === authUser?.id ? badgesData : badgesData.slice(0, Math.floor(Math.random() * badgesData.length + 1))); 
       } else {
         setError("User not found.");
       }
@@ -123,12 +134,12 @@ export default function UserProfilePage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [authUser?.id]); // Added authUser.id to dependency array
   
   useEffect(() => {
     if (!authLoading && userIdToFetch) {
       fetchProfileData(userIdToFetch);
-    } else if (!authLoading && routeUserId !== 'me') {
+    } else if (!authLoading && routeUserId !== 'me' && !userIdToFetch) { // Case where routeUserId is direct ID and authUser is null
        fetchProfileData(routeUserId);
     }
   }, [userIdToFetch, authLoading, routeUserId, fetchProfileData]);
@@ -139,37 +150,60 @@ export default function UserProfilePage() {
   }
 
   if (error) {
-    return <div className="container mx-auto py-8 text-center text-destructive">{error}</div>;
+    return (
+        <div className="container mx-auto py-8 text-center">
+            <div className="flex items-center justify-center bg-destructive/10 text-destructive border border-destructive/30 p-4 rounded-md max-w-md mx-auto">
+            <AlertTriangle className="h-6 w-6 mr-3" />
+            <div>
+                <h2 className="font-semibold">Error loading profile</h2>
+                <p className="text-sm">{error}</p>
+            </div>
+            </div>
+        </div>
+    );
   }
 
   if (!profileUser) {
-    return <div className="container mx-auto py-8 text-center">User not found.</div>;
+    return (
+         <div className="container mx-auto py-8 text-center">
+            <div className="flex items-center justify-center bg-muted/50 text-muted-foreground border border-dashed p-8 rounded-lg max-w-md mx-auto">
+            <AlertTriangle className="h-10 w-10 mr-4" />
+            <div>
+                <h2 className="text-xl font-semibold">User Not Found</h2>
+                <p>The profile you are looking for does not exist.</p>
+                 <Button asChild variant="link" className="mt-4">
+                    <Link href="/members">Back to Members</Link>
+                </Button>
+            </div>
+            </div>
+      </div>
+    );
   }
   
   const isOwnProfile = authUser?.id === profileUser.id;
 
   return (
     <div className="container mx-auto py-8">
-      <Card className="mb-8 shadow-lg overflow-hidden">
-        <div className="h-40 bg-gradient-to-r from-primary to-accent" data-ai-hint="abstract banner">
-          <Image src="https://placehold.co/1200x200.png" alt="Profile banner" width={1200} height={200} className="object-cover w-full h-full"/>
+      <Card className="mb-8 shadow-xl overflow-hidden">
+        <div className="h-40 md:h-48 bg-gradient-to-r from-primary via-accent to-purple-600 relative">
+          <Image src="https://placehold.co/1200x250.png" alt="Profile banner" layout="fill" objectFit="cover" data-ai-hint="abstract banner pattern" className="opacity-50"/>
         </div>
         <CardContent className="p-6 pt-0 relative">
-          <div className="flex flex-col md:flex-row items-center md:items-start gap-6 -mt-16">
-            <Avatar className="h-32 w-32 border-4 border-card shadow-md">
-              <AvatarImage src={profileUser.avatarUrl || 'https://placehold.co/128x128.png'} alt={profileUser.name} data-ai-hint="profile avatar large" />
-              <AvatarFallback className="text-4xl">{profileUser.name.charAt(0)}</AvatarFallback>
+          <div className="flex flex-col md:flex-row items-center md:items-start gap-6 -mt-16 md:-mt-20">
+            <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-card shadow-lg bg-background">
+              <AvatarImage src={profileUser.avatarUrl || 'https://placehold.co/160x160.png'} alt={profileUser.name} data-ai-hint="profile avatar large" />
+              <AvatarFallback className="text-5xl">{profileUser.name.charAt(0)}</AvatarFallback>
             </Avatar>
-            <div className="flex-1 pt-16 text-center md:text-left">
-              <h1 className="text-3xl font-bold font-headline">{profileUser.name}</h1>
-              {profileUser.bio && <p className="text-muted-foreground mt-1">{profileUser.bio}</p>}
+            <div className="flex-1 pt-4 md:pt-20 text-center md:text-left">
+              <h1 className="text-3xl lg:text-4xl font-bold font-headline">{profileUser.name}</h1>
+              {profileUser.bio && <p className="text-muted-foreground mt-1 text-sm md:text-base">{profileUser.bio}</p>}
               <div className="flex items-center justify-center md:justify-start space-x-4 text-sm text-muted-foreground mt-2">
                 <span className="flex items-center"><CalendarDays className="h-4 w-4 mr-1" /> Joined {format(new Date(profileUser.joinedDate), 'MMMM yyyy')}</span>
-                <span className="flex items-center"><Star className="h-4 w-4 mr-1 text-yellow-400" /> {profileUser.reputation} Reputation</span>
+                <span className="flex items-center"><Star className="h-4 w-4 mr-1 text-yellow-400 fill-current" /> {profileUser.reputation} Reputation</span>
               </div>
             </div>
             {isOwnProfile && (
-              <div className="pt-16">
+              <div className="pt-4 md:pt-20">
                 <Button variant="outline"><Edit3 className="h-4 w-4 mr-2" /> Edit Profile</Button>
               </div>
             )}
@@ -178,7 +212,7 @@ export default function UserProfilePage() {
       </Card>
 
       <Tabs defaultValue="posts" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6">
+        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-4 mb-6">
           <TabsTrigger value="posts">Posts ({userPosts.length})</TabsTrigger>
           <TabsTrigger value="activity" disabled>Activity</TabsTrigger>
           <TabsTrigger value="badges">Badges ({userBadges.length})</TabsTrigger>
@@ -188,7 +222,7 @@ export default function UserProfilePage() {
           {userPosts.length > 0 ? (
             <div className="space-y-6">
               {userPosts.map(post => (
-                <PostCard key={post.id} post={post} />
+                <PostCard key={post.id} post={post} allUsers={allUsers} />
               ))}
             </div>
           ) : (
@@ -200,7 +234,7 @@ export default function UserProfilePage() {
         </TabsContent>
          <TabsContent value="badges">
           {userBadges.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
               {userBadges.map(badge => (
                 <BadgeDisplayComponent key={badge.id} badge={badge} />
               ))}

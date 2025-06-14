@@ -1,15 +1,16 @@
 
-import type { Post } from '@/lib/types';
+import type { Post, Comment as CommentType, User } from '@/lib/types'; // Added User
 import Image from 'next/image';
 import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon } from 'lucide-react';
+import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, CornerDownRight } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface PostCardProps {
   post: Post;
+  allUsers?: User[]; // Optional: pass all users for enriching comment authors
 }
 
 const ReactionDisplay = ({ reactions }: { reactions: Post['reactions'] }) => (
@@ -32,11 +33,42 @@ const MediaIcon = ({ type }: { type: 'image' | 'video' | 'document' }) => {
   return <ImageIcon className="h-4 w-4 text-muted-foreground" />;
 };
 
-export function PostCard({ post }: PostCardProps) {
-  const { author, title, content, media, category, tags, createdAt, reactions, commentCount, isBookmarked } = post;
+const CommentItem = ({ comment }: { comment: CommentType }) => {
+  const commentAuthor = comment.author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined };
+  return (
+    <div className="flex items-start space-x-3 pt-3">
+      <Avatar className="h-8 w-8">
+        <AvatarImage src={commentAuthor.avatarUrl || `https://placehold.co/32x32.png`} alt={commentAuthor.name} data-ai-hint="profile avatar small"/>
+        <AvatarFallback>{commentAuthor.name.charAt(0)}</AvatarFallback>
+      </Avatar>
+      <div className="flex-1 text-sm bg-muted/50 p-2.5 rounded-md">
+        <div className="flex items-center justify-between">
+            <Link href={`/profile/${commentAuthor.id}`} className="font-semibold hover:underline text-foreground">
+                {commentAuthor.name}
+            </Link>
+            <p className="text-xs text-muted-foreground">
+                {formatDistanceToNow(new Date(comment.createdAt), { addSuffix: true })}
+            </p>
+        </div>
+        <p className="text-foreground/90 mt-1">{comment.content}</p>
+      </div>
+    </div>
+  );
+};
 
-  // Ensure author is defined, provide a fallback if not (e.g., data still loading/error)
-  const postAuthor = author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined };
+export function PostCard({ post, allUsers }: PostCardProps) {
+  const { author, title, content, media, category, tags, createdAt, reactions, comments: postComments, commentCount, isBookmarked } = post;
+  const postAuthor = author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined, reputation: 0, joinedDate: '' };
+
+  // Enrich comment authors if allUsers is provided and comments exist
+  const enrichedComments = postComments?.map(comment => {
+    if (comment.author) return comment; // Already enriched
+    const commentAuthorUser = allUsers?.find(u => u.id === comment.authorId);
+    return {
+      ...comment,
+      author: commentAuthorUser || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined, reputation: 0, joinedDate: '' }
+    };
+  }).slice(0, 2); // Show max 2 comments for brevity
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-subtle hover:shadow-md transition-shadow duration-300">
@@ -65,7 +97,7 @@ export function PostCard({ post }: PostCardProps) {
         {title && <CardTitle className="text-xl mb-2 font-headline">{title}</CardTitle>}
         <p className="text-foreground whitespace-pre-wrap break-words mb-3">{content.substring(0, 300)}{content.length > 300 && '...'}</p>
         {media && media.length > 0 && (
-          <div className={`grid gap-2 ${media.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+          <div className={`grid gap-2 ${media.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} mb-3`}>
             {media.map((item, index) => (
               <div key={index} className="relative aspect-video rounded-lg overflow-hidden border">
                 {item.type === 'image' && (
@@ -88,6 +120,23 @@ export function PostCard({ post }: PostCardProps) {
                 #{tag}
               </Link>
             ))}
+          </div>
+        )}
+
+        {enrichedComments && enrichedComments.length > 0 && (
+          <div className="mt-4 pt-4 border-t">
+            <h4 className="text-sm font-semibold text-muted-foreground mb-1">Comments:</h4>
+            <div className="space-y-2">
+              {enrichedComments.map(comment => (
+                <CommentItem key={comment.id} comment={comment} />
+              ))}
+            </div>
+            {commentCount > 2 && (
+              <Button variant="link" asChild className="text-xs p-0 h-auto mt-2">
+                {/* This link would go to a full post detail page if implemented */}
+                <Link href={`/posts/${post.id}`}>View all {commentCount} comments</Link>
+              </Button>
+            )}
           </div>
         )}
       </CardContent>

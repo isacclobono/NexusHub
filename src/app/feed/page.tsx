@@ -2,15 +2,15 @@
 'use client';
 
 import { PostCard } from '@/components/feed/PostCard';
-import type { Post, User } from '@/lib/types';
+import type { Post, User, Comment as CommentType } from '@/lib/types';
 import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquarePlus, SlidersHorizontal } from 'lucide-react';
+import { Loader2, MessageSquarePlus, SlidersHorizontal, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { personalizeFeed, PersonalizeFeedInput } from '@/ai/flows/personalized-feed-curation';
 import { useAuth } from '@/hooks/use-auth';
 import { Skeleton } from '@/components/ui/skeleton';
-import Image from 'next/image'; // Added for empty state image
+import Image from 'next/image';
 
 const PostSkeleton = () => (
   <div className="w-full max-w-2xl mx-auto space-y-4 p-4 border rounded-lg shadow-sm bg-card">
@@ -21,9 +21,9 @@ const PostSkeleton = () => (
         <Skeleton className="h-3 w-24" />
       </div>
     </div>
-    <Skeleton className="h-5 w-3/4" /> {/* Title */}
-    <Skeleton className="h-16 w-full" /> {/* Content */}
-    <Skeleton className="h-40 w-full rounded-md" /> {/* Image placeholder */}
+    <Skeleton className="h-5 w-3/4" /> 
+    <Skeleton className="h-16 w-full" /> 
+    <Skeleton className="h-40 w-full rounded-md" /> 
     <div className="flex justify-between items-center pt-2">
       <div className="flex space-x-4">
         <Skeleton className="h-8 w-20" />
@@ -36,9 +36,9 @@ const PostSkeleton = () => (
 
 
 export default function FeedPage() {
-  const [allPosts, setAllPosts] = useState<Post[]>([]); // Store all fetched posts
-  const [displayedPosts, setDisplayedPosts] = useState<Post[]>([]); // Posts to render
-  const [allUsers, setAllUsers] = useState<User[]>([]); // Store all users
+  const [allPosts, setAllPosts] = useState<Post[]>([]); 
+  const [displayedPosts, setDisplayedPosts] = useState<Post[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCurating, setIsCurating] = useState(false);
   const [curationReasoning, setCurationReasoning] = useState<string | null>(null);
@@ -61,11 +61,22 @@ export default function FeedPage() {
       const usersData: User[] = await usersResponse.json();
       setAllUsers(usersData);
 
-      // Enrich posts with author data
-      const enrichedPosts = postsData.map(post => ({
-        ...post,
-        author: usersData.find(u => u.id === post.authorId) || { id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: new Date().toISOString() } as User,
-      }));
+      const enrichedPosts = postsData.map(post => {
+        const author = usersData.find(u => u.id === post.authorId) || 
+                       { id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: new Date().toISOString() } as User;
+        
+        const comments = post.comments?.map(comment => ({
+          ...comment,
+          author: usersData.find(u => u.id === comment.authorId) || 
+                  { id: 'unknown', name: 'Unknown Commenter', reputation: 0, joinedDate: new Date().toISOString() } as User
+        })) || [];
+
+        return {
+          ...post,
+          author,
+          comments,
+        };
+      });
       
       setAllPosts(enrichedPosts);
       setDisplayedPosts(enrichedPosts.filter(p => p.status === 'published'));
@@ -84,17 +95,28 @@ export default function FeedPage() {
 
   const handlePersonalizeFeed = async () => {
     if (!user || allPosts.length === 0) {
+      if(!user) setError("Please log in to personalize your feed."); // Example user feedback
       return;
     }
     setIsCurating(true);
     setCurationReasoning(null);
+    setError(null);
     try {
-      const userHistory = `User ${user.name} has shown interest in AI, technology, and community gardening. They recently viewed posts about machine learning and local volunteering.`;
+      // Ensure userHistory uses dynamic user data if available, or a generic fallback.
+      const userHistory = user?.bio ? `User ${user.name} has interests: ${user.bio.substring(0,100)}...` 
+                        : `User ${user.name} has shown interest in general community topics.`;
+
       const availablePostsSummary = allPosts
         .filter(p => p.status === 'published')
         .map(p => `Title: ${p.title || 'Untitled Post'}\nDescription: ${p.content.substring(0,100)}...\nTags: ${p.tags?.join(', ')}\nCategory: ${p.category}`)
         .join('\n\n');
       
+      if (!availablePostsSummary) {
+        setError("No posts available to personalize.");
+        setIsCurating(false);
+        return;
+      }
+
       const input: PersonalizeFeedInput = {
         userHistory,
         availablePosts: availablePostsSummary,
@@ -106,8 +128,9 @@ export default function FeedPage() {
       
       const curatedPosts = allPosts.filter(p => 
         p.status === 'published' && 
-        (p.title && curatedTitles.includes(p.title.toLowerCase())) || 
-        curatedTitles.some(ct => p.content.toLowerCase().startsWith(ct.substring(0,20)))
+        ( (p.title && curatedTitles.includes(p.title.toLowerCase())) || 
+          curatedTitles.some(ct => p.content.toLowerCase().includes(ct.substring(0, Math.min(ct.length, 20) ))) // More robust content check
+        )
       );
       
       const otherPosts = allPosts.filter(p => p.status === 'published' && !curatedPosts.some(cp => cp.id === p.id));
@@ -115,9 +138,9 @@ export default function FeedPage() {
       setDisplayedPosts([...curatedPosts, ...otherPosts]);
       setCurationReasoning(result.reasoning);
 
-    } catch (error) {
-      console.error("Error personalizing feed:", error);
-      // Handle error (e.g., show a toast message)
+    } catch (aiError) {
+      console.error("Error personalizing feed:", aiError);
+      setError(aiError instanceof Error ? `AI Personalization Error: ${aiError.message}` : "Could not personalize feed.");
     } finally {
       setIsCurating(false);
     }
@@ -140,20 +163,27 @@ export default function FeedPage() {
     );
   }
 
-  if (error) {
+  if (error && displayedPosts.length === 0) { // Only show full page error if no posts can be displayed
     return (
-      <div className="container mx-auto py-8 text-center text-destructive">
-        Error loading feed: {error}
+      <div className="container mx-auto py-8 text-center">
+        <div className="flex items-center justify-center bg-destructive/10 text-destructive border border-destructive/30 p-4 rounded-md max-w-md mx-auto">
+          <AlertTriangle className="h-6 w-6 mr-3" />
+          <div>
+            <h2 className="font-semibold">Error loading feed</h2>
+            <p className="text-sm">{error}</p>
+          </div>
+        </div>
       </div>
     );
   }
+
 
   return (
     <div className="container mx-auto py-8">
       <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
         <h1 className="text-3xl font-headline font-bold text-primary">Community Feed</h1>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handlePersonalizeFeed} disabled={isCurating || !user}>
+          <Button variant="outline" onClick={handlePersonalizeFeed} disabled={isCurating || !user || allPosts.length === 0}>
             {isCurating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SlidersHorizontal className="mr-2 h-4 w-4" />}
             {isCurating ? 'Curating...' : 'Personalize My Feed'}
           </Button>
@@ -165,6 +195,13 @@ export default function FeedPage() {
           </Link>
         </div>
       </div>
+      
+      {error && ( // Display non-blocking error as a notice if posts are still visible
+         <div className="mb-6 p-3 bg-destructive/10 text-destructive border border-destructive/30 rounded-lg text-sm flex items-center">
+          <AlertTriangle className="h-5 w-5 mr-2 flex-shrink-0" />
+          <p>{error}</p>
+        </div>
+      )}
 
       {curationReasoning && (
         <div className="mb-6 p-4 bg-accent/10 border border-accent/30 rounded-lg text-sm text-accent-foreground">
@@ -176,7 +213,7 @@ export default function FeedPage() {
       {displayedPosts.length > 0 ? (
         <div className="space-y-6">
           {displayedPosts.map((post) => (
-            <PostCard key={post.id} post={post} />
+            <PostCard key={post.id} post={post} allUsers={allUsers} />
           ))}
         </div>
       ) : (

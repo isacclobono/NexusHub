@@ -5,7 +5,7 @@ import { useState, useEffect, useCallback } from 'react';
 import type { Event, User } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, MapPin, Users, PlusCircle, Ticket, Clock, Loader2 } from 'lucide-react';
+import { Calendar, MapPin, Users, PlusCircle, Ticket, Clock, Loader2, AlertTriangle } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -34,24 +34,27 @@ const EventCardSkeleton = () => (
 );
 
 const EventCard = ({ event }: { event: Event }) => (
-  <Card className="overflow-hidden shadow-subtle hover:shadow-md transition-shadow duration-300">
-    <div className="relative h-48 w-full">
+  <Card className="overflow-hidden shadow-subtle hover:shadow-xl transition-shadow duration-300 flex flex-col">
+    <Link href={`/events/${event.id}`} className="block relative h-48 w-full">
       <Image 
         src={event.imageUrl || `https://placehold.co/800x450.png`} 
         alt={event.title} 
         layout="fill" 
         objectFit="cover"
         data-ai-hint="event promotion"
+        className="rounded-t-lg"
       />
-    </div>
+    </Link>
     <CardHeader className="p-4">
-      <CardTitle className="font-headline text-lg">{event.title}</CardTitle>
+      <CardTitle className="font-headline text-lg hover:text-primary transition-colors">
+        <Link href={`/events/${event.id}`}>{event.title}</Link>
+      </CardTitle>
       <CardDescription className="text-sm text-primary flex items-center pt-1">
         <Calendar className="h-4 w-4 mr-2" />
         {format(new Date(event.startTime), "MMM d, yyyy 'at' h:mm a")}
       </CardDescription>
     </CardHeader>
-    <CardContent className="p-4 pt-0">
+    <CardContent className="p-4 pt-0 flex-grow">
       <p className="text-sm text-muted-foreground line-clamp-2 mb-2">{event.description}</p>
       {event.location && (
         <div className="text-xs text-muted-foreground flex items-center mb-1">
@@ -81,12 +84,12 @@ const EventCalendarView = () => {
 
   return (
     <div className="flex flex-col md:flex-row gap-6">
-      <Card className="flex-shrink-0 md:w-1/3 shadow-md">
+      <Card className="flex-shrink-0 md:w-auto shadow-md">
         <ShadCalendar
           mode="single"
           selected={date}
           onSelect={setDate}
-          className="p-0"
+          className="p-0 rounded-md border"
         />
       </Card>
       <Card className="flex-1 shadow-md">
@@ -151,7 +154,7 @@ export default function EventsPage() {
 
   return (
     <div className="container mx-auto py-8">
-      <div className="flex justify-between items-center mb-8">
+      <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
         <h1 className="text-3xl font-headline font-bold text-primary">Community Events</h1>
         <Button asChild className="btn-gradient">
           <Link href="/events/create">
@@ -161,7 +164,7 @@ export default function EventsPage() {
       </div>
 
       <Tabs defaultValue="list" className="w-full">
-        <TabsList className="mb-6">
+        <TabsList className="mb-6 grid w-full grid-cols-2 sm:w-auto sm:inline-flex">
           <TabsTrigger value="list">List View</TabsTrigger>
           <TabsTrigger value="calendar">Calendar View</TabsTrigger>
         </TabsList>
@@ -172,10 +175,27 @@ export default function EventsPage() {
             </div>
           )}
           {!isLoading && error && (
-            <p className="text-destructive text-center py-10">Error loading events: {error}</p>
+            <div className="text-center py-10">
+                <div className="flex items-center justify-center bg-destructive/10 text-destructive border border-destructive/30 p-4 rounded-md max-w-md mx-auto">
+                <AlertTriangle className="h-6 w-6 mr-3" />
+                <div>
+                    <h2 className="font-semibold">Error loading events</h2>
+                    <p className="text-sm">{error}</p>
+                </div>
+                </div>
+            </div>
           )}
           {!isLoading && !error && events.length === 0 && (
-            <p className="text-muted-foreground text-center py-10">No upcoming events. Check back soon!</p>
+             <div className="text-center py-20 bg-card rounded-lg shadow-sm border border-dashed">
+              <Calendar className="h-16 w-16 mx-auto mb-6 text-muted-foreground opacity-40" />
+              <h2 className="text-2xl font-semibold mb-3">No Upcoming Events</h2>
+              <p className="text-muted-foreground mb-6 max-w-md mx-auto">
+                There are no events scheduled at the moment. Why not create one?
+              </p>
+              <Button asChild className="btn-gradient">
+                <Link href="/events/create">Create an Event</Link>
+              </Button>
+            </div>
           )}
           {!isLoading && !error && events.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">

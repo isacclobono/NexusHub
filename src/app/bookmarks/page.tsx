@@ -3,11 +3,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { PostCard } from '@/components/feed/PostCard';
-import type { Post, User } from '@/lib/types';
+import type { Post, User, Comment as CommentType } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Bookmark as BookmarkIcon, Loader2, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
-import { Skeleton } from '@/components/ui/skeleton'; // For loading state
+import { Skeleton } from '@/components/ui/skeleton'; 
 
 const PostSkeleton = () => (
   <div className="w-full max-w-2xl mx-auto space-y-4 p-4 border rounded-lg shadow-sm bg-card">
@@ -33,6 +33,7 @@ const PostSkeleton = () => (
 
 export default function BookmarksPage() {
   const [bookmarkedPosts, setBookmarkedPosts] = useState<Post[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]); // For enriching comment authors
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -50,14 +51,25 @@ export default function BookmarksPage() {
       
       const postsData: Post[] = await postsResponse.json();
       const usersData: User[] = await usersResponse.json();
+      setAllUsers(usersData);
 
-      const enrichedPosts = postsData.map(post => ({
-        ...post,
-        author: usersData.find(u => u.id === post.authorId) || { id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: new Date().toISOString() } as User,
-      }));
+      const enrichedPosts = postsData.map(post => {
+        const author = usersData.find(u => u.id === post.authorId) || 
+                       { id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: new Date().toISOString() } as User;
+        const comments = post.comments?.map(comment => ({
+          ...comment,
+          author: usersData.find(u => u.id === comment.authorId) || 
+                  { id: 'unknown', name: 'Unknown Commenter', reputation: 0, joinedDate: new Date().toISOString() } as User
+        })) || [];
+        return {
+          ...post,
+          author,
+          comments,
+        };
+      });
       
       // Simulate user bookmarks - in a real app, this would come from user data
-      const allBookmarked = enrichedPosts.filter(post => post.isBookmarked); 
+      const allBookmarked = enrichedPosts.filter(post => post.isBookmarked && post.status === 'published'); 
       setBookmarkedPosts(allBookmarked);
     } catch (e) {
       console.error("Failed to fetch bookmarked posts:", e);
@@ -114,7 +126,7 @@ export default function BookmarksPage() {
       {bookmarkedPosts.length > 0 ? (
         <div className="space-y-6">
           {bookmarkedPosts.map((post) => (
-            <PostCard key={post.id} post={post} />
+            <PostCard key={post.id} post={post} allUsers={allUsers} />
           ))}
         </div>
       ) : (

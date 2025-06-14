@@ -1,3 +1,4 @@
+
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -17,11 +18,10 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, UploadCloud, Tags, Lightbulb, Sparkles, ShieldCheck } from 'lucide-react';
+import { Loader2, UploadCloud, Sparkles, ShieldCheck, Lightbulb } from 'lucide-react'; // Added Lightbulb
 import React, { useState, useCallback } from 'react';
 import { useToast } from '@/hooks/use-toast';
 import { createPostAction } from '@/lib/actions/postActions';
-import { Checkbox } from '../ui/checkbox';
 import { CATEGORIES } from '@/lib/constants';
 import {
   Select,
@@ -33,15 +33,23 @@ import {
 import { categorizeContent, CategorizeContentInput } from '@/ai/flows/smart-content-categorization';
 import { intelligentContentModeration, IntelligentContentModerationInput } from '@/ai/flows/intelligent-content-moderation';
 import { Badge } from '@/components/ui/badge';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
+import { Calendar as CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
+import { cn } from '@/lib/utils';
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
   content: z.string().min(1, 'Content is required.').max(5000, "Content can't exceed 5000 characters."),
   category: z.string().optional(),
-  tags: z.string().optional(), // Comma-separated
-  media: z.any().optional(), // Placeholder for file uploads
+  tags: z.string().optional(), 
+  media: z.any().optional(), 
   isDraft: z.boolean().default(false),
   scheduledAt: z.date().optional(),
+}).refine(data => !data.scheduledAt || data.scheduledAt > new Date(), {
+    message: "Scheduled date must be in the future.",
+    path: ["scheduledAt"],
 });
 
 type PostFormValues = z.infer<typeof postFormSchema>;
@@ -63,6 +71,7 @@ export function CreatePostForm() {
   const [isModerating, setIsModerating] = useState(false);
   const [suggestedCategory, setSuggestedCategory] = useState<string | null>(null);
   const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
+  const [showSchedule, setShowSchedule] = useState(false);
   const { toast } = useToast();
 
   const form = useForm<PostFormValues>({
@@ -81,7 +90,7 @@ export function CreatePostForm() {
     }
     setIsCategorizing(true);
     try {
-      const result = await categorizeContent({ content } as CategorizeContentInput); // Cast to satisfy AI type
+      const result = await categorizeContent({ content });
       setSuggestedCategory(result.category);
       setSuggestedTags(result.tags);
       toast({ title: "Suggestions Ready!", description: "AI has suggested a category and tags for your post." });
@@ -95,12 +104,12 @@ export function CreatePostForm() {
 
   const applySuggestion = (type: 'category' | 'tags') => {
     if (type === 'category' && suggestedCategory) {
-      form.setValue('category', suggestedCategory);
-      setSuggestedCategory(null); // Clear after applying
+      form.setValue('category', suggestedCategory, { shouldValidate: true });
+      setSuggestedCategory(null); 
     }
     if (type === 'tags' && suggestedTags.length > 0) {
-      form.setValue('tags', suggestedTags.join(', '));
-      setSuggestedTags([]); // Clear after applying
+      form.setValue('tags', suggestedTags.join(', '), { shouldValidate: true });
+      setSuggestedTags([]); 
     }
   };
 
@@ -110,8 +119,8 @@ export function CreatePostForm() {
     setIsModerating(true);
 
     try {
-      // AI Moderation
-      const moderationResult = await intelligentContentModeration({ content: data.content, sensitivityLevel: 'medium' } as IntelligentContentModerationInput); // Cast to satisfy AI type
+      const moderationInput: IntelligentContentModerationInput = { content: data.content, sensitivityLevel: 'medium' };
+      const moderationResult = await intelligentContentModeration(moderationInput);
       setIsModerating(false);
 
       if (moderationResult.isFlagged) {
@@ -125,19 +134,26 @@ export function CreatePostForm() {
         return;
       }
 
-      // Proceed with post creation
-      const result = await createPostAction(data);
+      // If scheduling is shown but no date is set, clear it before submitting
+      const finalData = { ...data };
+      if (!showSchedule || !finalData.scheduledAt) {
+        finalData.scheduledAt = undefined;
+      }
+      
+      const result = await createPostAction(finalData);
       if (result.success) {
-        toast({ title: 'Post Created!', description: 'Your post has been successfully created.' });
+        toast({ title: 'Post Action Successful!', description: `Your post "${result.post?.title || 'Untitled'}" has been processed.` });
         form.reset();
         setSuggestedCategory(null);
         setSuggestedTags([]);
+        setShowSchedule(false);
       } else {
         toast({ title: 'Error', description: result.error, variant: 'destructive' });
       }
     } catch (error) {
       console.error(error);
-      toast({ title: 'An unexpected error occurred', description: 'Please try again later.', variant: 'destructive' });
+      const errorMessage = error instanceof Error ? error.message : 'Please try again later.';
+      toast({ title: 'An unexpected error occurred', description: errorMessage, variant: 'destructive' });
     } finally {
       setIsLoading(false);
       setIsModerating(false);
@@ -145,7 +161,7 @@ export function CreatePostForm() {
   }
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
+    <Card className="w-full max-w-2xl mx-auto shadow-lg">
       <CardHeader>
         <CardTitle className="font-headline text-2xl">Create New Post</CardTitle>
       </CardHeader>
@@ -184,12 +200,11 @@ export function CreatePostForm() {
             />
 
             <GenAICallout icon={Lightbulb} title="AI Content Assistant">
-              Click the button below to let AI suggest a category and tags based on your content.
-              Your content will also be checked by our AI moderation system upon submission.
+              Enhance your post with AI! Click to get category & tag suggestions. Content is automatically checked for moderation.
             </GenAICallout>
 
             <div className="flex items-center gap-4">
-              <Button type="button" variant="outline" onClick={handleSuggestCategoryAndTags} disabled={isCategorizing || isLoading}>
+              <Button type="button" variant="outline" onClick={handleSuggestCategoryAndTags} disabled={isCategorizing || isLoading || isModerating}>
                 {isCategorizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                 Suggest Category & Tags
               </Button>
@@ -197,15 +212,15 @@ export function CreatePostForm() {
 
             {suggestedCategory && (
               <div className="p-3 bg-accent/10 border border-accent/30 rounded-md">
-                <p className="text-sm font-medium">Suggested Category: <Badge variant="outline">{suggestedCategory}</Badge></p>
-                <Button size="sm" variant="link" onClick={() => applySuggestion('category')} className="p-0 h-auto text-accent">Apply suggestion</Button>
+                <p className="text-sm font-medium">Suggested Category: <Badge variant="outline" className="bg-background">{suggestedCategory}</Badge></p>
+                <Button size="sm" variant="link" onClick={() => applySuggestion('category')} className="p-0 h-auto text-accent hover:text-accent/80">Apply suggestion</Button>
               </div>
             )}
 
             {suggestedTags.length > 0 && (
               <div className="p-3 bg-accent/10 border border-accent/30 rounded-md">
-                <p className="text-sm font-medium">Suggested Tags: {suggestedTags.map(tag => <Badge key={tag} variant="outline" className="mr-1">{tag}</Badge>)}</p>
-                <Button size="sm" variant="link" onClick={() => applySuggestion('tags')} className="p-0 h-auto text-accent">Apply suggestions</Button>
+                <p className="text-sm font-medium">Suggested Tags: {suggestedTags.map(tag => <Badge key={tag} variant="outline" className="mr-1 mb-1 bg-background">{tag}</Badge>)}</p>
+                <Button size="sm" variant="link" onClick={() => applySuggestion('tags')} className="p-0 h-auto text-accent hover:text-accent/80">Apply suggestions</Button>
               </div>
             )}
 
@@ -215,7 +230,7 @@ export function CreatePostForm() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <Select onValueChange={field.onChange} value={field.value || ''}>
                     <FormControl>
                       <SelectTrigger>
                         <SelectValue placeholder="Select a category" />
@@ -276,18 +291,103 @@ export function CreatePostForm() {
                     <Switch
                       checked={field.value}
                       onCheckedChange={field.onChange}
+                      disabled={showSchedule && !!form.getValues("scheduledAt")}
                     />
                   </FormControl>
                 </FormItem>
               )}
             />
-            <div className="flex justify-end space-x-2">
-               <Button type="button" variant="outline" disabled={isLoading}>
+
+            <FormItem className="flex flex-row items-center justify-between rounded-lg border p-3 shadow-sm">
+                <div className="space-y-0.5">
+                <FormLabel>Schedule Post (Optional)</FormLabel>
+                <FormDescription>
+                    Publish this post at a future date and time.
+                </FormDescription>
+                </div>
+                <FormControl>
+                <Switch
+                    checked={showSchedule}
+                    onCheckedChange={(checked) => {
+                        setShowSchedule(checked);
+                        if (!checked) {
+                            form.setValue("scheduledAt", undefined, {shouldValidate: true});
+                        }
+                        if (checked) { // If scheduling, ensure it's not a draft
+                            form.setValue("isDraft", false);
+                        }
+                    }}
+                />
+                </FormControl>
+            </FormItem>
+
+            {showSchedule && (
+                 <FormField
+                    control={form.control}
+                    name="scheduledAt"
+                    render={({ field }) => (
+                        <FormItem className="flex flex-col">
+                        <FormLabel>Scheduled Publishing Time</FormLabel>
+                        <Popover>
+                            <PopoverTrigger asChild>
+                            <FormControl>
+                                <Button
+                                variant={"outline"}
+                                className={cn(
+                                    "w-full pl-3 text-left font-normal",
+                                    !field.value && "text-muted-foreground"
+                                )}
+                                >
+                                {field.value ? (
+                                    format(field.value, "PPP HH:mm")
+                                ) : (
+                                    <span>Pick a date and time</span>
+                                )}
+                                <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                                </Button>
+                            </FormControl>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0" align="start">
+                            <Calendar
+                                mode="single"
+                                selected={field.value}
+                                onSelect={(date) => {
+                                    field.onChange(date);
+                                    if(date) form.setValue("isDraft", false); // Cannot be draft if scheduled
+                                }}
+                                initialFocus
+                                disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} // Disable past dates
+                            />
+                            {/* Basic Time Picker (conceptual) - would need a proper time picker component for full functionality */}
+                            <div className="p-2 border-t">
+                                <Input type="time" 
+                                    defaultValue={field.value ? format(field.value, "HH:mm") : "09:00"}
+                                    onChange={(e) => {
+                                        const time = e.target.value;
+                                        const [hours, minutes] = time.split(':').map(Number);
+                                        const currentDate = field.value || new Date();
+                                        currentDate.setHours(hours, minutes);
+                                        field.onChange(new Date(currentDate));
+                                        if(field.value) form.setValue("isDraft", false);
+                                    }}
+                                />
+                            </div>
+                            </PopoverContent>
+                        </Popover>
+                        <FormMessage />
+                        </FormItem>
+                    )}
+                 />
+            )}
+
+
+            <div className="flex justify-end space-x-2 pt-4">
+               <Button type="button" variant="outline" onClick={() => {form.reset(); setShowSchedule(false);}} disabled={isLoading || isModerating}>
                 Cancel
               </Button>
               <Button type="submit" disabled={isLoading || isModerating} className="btn-gradient min-w-[120px]">
-                {isLoading || isModerating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (isModerating ? <ShieldCheck className="mr-2 h-4 w-4" /> : null)}
-                {isModerating ? 'Checking...' : (isLoading ? 'Submitting...' : (form.getValues('isDraft') ? 'Save Draft' : 'Publish Post'))}
+                {isModerating ? <ShieldCheck className="mr-2 h-4 w-4 animate-pulse" /> : (isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null)}
+                {isModerating ? 'Checking...' : (isLoading ? 'Submitting...' : (form.getValues('isDraft') ? 'Save Draft' : (form.getValues('scheduledAt') ? 'Schedule Post' : 'Publish Post')))}
               </Button>
             </div>
           </form>
