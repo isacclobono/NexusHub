@@ -1,35 +1,96 @@
 
 'use client';
 
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { User, Bell, Palette, Lock, Loader2, AlertTriangle } from 'lucide-react';
+import { User as UserIcon, Bell, Palette, Lock, Loader2, AlertTriangle } from 'lucide-react'; // Renamed User to UserIcon
 import toast from 'react-hot-toast';
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth-provider";
-import { useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+
+const profileFormSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters.").max(50, "Name cannot exceed 50 characters."),
+  bio: z.string().max(300, "Bio cannot exceed 300 characters.").optional(),
+  avatarUrl: z.string().url("Please enter a valid URL for your avatar.").optional().or(z.literal('')),
+});
+type ProfileFormValues = z.infer<typeof profileFormSchema>;
+
 
 export default function SettingsPage() {
-  const { user, loading: authLoading, isAuthenticated } = useAuth();
+  const { user, loading: authLoading, isAuthenticated, refreshUser } = useAuth();
   const router = useRouter();
+  const [isSubmittingProfile, setIsSubmittingProfile] = useState(false);
+  const [isSubmittingPreferences, setIsSubmittingPreferences] = useState(false);
 
+
+  const form = useForm<ProfileFormValues>({
+    resolver: zodResolver(profileFormSchema),
+    defaultValues: {
+      name: user?.name || '',
+      bio: user?.bio || '',
+      avatarUrl: user?.avatarUrl || '',
+    }
+  });
+  
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       router.push('/login?redirect=/settings'); 
     }
-  }, [authLoading, isAuthenticated, router]);
+    if (user) {
+        form.reset({
+            name: user.name || '',
+            bio: user.bio || '',
+            avatarUrl: user.avatarUrl || '',
+        });
+    }
+  }, [authLoading, isAuthenticated, router, user, form]);
 
-  const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    toast.success("Your preferences have been updated.");
+
+  const handleProfileSubmit = async (data: ProfileFormValues) => {
+    if (!user || !user.id) {
+        toast.error("User not authenticated. Please log in again.");
+        return;
+    }
+    setIsSubmittingProfile(true);
+    try {
+      const response = await fetch(`/api/users/${user.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || "Failed to update profile.");
+      }
+      toast.success("Profile updated successfully!");
+      await refreshUser(); // Refresh user context to get updated data
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "An unknown error occurred.");
+    } finally {
+      setIsSubmittingProfile(false);
+    }
   };
 
-  if (authLoading || !isAuthenticated) {
+  const handlePreferencesSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setIsSubmittingPreferences(true);
+    // Simulate API call
+    setTimeout(() => {
+        toast.success("Your preferences have been updated.");
+        setIsSubmittingPreferences(false);
+    }, 1000);
+  };
+
+  if (authLoading || (!isAuthenticated && !authLoading)) {
     return (
       <div className="container mx-auto py-8 flex justify-center items-center min-h-[calc(100vh-200px)]">
         {authLoading ? (
@@ -45,9 +106,7 @@ export default function SettingsPage() {
     );
   }
   
-  const displayName = user?.name || '';
-  const userEmail = (user as any)?.email || 'user@example.com'; 
-  const userBio = user?.bio || '';
+  const userEmail = user?.email || 'user@example.com'; 
 
 
   return (
@@ -56,55 +115,77 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-headline font-bold text-primary">Settings</h1>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-8">
-        <Card className="shadow-md">
-          <CardHeader>
-            <CardTitle className="flex items-center font-headline"><User className="mr-2 h-5 w-5 text-accent" /> Profile Settings</CardTitle>
-            <CardDescription>Manage your public profile information.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <Label htmlFor="displayName">Display Name</Label>
-                <Input id="displayName" defaultValue={displayName} />
-              </div>
-              <div>
-                <Label htmlFor="email">Email Address</Label>
-                <Input id="email" type="email" defaultValue={userEmail} disabled />
-              </div>
-            </div>
-            <div>
-              <Label htmlFor="bio">Bio</Label>
-              <Textarea
-                id="bio"
-                placeholder="Tell us a little about yourself..."
-                defaultValue={userBio}
-              />
-            </div>
-             <Button variant="outline" type="button">Change Profile Picture</Button>
-          </CardContent>
-        </Card>
+      <div className="space-y-8">
+        <form onSubmit={form.handleSubmit(handleProfileSubmit)}>
+            <Card className="shadow-md">
+            <CardHeader>
+                <CardTitle className="flex items-center font-headline"><UserIcon className="mr-2 h-5 w-5 text-accent" /> Profile Settings</CardTitle>
+                <CardDescription>Manage your public profile information.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <Label htmlFor="name">Display Name</Label>
+                    <Input id="name" {...form.register("name")} />
+                    {form.formState.errors.name && <p className="text-xs text-destructive mt-1">{form.formState.errors.name.message}</p>}
+                </div>
+                <div>
+                    <Label htmlFor="email">Email Address</Label>
+                    <Input id="email" type="email" value={userEmail} disabled />
+                </div>
+                </div>
+                <div>
+                <Label htmlFor="bio">Bio</Label>
+                <Textarea
+                    id="bio"
+                    placeholder="Tell us a little about yourself..."
+                    {...form.register("bio")}
+                />
+                {form.formState.errors.bio && <p className="text-xs text-destructive mt-1">{form.formState.errors.bio.message}</p>}
+                </div>
+                <div>
+                    <Label htmlFor="avatarUrl">Avatar URL</Label>
+                    <Input 
+                        id="avatarUrl" 
+                        placeholder="https://example.com/avatar.png" 
+                        {...form.register("avatarUrl")}
+                    />
+                    {form.formState.errors.avatarUrl && <p className="text-xs text-destructive mt-1">{form.formState.errors.avatarUrl.message}</p>}
+                </div>
+                <Button type="submit" disabled={isSubmittingProfile} className="mt-4">
+                  {isSubmittingProfile ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  Save Profile Changes
+                </Button>
+            </CardContent>
+            </Card>
+        </form>
 
-        <Card className="shadow-md">
-          <CardHeader>
-            <CardTitle className="flex items-center font-headline"><Bell className="mr-2 h-5 w-5 text-accent" /> Notification Preferences</CardTitle>
-            <CardDescription>Control how you receive notifications.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <Label htmlFor="emailNotifications" className="flex-grow">Email Notifications for New Posts</Label>
-              <Switch id="emailNotifications" defaultChecked />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="eventReminders" className="flex-grow">Event Reminders</Label>
-              <Switch id="eventReminders" defaultChecked />
-            </div>
-            <div className="flex items-center justify-between">
-              <Label htmlFor="mentionNotifications" className="flex-grow">Notifications for Mentions</Label>
-              <Switch id="mentionNotifications" />
-            </div>
-          </CardContent>
-        </Card>
+        <form onSubmit={handlePreferencesSubmit}>
+            <Card className="shadow-md">
+            <CardHeader>
+                <CardTitle className="flex items-center font-headline"><Bell className="mr-2 h-5 w-5 text-accent" /> Notification Preferences</CardTitle>
+                <CardDescription>Control how you receive notifications. (UI only, not functional)</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+                <div className="flex items-center justify-between">
+                <Label htmlFor="emailNotifications" className="flex-grow">Email Notifications for New Posts</Label>
+                <Switch id="emailNotifications" defaultChecked />
+                </div>
+                <div className="flex items-center justify-between">
+                <Label htmlFor="eventReminders" className="flex-grow">Event Reminders</Label>
+                <Switch id="eventReminders" defaultChecked />
+                </div>
+                <div className="flex items-center justify-between">
+                <Label htmlFor="mentionNotifications" className="flex-grow">Notifications for Mentions</Label>
+                <Switch id="mentionNotifications" />
+                </div>
+                 <Button type="submit" disabled={isSubmittingPreferences} className="mt-4">
+                    {isSubmittingPreferences ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Save Preferences
+                </Button>
+            </CardContent>
+            </Card>
+        </form>
         
         <Accordion type="single" collapsible className="w-full">
           <AccordionItem value="item-1">
@@ -113,8 +194,8 @@ export default function SettingsPage() {
             </AccordionTrigger>
             <AccordionContent className="p-4 bg-card rounded-b-lg border border-t-0 shadow-sm">
               <div className="space-y-4">
-                <Button variant="outline" type="button" className="w-full md:w-auto">Change Password</Button>
-                <Button variant="destructive" type="button" className="w-full md:w-auto">Delete Account</Button>
+                <Button variant="outline" type="button" className="w-full md:w-auto" onClick={() => toast.error("Change password not implemented.")}>Change Password</Button>
+                <Button variant="destructive" type="button" className="w-full md:w-auto" onClick={() => toast.error("Delete account not implemented.")}>Delete Account</Button>
                 <p className="text-xs text-muted-foreground">Account deletion is permanent and cannot be undone.</p>
               </div>
             </AccordionContent>
@@ -126,17 +207,17 @@ export default function SettingsPage() {
             <AccordionContent className="p-4 bg-card rounded-b-lg border border-t-0 shadow-sm">
               <div className="flex items-center justify-between">
                 <Label htmlFor="darkMode" className="flex-grow">Dark Mode</Label>
-                <Switch id="darkMode" />
+                <Switch id="darkMode" onCheckedChange={(checked) => {
+                    if (checked) document.documentElement.classList.add('dark');
+                    else document.documentElement.classList.remove('dark');
+                    toast.success(`Dark mode ${checked ? 'enabled' : 'disabled'}.`);
+                }} defaultChecked={typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches} />
               </div>
-              <p className="text-xs text-muted-foreground mt-2">Theme settings are managed globally for now.</p>
+              <p className="text-xs text-muted-foreground mt-2">Toggle dark or light theme.</p>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
-
-        <div className="flex justify-end pt-4">
-          <Button type="submit" className="btn-gradient">Save Changes</Button>
-        </div>
-      </form>
+      </div>
     </div>
   );
 }

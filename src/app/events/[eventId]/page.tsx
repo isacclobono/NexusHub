@@ -6,8 +6,8 @@ import { useEffect, useState, useCallback } from 'react';
 import type { Event, User } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { CalendarDays, MapPin, Users, Clock, Ticket, Edit, Trash2, UserCircle, Loader2, AlertTriangle } from 'lucide-react';
+import { Card, CardContent, CardHeader } from '@/components/ui/card'; // CardTitle, CardDescription removed as they are not direct children
+import { CalendarDays, MapPin, Users, Ticket, Edit, Trash2, Loader2, AlertTriangle } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -83,17 +83,13 @@ export default function EventDetailPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // Fetch a single event.
       const response = await fetch(`/api/events/${eventId}`); 
-
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || `Failed to fetch event details: ${response.statusText}`);
       }
-      
       const foundEvent: Event = await response.json();
       setEvent(foundEvent);
-
     } catch (e) {
       console.error("Failed to fetch event details:", e);
       setError(e instanceof Error ? e.message : "Failed to load event details.");
@@ -110,7 +106,7 @@ export default function EventDetailPage() {
   }, [eventId, fetchEventDetails]);
 
   const handleRSVP = async () => {
-    if (!isAuthenticated || !currentUser) {
+    if (!isAuthenticated || !currentUser || !currentUser.id) {
         toast.error("Please login to RSVP for events.");
         router.push(`/login?redirect=/events/${eventId}`);
         return;
@@ -129,7 +125,7 @@ export default function EventDetailPage() {
         });
         const result = await response.json();
 
-        if (!response.ok) {
+        if (!response.ok || !result.event) {
             throw new Error(result.message || 'Failed to RSVP for the event.');
         }
         
@@ -150,14 +146,13 @@ export default function EventDetailPage() {
       toast.error("You are not authorized to delete this event.");
       return;
     }
-    // Confirmation is handled by AlertDialog
-
     setIsDeleting(true); 
     try {
       const response = await fetch(`/api/events/${event.id}`, { 
         method: 'DELETE',
         headers: { 'Content-Type': 'application/json' },
-        // body: JSON.stringify({ userId: currentUser.id }) // If API needs to verify user
+        // Pass current user ID for server-side verification (even if basic for now)
+        body: JSON.stringify({ userId: currentUser.id }) 
       });
       if (!response.ok) {
         const errorData = await response.json();
@@ -234,7 +229,7 @@ export default function EventDetailPage() {
         
         <div className="grid md:grid-cols-3">
             <div className="md:col-span-2 p-6 space-y-6">
-                 <p className="text-lg text-foreground/90"> {/* Changed from CardDescription for better semantics */}
+                 <p className="text-lg text-foreground/90">
                     {event.description}
                 </p>
 
@@ -269,6 +264,25 @@ export default function EventDetailPage() {
                     </div>
                   </div>
                 )}
+                
+                {/* Detailed Attendee List */}
+                {event.rsvps && event.rsvps.length > 0 && (
+                    <div className="pt-4 border-t">
+                        <h3 className="text-lg font-headline font-semibold mb-3 text-primary">Who's Going ({rsvpCount})</h3>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                            {event.rsvps.map(attendee => (
+                                <Link href={`/profile/${attendee.id}`} key={attendee.id} className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted/50 transition-colors group">
+                                    <Avatar className="h-10 w-10 border">
+                                        <AvatarImage src={attendee.avatarUrl || `https://placehold.co/40x40.png`} alt={attendee.name} data-ai-hint="attendee avatar"/>
+                                        <AvatarFallback>{attendee.name.charAt(0)}</AvatarFallback>
+                                    </Avatar>
+                                    <span className="font-medium text-sm group-hover:text-primary">{attendee.name}</span>
+                                </Link>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
             </div>
 
             <div className="md:col-span-1 p-6 bg-muted/30 border-l space-y-6">
@@ -289,10 +303,11 @@ export default function EventDetailPage() {
                 )}
 
                 <div>
-                    <h3 className="text-lg font-headline font-semibold mb-3 text-primary flex items-center">
+                    <h3 className="text-lg font-headline font-semibold mb-1 text-primary flex items-center">
                         <Users className="h-5 w-5 mr-2"/>
                         Attendees ({rsvpCount} / {event.maxAttendees || 'Unlimited'})
                     </h3>
+                     <p className="text-xs text-muted-foreground mb-3">A quick glance at who's coming.</p>
                     {event.rsvps && event.rsvps.length > 0 ? (
                         <TooltipProvider>
                         <div className="flex flex-wrap -space-x-2 overflow-hidden">

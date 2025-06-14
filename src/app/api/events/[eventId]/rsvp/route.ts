@@ -29,12 +29,12 @@ export async function POST(request: NextRequest, { params }: RsvpParams) {
     }
 
     const db = await getDb();
-    const usersCollection = db.collection<User>('users'); // For fetching user details
+    const usersCollection = db.collection<User>('users'); 
     const eventsCollection = db.collection<DbEvent>('events');
 
 
-    const currentUser = await usersCollection.findOne({ _id: new ObjectId(userId) });
-    if (!currentUser) {
+    const currentUserDoc = await usersCollection.findOne({ _id: new ObjectId(userId) });
+    if (!currentUserDoc) {
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
     }
 
@@ -52,15 +52,23 @@ export async function POST(request: NextRequest, { params }: RsvpParams) {
 
     if (isAlreadyRsvpd) {
        // Fetch full event details to return to client, even if already RSVP'd
-        const organizerDoc = await usersCollection.findOne({ _id: event.organizerId });
-        const rsvpUserDocs = await usersCollection.find({ _id: { $in: event.rsvpIds } }).toArray();
+        const organizerDoc = await usersCollection.findOne({ _id: event.organizerId }, { projection: { passwordHash: 0 }});
+        const rsvpUserDocs = await usersCollection.find({ _id: { $in: event.rsvpIds } }, { projection: { passwordHash: 0 }}).toArray();
+        
+        const organizerForClient: User | undefined = organizerDoc ? { 
+            ...organizerDoc, id: organizerDoc._id!.toHexString(), _id: organizerDoc._id
+        } : undefined;
+        const rsvpsForClient = rsvpUserDocs.map(uDoc => ({ 
+            ...uDoc, id: uDoc._id!.toHexString(), _id: uDoc._id
+        }));
+
         const enrichedEvent = {
             ...event,
             id: event._id.toHexString(),
             organizerId: event.organizerId.toHexString(),
-            organizer: organizerDoc ? { ...organizerDoc, id: organizerDoc._id.toHexString() } : undefined,
+            organizer: organizerForClient || { id: 'unknown', _id: new ObjectId(), name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [] },
             rsvpIds: event.rsvpIds.map(id => id.toHexString()),
-            rsvps: rsvpUserDocs.map(u => ({ ...u, id: u._id!.toHexString() })),
+            rsvps: rsvpsForClient,
         };
       return NextResponse.json({ message: 'User already RSVP\'d to this event.', event: enrichedEvent }, { status: 200 });
     }
@@ -72,43 +80,34 @@ export async function POST(request: NextRequest, { params }: RsvpParams) {
     // Add user to RSVP list
     const updateResult = await eventsCollection.updateOne(
       { _id: eventObjectId },
-      { $addToSet: { rsvpIds: userObjectId } } // Use $addToSet to prevent duplicate ObjectIds
+      { $addToSet: { rsvpIds: userObjectId } } 
     );
 
     if (updateResult.modifiedCount === 0 && updateResult.matchedCount === 0) {
         return NextResponse.json({ message: 'Event not found or RSVP failed.' }, { status: 404 });
-    } else if (updateResult.modifiedCount === 0 && updateResult.matchedCount > 0) {
-        // This case can happen if $addToSet finds the element already there,
-        // but our earlier check should have caught it.
-        // Or, if the event exists but the user was somehow already in rsvpIds (concurrent request edge case).
-        // For simplicity, we assume the earlier check is sufficient.
     }
     
-    // Fetch the updated event to return complete data including the new RSVP
     const updatedEventDoc = await eventsCollection.findOne({ _id: eventObjectId });
     if (!updatedEventDoc) {
         return NextResponse.json({ message: 'Failed to fetch updated event details.' }, { status: 500 });
     }
     
-    // Enrich event with organizer and rsvp user objects for the response
-    const organizerDoc = await usersCollection.findOne({ _id: updatedEventDoc.organizerId });
-    const rsvpUserDocs = await usersCollection.find({ _id: { $in: updatedEventDoc.rsvpIds } }).toArray();
+    const organizerDoc = await usersCollection.findOne({ _id: updatedEventDoc.organizerId }, { projection: { passwordHash: 0 }});
+    const rsvpUserDocs = await usersCollection.find({ _id: { $in: updatedEventDoc.rsvpIds } }, { projection: { passwordHash: 0 }}).toArray();
     
     const organizerForClient: User | undefined = organizerDoc ? {
-        id: organizerDoc._id!.toHexString(), _id: organizerDoc._id, name: organizerDoc.name, email: organizerDoc.email,
-        avatarUrl: organizerDoc.avatarUrl, bio: organizerDoc.bio, reputation: organizerDoc.reputation, joinedDate: organizerDoc.joinedDate,
+        ...organizerDoc, id: organizerDoc._id!.toHexString(), _id: organizerDoc._id
     } : undefined;
 
-    const rsvpsForClient = rsvpUserDocs.map(doc => ({
-        id: doc._id!.toHexString(), _id: doc._id, name: doc.name, email: doc.email,
-        avatarUrl: doc.avatarUrl, bio: doc.bio, reputation: doc.reputation, joinedDate: doc.joinedDate,
+    const rsvpsForClient = rsvpUserDocs.map(uDoc => ({
+        ...uDoc, id: uDoc._id!.toHexString(), _id: uDoc._id
     }));
 
     const enrichedEventForClient: Event = {
         ...updatedEventDoc,
         id: updatedEventDoc._id.toHexString(),
         organizerId: updatedEventDoc.organizerId.toHexString(),
-        organizer: organizerForClient || { id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: new Date().toISOString(), email: "" } as User,
+        organizer: organizerForClient || { id: 'unknown', _id: new ObjectId(), name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [] },
         rsvpIds: updatedEventDoc.rsvpIds.map(id => id.toHexString()),
         rsvps: rsvpsForClient,
     };

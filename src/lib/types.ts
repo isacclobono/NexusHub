@@ -3,7 +3,7 @@ import type { ObjectId } from 'mongodb';
 
 export interface User {
   _id?: ObjectId; 
-  id?: string; 
+  id?: string; // String version of _id for client-side ease
   name: string;
   email: string;
   passwordHash?: string; // Only on server, never sent to client
@@ -11,7 +11,7 @@ export interface User {
   bio?: string;
   reputation: number;
   joinedDate: string; // ISO Date String
-  bookmarkedPostIds?: ObjectId[]; 
+  bookmarkedPostIds?: ObjectId[]; // Array of Post ObjectIds
 }
 
 export interface Comment {
@@ -20,19 +20,18 @@ export interface Comment {
   postId: ObjectId; 
   parentId?: ObjectId; 
   authorId: ObjectId; 
-  author?: User; 
+  author?: User; // Populated on server
   content: string;
   createdAt: string; // ISO Date String
-  // reactions: Reaction[]; // Future: reactions on comments
   replyIds?: ObjectId[]; 
-  replies?: Comment[]; 
+  replies?: Comment[]; // Populated for nested comments
 }
 
 export interface Post {
   _id?: ObjectId;
   id?: string;
   authorId: ObjectId; 
-  author?: User; 
+  author?: User; // Populated on server
   title?: string;
   content: string;
   media?: { type: 'image' | 'video' | 'document'; url: string; name?: string }[];
@@ -43,10 +42,10 @@ export interface Post {
   
   likedBy: ObjectId[]; // Array of user ObjectIds who liked the post
   likeCount: number;
-  isLikedByCurrentUser?: boolean; // Client-side state
+  isLikedByCurrentUser?: boolean; // Client-side state, derived based on current user
 
-  commentIds: ObjectId[]; 
-  comments?: Comment[]; 
+  commentIds: ObjectId[]; // Array of Comment ObjectIds
+  comments?: Comment[]; // Populated on server (e.g., recent comments for feed)
   commentCount: number;
 
   isBookmarkedByCurrentUser?: boolean; // Client-side state, derived from user's bookmarks
@@ -63,10 +62,10 @@ export interface Event {
   startTime: string; // ISO Date String
   endTime: string; // ISO Date String
   location?: string;
-  organizerId: ObjectId; 
-  organizer?: User; 
-  rsvpIds: ObjectId[]; 
-  rsvps?: User[]; 
+  organizerId: ObjectId; // ObjectId of the User who is the organizer
+  organizer?: User; // Populated User object
+  rsvpIds: ObjectId[]; // Array of User ObjectIds who RSVP'd
+  rsvps?: User[]; // Array of populated User objects for those who RSVP'd
   waitlistIds?: ObjectId[];
   waitlist?: User[];
   maxAttendees?: number;
@@ -108,14 +107,14 @@ export interface NavItem {
 export interface Notification {
   _id?: ObjectId;
   id?: string;
-  userId: ObjectId; // Target user
+  userId: ObjectId; // Target user ObjectId
   type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like';
   title: string;
   message: string;
   link?: string; // Link to the relevant content
   isRead: boolean;
   createdAt: string; // ISO Date String
-  relatedEntityId?: ObjectId; 
+  relatedEntityId?: ObjectId; // ObjectId of the related entity (e.g., PostId, EventId)
   actor?: { 
     _id: ObjectId; // Changed from id to _id to match User structure
     id: string; // Keep string id for client convenience after conversion
