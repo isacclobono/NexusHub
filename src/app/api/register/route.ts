@@ -17,8 +17,7 @@ export async function POST(request: NextRequest) {
     }
 
     const db = await getDb();
-    // Define collection type for server-side user document, which includes passwordHash
-    const usersCollection = db.collection<{ name: string; email: string; passwordHash: string; reputation: number; joinedDate: string; avatarUrl?: string; bio?: string; _id?: ObjectId }>('users');
+    const usersCollection = db.collection<{ name: string; email: string; passwordHash: string; reputation: number; joinedDate: string; avatarUrl?: string; bio?: string; _id?: ObjectId; privacy: 'public' | 'private'; }>('users');
 
     const existingUser = await usersCollection.findOne({ email: email.toLowerCase() });
     if (existingUser) {
@@ -35,6 +34,7 @@ export async function POST(request: NextRequest) {
       joinedDate: new Date().toISOString(),
       avatarUrl: `https://placehold.co/100x100.png?text=${name.charAt(0)}`,
       bio: '',
+      privacy: 'public' as 'public' | 'private', // Default to public
     };
 
     const result = await usersCollection.insertOne(newUserDocument);
@@ -43,7 +43,6 @@ export async function POST(request: NextRequest) {
         throw new Error('Failed to insert user into database.');
     }
 
-    // Prepare user object for client, excluding passwordHash
     const createdUserForClient: User = {
         _id: result.insertedId,
         id: result.insertedId.toHexString(),
@@ -53,6 +52,7 @@ export async function POST(request: NextRequest) {
         joinedDate: newUserDocument.joinedDate,
         avatarUrl: newUserDocument.avatarUrl,
         bio: newUserDocument.bio,
+        privacy: newUserDocument.privacy,
     };
 
     return NextResponse.json({ message: 'User registered successfully!', user: createdUserForClient }, { status: 201 });

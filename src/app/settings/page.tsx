@@ -8,15 +8,16 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { User as UserIcon, Bell, Palette, Lock, Loader2, AlertTriangle } from 'lucide-react';
+import { User as UserIcon, Bell, Palette, Lock, Loader2, AlertTriangle, Eye, EyeOff } from 'lucide-react'; // Added Eye, EyeOff
 import toast from 'react-hot-toast';
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth-provider";
 import { useRouter } from "next/navigation";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 
 
 const profileFormSchema = z.object({
@@ -28,6 +29,7 @@ const profileFormSchema = z.object({
     eventReminders: z.boolean().optional(),
     mentionNotifications: z.boolean().optional(),
   }).optional(),
+  privacy: z.enum(['public', 'private']).default('public').optional(),
 });
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
@@ -47,7 +49,8 @@ export default function SettingsPage() {
         emailNewPosts: true,
         eventReminders: true,
         mentionNotifications: false,
-      }
+      },
+      privacy: 'public',
     }
   });
 
@@ -64,7 +67,8 @@ export default function SettingsPage() {
                 emailNewPosts: user.notificationPreferences?.emailNewPosts ?? true,
                 eventReminders: user.notificationPreferences?.eventReminders ?? true,
                 mentionNotifications: user.notificationPreferences?.mentionNotifications ?? false,
-            }
+            },
+            privacy: user.privacy || 'public',
         });
     }
   }, [authLoading, isAuthenticated, router, user, form]);
@@ -81,11 +85,12 @@ export default function SettingsPage() {
         ...data,
         bio: data.bio === '' ? null : data.bio,
         avatarUrl: data.avatarUrl === '' ? null : data.avatarUrl,
-        notificationPreferences: { // Ensure we send the full object, even if some values are default
+        notificationPreferences: {
             emailNewPosts: data.notificationPreferences?.emailNewPosts ?? true,
             eventReminders: data.notificationPreferences?.eventReminders ?? true,
             mentionNotifications: data.notificationPreferences?.mentionNotifications ?? false,
-        }
+        },
+        privacy: data.privacy || 'public',
       };
 
       const response = await fetch(`/api/users/${user.id}`, {
@@ -99,8 +104,8 @@ export default function SettingsPage() {
       }
       toast.success("Settings updated successfully!");
       await refreshUser();
-      if (result.user) { // API should return the updated user object
-         form.reset({ // Reset form with new user data from response
+      if (result.user) {
+         form.reset({
             name: result.user.name || '',
             bio: result.user.bio || '',
             avatarUrl: result.user.avatarUrl || '',
@@ -108,7 +113,8 @@ export default function SettingsPage() {
                 emailNewPosts: result.user.notificationPreferences?.emailNewPosts ?? true,
                 eventReminders: result.user.notificationPreferences?.eventReminders ?? true,
                 mentionNotifications: result.user.notificationPreferences?.mentionNotifications ?? false,
-            }
+            },
+            privacy: result.user.privacy || 'public',
         });
       }
     } catch (error) {
@@ -149,7 +155,7 @@ export default function SettingsPage() {
                 <Card className="shadow-md">
                 <CardHeader>
                     <CardTitle className="flex items-center font-headline"><UserIcon className="mr-2 h-5 w-5 text-accent" /> Profile Settings</CardTitle>
-                    <CardDescription>Manage your public profile information.</CardDescription>
+                    <CardDescription>Manage your public profile information and privacy.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -182,7 +188,7 @@ export default function SettingsPage() {
                                     id="bio"
                                     placeholder="Tell us a little about yourself..."
                                     {...field}
-                                    value={field.value ?? ''} // Ensure value is not null/undefined for textarea
+                                    value={field.value ?? ''}
                                 />
                             </FormControl>
                             <FormMessage />
@@ -200,13 +206,50 @@ export default function SettingsPage() {
                                     id="avatarUrl"
                                     placeholder="https://example.com/avatar.png"
                                     {...field}
-                                    value={field.value ?? ''} // Ensure value is not null/undefined for input
+                                    value={field.value ?? ''}
                                 />
                             </FormControl>
                             <FormMessage />
                             </FormItem>
                         )}
                     />
+                     <FormField
+                        control={form.control}
+                        name="privacy"
+                        render={({ field }) => (
+                          <FormItem className="space-y-3">
+                            <FormLabel>Profile Privacy</FormLabel>
+                            <FormControl>
+                              <RadioGroup
+                                onValueChange={field.onChange}
+                                value={field.value}
+                                className="flex flex-col space-y-1 md:flex-row md:space-y-0 md:space-x-4"
+                              >
+                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                  <FormControl>
+                                    <RadioGroupItem value="public" id="privacy-public" />
+                                  </FormControl>
+                                  <FormLabel htmlFor="privacy-public" className="font-normal cursor-pointer flex items-center">
+                                    <Eye className="mr-2 h-4 w-4 text-green-500" /> Public (Visible to everyone)
+                                  </FormLabel>
+                                </FormItem>
+                                <FormItem className="flex items-center space-x-3 space-y-0">
+                                  <FormControl>
+                                    <RadioGroupItem value="private" id="privacy-private" />
+                                  </FormControl>
+                                  <FormLabel htmlFor="privacy-private" className="font-normal cursor-pointer flex items-center">
+                                    <EyeOff className="mr-2 h-4 w-4 text-red-500" /> Private (Visibility limited - feature in development)
+                                  </FormLabel>
+                                </FormItem>
+                              </RadioGroup>
+                            </FormControl>
+                            <FormDescription>
+                              Public profiles are visible to all users. Private profile visibility will be restricted in a future update.
+                            </FormDescription>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
                 </CardContent>
                 </Card>
 
@@ -274,7 +317,7 @@ export default function SettingsPage() {
             </form>
         </Form>
 
-        <Accordion type="single" collapsible className="w-full">
+        <Accordion type="single" collapsible className="w-full mt-8">
           <AccordionItem value="item-1">
             <AccordionTrigger className="text-lg font-semibold flex items-center hover:no-underline p-4 bg-card rounded-t-lg border shadow-sm data-[state=open]:rounded-b-none data-[state=open]:border-b-0">
               <Lock className="mr-2 h-5 w-5 text-accent" /> Account & Security

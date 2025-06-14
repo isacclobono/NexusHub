@@ -5,16 +5,16 @@ import { ObjectId } from 'mongodb';
 import type { User } from '@/lib/types';
 import { z } from 'zod';
 
-// Server-side user document type including passwordHash
 interface UserWithPasswordHash extends Omit<User, 'id' | 'bookmarkedPostIds'> {
   _id: ObjectId;
-  passwordHash?: string; // passwordHash can be optional if we are not fetching it always
+  passwordHash?: string;
   bookmarkedPostIds?: ObjectId[];
   notificationPreferences?: {
     emailNewPosts?: boolean;
     eventReminders?: boolean;
     mentionNotifications?: boolean;
   };
+  privacy?: 'public' | 'private';
 }
 
 interface UserParams {
@@ -30,6 +30,7 @@ const profileUpdateSchema = z.object({
     eventReminders: z.boolean().optional(),
     mentionNotifications: z.boolean().optional(),
   }).optional(),
+  privacy: z.enum(['public', 'private']).optional(),
 });
 
 
@@ -57,7 +58,8 @@ export async function GET(request: NextRequest, { params }: UserParams) {
       ...userDoc,
       id: userDoc._id.toHexString(),
       bookmarkedPostIds: Array.isArray(userDoc.bookmarkedPostIds) ? userDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
-      notificationPreferences: userDoc.notificationPreferences || { emailNewPosts: true, eventReminders: true, mentionNotifications: false } // Provide defaults if not set
+      notificationPreferences: userDoc.notificationPreferences || { emailNewPosts: true, eventReminders: true, mentionNotifications: false },
+      privacy: userDoc.privacy || 'public', // Default to public if not set
     };
 
     return NextResponse.json(userForClient, { status: 200 });
@@ -83,7 +85,7 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     if (!validation.success) {
       return NextResponse.json({ message: 'Invalid profile data.', errors: validation.error.flatten().fieldErrors }, { status: 400 });
     }
-    const { name, bio, avatarUrl, notificationPreferences } = validation.data;
+    const { name, bio, avatarUrl, notificationPreferences, privacy } = validation.data;
 
     const db = await getDb();
     const usersCollection = db.collection<UserWithPasswordHash>('users');
@@ -116,17 +118,14 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     if (notificationPreferences !== undefined) {
         updateData.notificationPreferences = notificationPreferences;
     }
+    if (privacy !== undefined) {
+      updateData.privacy = privacy;
+    }
 
 
-    // Check if only updatedAt is present, meaning no actual user-editable field was changed
-    // This check is now more for informational purposes, as updatedAt will always be there.
     const updateKeys = Object.keys(updateData);
     if (updateKeys.length === 1 && updateKeys[0] === 'updatedAt' &&
-        name === undefined && bio === undefined && avatarUrl === undefined && notificationPreferences === undefined) {
-        // No actual change other than potentially updatedAt (which we always set)
-        // It's better to proceed with the update to ensure `updatedAt` is refreshed
-        // and to reflect the "save" action.
-        // So, we don't return early here anymore.
+        name === undefined && bio === undefined && avatarUrl === undefined && notificationPreferences === undefined && privacy === undefined) {
     }
 
     const result = await usersCollection.findOneAndUpdate(
@@ -145,6 +144,7 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
         id: result.value._id.toHexString(),
         bookmarkedPostIds: Array.isArray(result.value.bookmarkedPostIds) ? result.value.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
         notificationPreferences: result.value.notificationPreferences || { emailNewPosts: true, eventReminders: true, mentionNotifications: false },
+        privacy: result.value.privacy || 'public',
     };
 
     return NextResponse.json({ message: 'Profile updated successfully!', user: updatedUserForClient }, { status: 200 });

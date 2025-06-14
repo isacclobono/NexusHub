@@ -11,14 +11,15 @@ export interface User {
   bio?: string;
   reputation: number;
   joinedDate: string;
-  updatedAt?: string; // Added for tracking updates
+  updatedAt?: string;
   bookmarkedPostIds?: ObjectId[];
-  communityIds?: ObjectId[]; // Communities the user is a member of
-  notificationPreferences?: { // Added for notification settings
+  communityIds?: ObjectId[];
+  notificationPreferences?: {
     emailNewPosts?: boolean;
     eventReminders?: boolean;
     mentionNotifications?: boolean;
   };
+  privacy?: 'public' | 'private'; // Added profile privacy
 }
 
 export interface Comment {
@@ -60,8 +61,8 @@ export interface Post {
   scheduledAt?: string;
   status?: 'published' | 'draft' | 'scheduled';
 
-  communityId?: ObjectId; // ID of the community this post belongs to
-  communityName?: string; // For display purposes
+  communityId?: ObjectId;
+  communityName?: string;
 }
 
 export interface Event {
@@ -85,12 +86,12 @@ export interface Event {
   feedbackIds?: ObjectId[];
   feedback?: EventFeedback[];
 
-  communityId?: ObjectId; // ID of the community this event belongs to
-  communityName?: string; // For display purposes
+  communityId?: ObjectId;
+  communityName?: string;
 
-  price?: number; // Price of the event ticket, 0 or undefined for free
-  currency?: string; // e.g., "USD", "EUR", defaults to USD if price is set
-  updatedAt?: string; // Added for tracking updates
+  price?: number;
+  currency?: string;
+  updatedAt?: string;
 }
 
 export interface EventFeedback {
@@ -126,7 +127,7 @@ export interface Notification {
   _id?: ObjectId;
   id?: string;
   userId: ObjectId;
-  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like' | 'community_join_request' | 'community_post_approved'; // Added community types
+  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like' | 'community_join_request' | 'community_post_approved';
   title: string;
   message: string;
   link?: string;
@@ -147,12 +148,12 @@ export interface Community {
   name: string;
   description: string;
   creatorId: ObjectId;
-  creator?: User; // Populated
+  creator?: User;
   memberIds: ObjectId[];
-  adminIds?: ObjectId[]; // For future admin roles
+  adminIds?: ObjectId[];
   coverImageUrl?: string;
-  privacy: 'public' | 'private'; // 'public' = anyone can join, 'private' = requires approval (approval not in this iteration)
-  createdAt: string; // ISO Date String
-  updatedAt?: string; // ISO Date String
-  memberCount?: number; // Denormalized for easier querying, updated by triggers or API logic
+  privacy: 'public' | 'private';
+  createdAt: string;
+  updatedAt?: string;
+  memberCount?: number;
 }
