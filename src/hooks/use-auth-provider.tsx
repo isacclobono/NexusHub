@@ -3,15 +3,17 @@
 
 import React, { createContext, useState, useEffect, useCallback, useContext, ReactNode } from 'react';
 import type { User } from '@/lib/types';
-// No direct DB or bcrypt on client
+import { ObjectId } from 'mongodb';
+
 
 interface AuthContextType {
   user: User | null;
   loading: boolean;
   isAuthenticated: boolean;
-  login: (emailOrUsername: string, pass: string) => Promise<boolean>; // Returns true on success, throws error on failure
+  login: (emailOrUsername: string, pass: string) => Promise<boolean>;
   logout: () => void;
   register: (name: string, email: string, pass: string) => Promise<{ success: boolean, message?: string, user?: User }>;
+  refreshUser: () => Promise<void>; // Added to refresh user data
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -20,28 +22,46 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const loadUserFromSession = useCallback(() => {
+  const loadUserFromSession = useCallback(async (bypassCache = false) => {
     setLoading(true);
     try {
-      const storedUser = sessionStorage.getItem('currentUser');
-      if (storedUser) {
-        const parsedUser: User = JSON.parse(storedUser);
-        // Ensure 'id' field is present, typically from _id.toHexString() on server
+      const storedUserString = sessionStorage.getItem('currentUser');
+      if (storedUserString) {
+        const parsedUser: User = JSON.parse(storedUserString);
         if (parsedUser._id && !parsedUser.id) {
              parsedUser.id = typeof parsedUser._id === 'string' ? parsedUser._id : (parsedUser._id as any).toString();
         }
-        setUser(parsedUser);
+
+        if (bypassCache && parsedUser.id) { // If bypassCache, refetch from DB
+            const response = await fetch(`/api/users/${parsedUser.id}`);
+            if (response.ok) {
+                const freshUser = await response.json();
+                setUser(freshUser);
+                sessionStorage.setItem('currentUser', JSON.stringify(freshUser));
+            } else { // Fallback to cached user if refresh fails, or log out
+                console.warn("Failed to refresh user data, using cached version.");
+                setUser(parsedUser);
+            }
+        } else {
+            setUser(parsedUser);
+        }
       } else {
         setUser(null);
       }
     } catch (error) {
       console.error("Failed to load user from session:", error);
-      sessionStorage.removeItem('currentUser'); // Clear potentially corrupted data
+      sessionStorage.removeItem('currentUser'); 
       setUser(null);
     } finally {
       setLoading(false);
     }
   }, []);
+
+  const refreshUser = useCallback(async () => {
+    if (user && user.id) {
+      await loadUserFromSession(true); // true to bypass cache and refetch
+    }
+  }, [user, loadUserFromSession]);
 
   useEffect(() => {
     loadUserFromSession();
@@ -69,13 +89,15 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       if (response.ok && result.user) {
         const loggedInUser: User = result.user;
-         if (loggedInUser._id && !loggedInUser.id) { // Ensure id is present from _id
+         if (loggedInUser._id && !loggedInUser.id) { 
             loggedInUser.id = typeof loggedInUser._id === 'string' ? loggedInUser._id : (loggedInUser._id as any).toString();
         }
+        // Ensure bookmarkedPostIds is an array, even if undefined from API
+        loggedInUser.bookmarkedPostIds = loggedInUser.bookmarkedPostIds || [];
         setUser(loggedInUser);
         sessionStorage.setItem('currentUser', JSON.stringify(loggedInUser));
         setLoading(false);
-        return true; // Indicate success
+        return true; 
       } else {
         setLoading(false);
         throw new Error(result.message || "Login failed. Please check your credentials.");
@@ -83,7 +105,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     } catch (error) {
       console.error("Login error in AuthProvider:", error);
       setLoading(false);
-      throw error; // Re-throw for the login page to handle
+      throw error; 
     }
   };
 
@@ -99,10 +121,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       const result = await response.json();
 
       if (!response.ok) {
-        // API returned an error (e.g., email exists, validation failure)
         return { success: false, message: result.message || `Registration failed: ${response.statusText}` };
       }
-      // Registration successful, result.user should contain the new user object (client-safe version)
       return { success: true, message: result.message, user: result.user };
     } catch (error) {
       console.error("Registration API call error:", error);
@@ -116,11 +136,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const logout = () => {
     setUser(null);
     sessionStorage.removeItem('currentUser');
-    // Optionally, could call an /api/logout endpoint if server-side session/token invalidation is needed
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, isAuthenticated: !!user && !loading, login, logout, register }}>
+    <AuthContext.Provider value={{ user, loading, isAuthenticated: !!user && !loading, login, logout, register, refreshUser }}>
       {children}
     </AuthContext.Provider>
   );

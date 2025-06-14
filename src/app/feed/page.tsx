@@ -11,6 +11,7 @@ import { personalizeFeed, PersonalizeFeedInput } from '@/ai/flows/personalized-f
 import { useAuth } from '@/hooks/use-auth-provider';
 import { Skeleton } from '@/components/ui/skeleton';
 import Image from 'next/image';
+import { ObjectId } from 'mongodb'; // For type checking, though not directly used for generation
 
 const PostSkeleton = () => (
   <div className="w-full max-w-2xl mx-auto space-y-4 p-4 border rounded-lg shadow-sm bg-card">
@@ -42,20 +43,30 @@ export default function FeedPage() {
   const [isCurating, setIsCurating] = useState(false);
   const [curationReasoning, setCurationReasoning] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, isAuthenticated, refreshUser } = useAuth();
 
   const fetchData = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const postsResponse = await fetch('/api/posts'); // Fetches from MongoDB via API route
+      const postsResponse = await fetch('/api/posts'); 
       if (!postsResponse.ok) {
         const errorData = await postsResponse.json();
         throw new Error(errorData.message || `Failed to fetch posts: ${postsResponse.statusText}`);
       }
       
-      const postsData: Post[] = await postsResponse.json();
-      // API now returns posts with enriched author details
+      let postsData: Post[] = await postsResponse.json();
+      
+      if (isAuthenticated && user && user.bookmarkedPostIds) {
+        postsData = postsData.map(post => ({
+          ...post,
+          // Ensure bookmarkedPostIds are strings if comparing with string post.id
+          isBookmarkedByCurrentUser: user.bookmarkedPostIds!.some(bookmarkedId => 
+            (typeof bookmarkedId === 'string' ? bookmarkedId : bookmarkedId.toHexString()) === post.id
+          )
+        }));
+      }
+      
       setAllPosts(postsData);
       setDisplayedPosts(postsData.filter(p => p.status === 'published'));
 
@@ -65,11 +76,19 @@ export default function FeedPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [isAuthenticated, user]);
 
   useEffect(() => {
     fetchData();
   }, [fetchData]);
+  
+  const handlePostBookmarkToggle = async (postId: string, isCurrentlyBookmarked: boolean) => {
+    // Refetch user data to update their bookmarkedPostIds list in auth context
+    await refreshUser(); 
+    // Then refetch all posts to get updated isBookmarkedByCurrentUser status
+    await fetchData();
+  };
+
 
   const handlePersonalizeFeed = async () => {
     if (!user || allPosts.length === 0) {
@@ -103,7 +122,6 @@ export default function FeedPage() {
       
       const curatedTitles = result.curatedFeed.split('\n').map(t => t.trim().toLowerCase()).filter(Boolean);
       
-      // Improve matching logic for curated posts
       const curatedPosts = allPosts.filter(p => 
         p.status === 'published' && 
         ( (p.title && curatedTitles.includes(p.title.toLowerCase())) || 
@@ -113,7 +131,16 @@ export default function FeedPage() {
       
       const otherPosts = allPosts.filter(p => p.status === 'published' && !curatedPosts.some(cp => cp.id === p.id));
       
-      setDisplayedPosts([...curatedPosts, ...otherPosts]);
+      let finalDisplayedPosts = [...curatedPosts, ...otherPosts];
+      if (isAuthenticated && user && user.bookmarkedPostIds) {
+         finalDisplayedPosts = finalDisplayedPosts.map(post => ({
+          ...post,
+          isBookmarkedByCurrentUser: user.bookmarkedPostIds!.some(bookmarkedId => 
+            (typeof bookmarkedId === 'string' ? bookmarkedId : bookmarkedId.toHexString()) === post.id
+          )
+        }));
+      }
+      setDisplayedPosts(finalDisplayedPosts);
       setCurationReasoning(result.reasoning);
 
     } catch (aiError) {
@@ -161,7 +188,7 @@ export default function FeedPage() {
       <div className="flex flex-col sm:flex-row justify-between items-center mb-8 gap-4">
         <h1 className="text-3xl font-headline font-bold text-primary">Community Feed</h1>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handlePersonalizeFeed} disabled={isCurating || !user || allPosts.length === 0}>
+          <Button variant="outline" onClick={handlePersonalizeFeed} disabled={isCurating || !isAuthenticated || allPosts.length === 0}>
             {isCurating ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <SlidersHorizontal className="mr-2 h-4 w-4" />}
             {isCurating ? 'Curating...' : 'Personalize My Feed'}
           </Button>
@@ -191,7 +218,7 @@ export default function FeedPage() {
       {displayedPosts.length > 0 ? (
         <div className="space-y-6">
           {displayedPosts.map((post) => (
-            <PostCard key={post.id} post={post} /> 
+            <PostCard key={post.id!} post={post} onToggleBookmark={handlePostBookmarkToggle} /> 
           ))}
         </div>
       ) : (

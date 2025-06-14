@@ -14,7 +14,6 @@ const postFormSchema = z.object({
   content: z.string().min(1, 'Content is required.').max(5000, "Content can't exceed 5000 characters."),
   category: z.string().optional(),
   tags: z.string().optional(), // Comma-separated string
-  // media handling would require file uploads and storage, simplified for now
   isDraft: z.boolean().default(false),
   scheduledAt: z.string().datetime({ offset: true }).optional(),
 });
@@ -32,13 +31,14 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
     const usersCollection = db.collection<User>('users');
-    const currentUser = await usersCollection.findOne({ _id: new ObjectId(data.userId) });
+    const currentUserDoc = await usersCollection.findOne({ _id: new ObjectId(data.userId) }, {projection: {passwordHash: 0}});
 
-    if (!currentUser) {
+    if (!currentUserDoc) {
         return NextResponse.json({ message: 'User not found. Cannot create post.' }, { status: 404 });
     }
+    const currentUser: User = {...currentUserDoc, id: currentUserDoc._id.toHexString() };
 
-    // Content Moderation (AI)
+
     const moderationInput: IntelligentContentModerationInput = { content: data.content, sensitivityLevel: 'medium' };
     const moderationResult = await intelligentContentModeration(moderationInput);
     if (moderationResult.isFlagged) {
@@ -49,7 +49,6 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
-    // Content Categorization (AI)
     let finalCategory = data.category;
     let finalTagsArray = data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
 
@@ -65,7 +64,6 @@ export async function POST(request: NextRequest) {
             }
         } catch (aiError) {
             console.warn("AI categorization failed, proceeding with user input or defaults:", aiError);
-            // Optionally, you might want to inform the user or just proceed without AI suggestions
         }
     }
 
@@ -77,12 +75,11 @@ export async function POST(request: NextRequest) {
       tags: finalTagsArray,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      reactions: [], // Initialize with empty reactions
-      commentIds: [], // Initialize with empty comment ObjectIds
+      reactions: [], 
+      commentIds: [], 
       commentCount: 0,
       status: data.isDraft ? 'draft' : (data.scheduledAt ? 'scheduled' : 'published'),
       scheduledAt: data.scheduledAt ? new Date(data.scheduledAt).toISOString() : undefined,
-      // media: data.media, // Media handling logic would go here
     };
 
     const postsCollection = db.collection('posts');
@@ -92,23 +89,13 @@ export async function POST(request: NextRequest) {
         throw new Error('Failed to insert post into database.');
     }
     
-    // Prepare post for client response
     const createdPostForClient: Post = {
         ...newPostDocument,
         _id: result.insertedId,
         id: result.insertedId.toHexString(),
-        authorId: newPostDocument.authorId.toHexString(),
-        author: { // Embed author for immediate display
-             _id: currentUser._id,
-             id: currentUser._id!.toHexString(),
-             name: currentUser.name,
-             email: currentUser.email,
-             avatarUrl: currentUser.avatarUrl,
-             bio: currentUser.bio,
-             reputation: currentUser.reputation,
-             joinedDate: currentUser.joinedDate,
-        },
-        comments: [], // Start with empty comments array
+        authorId: newPostDocument.authorId, // Keep as ObjectId for consistency internally
+        author: currentUser, // Embed author for immediate display
+        comments: [], 
     };
 
     return NextResponse.json({ message: 'Post created successfully!', post: createdPostForClient }, { status: 201 });
@@ -126,39 +113,47 @@ export async function GET(request: NextRequest) {
     const db = await getDb();
     const postsCollection = db.collection('posts');
     const usersCollection = db.collection<User>('users');
-    // Potentially add comments collection if you want to fetch them separately
-    // const commentsCollection = db.collection<Comment>('comments');
+    
+    const { searchParams } = new URL(request.url);
+    const authorId = searchParams.get('authorId');
+    const bookmarkedById = searchParams.get('bookmarkedById'); // For fetching bookmarked posts
 
-    // Fetch only published posts, sorted by creation date
-    const postsFromDb = await postsCollection.find({ status: 'published' }).sort({ createdAt: -1 }).toArray();
+    let query: any = { status: 'published' };
+    if (authorId && ObjectId.isValid(authorId)) {
+      query.authorId = new ObjectId(authorId);
+    }
+
+    if (bookmarkedById && ObjectId.isValid(bookmarkedById)) {
+        const user = await usersCollection.findOne({ _id: new ObjectId(bookmarkedById) });
+        if (user && user.bookmarkedPostIds && user.bookmarkedPostIds.length > 0) {
+            query._id = { $in: user.bookmarkedPostIds };
+        } else {
+            return NextResponse.json([], { status: 200 }); // No bookmarked posts or user not found
+        }
+    }
+
+
+    const postsFromDb = await postsCollection.find(query).sort({ createdAt: -1 }).toArray();
 
     const enrichedPosts: Post[] = await Promise.all(
       postsFromDb.map(async (postDoc) => {
-        const authorDoc = await usersCollection.findOne({ _id: new ObjectId(postDoc.authorId as string) });
+        const authorDoc = await usersCollection.findOne({ _id: new ObjectId(postDoc.authorId as any) }, {projection: {passwordHash: 0}});
         
         const authorForClient: User | undefined = authorDoc ? {
-          id: authorDoc._id!.toHexString(),
-          _id: authorDoc._id,
-          name: authorDoc.name,
-          email: authorDoc.email, // ensure email is part of User type if needed
-          avatarUrl: authorDoc.avatarUrl,
-          bio: authorDoc.bio,
-          reputation: authorDoc.reputation,
-          joinedDate: authorDoc.joinedDate,
+          ...authorDoc,
+          id: authorDoc._id.toHexString(),
         } : undefined;
         
-        // Basic comment fetching (first few, or could be more complex)
-        // For simplicity, not fetching comments here, PostCard might do it or it's loaded on post detail page.
-        // If you want to embed comments, you would query the comments collection using postDoc.commentIds.
+        // Fetch comments if needed, for now keeping it simple
+        const commentsForClient: Comment[] = []; // Placeholder
 
         return {
           ...postDoc,
           id: postDoc._id.toHexString(),
-          authorId: postDoc.authorId.toString(),
-          author: authorForClient || { id: 'unknown', name: 'Unknown User', email:'', reputation: 0, joinedDate: new Date().toISOString() } as User, // Fallback author
-          commentIds: postDoc.commentIds?.map((id: ObjectId | string) => id.toString()) || [],
-          comments: [], // Comments are not populated in the list view for brevity
-          // _id from postDoc is already an ObjectId
+          authorId: postDoc.authorId, 
+          author: authorForClient || { id: 'unknown', name: 'Unknown User', email:'', reputation: 0, joinedDate: new Date().toISOString() } as User,
+          commentIds: postDoc.commentIds?.map((id: ObjectId | string) => typeof id === 'string' ? new ObjectId(id) : id) || [],
+          comments: commentsForClient, 
         } as Post;
       })
     );

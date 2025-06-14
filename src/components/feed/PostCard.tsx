@@ -5,12 +5,15 @@ import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon } from 'lucide-react';
+import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { useAuth } from '@/hooks/use-auth-provider';
+import toast from 'react-hot-toast';
+import React, { useState } from 'react'; // Import useState
 
 interface PostCardProps {
   post: Post;
-  // allUsers is no longer needed if author and comment authors are pre-enriched
+  onToggleBookmark?: (postId: string, isCurrentlyBookmarked: boolean) => Promise<void> | void;
 }
 
 const ReactionDisplay = ({ reactions }: { reactions: Post['reactions'] }) => (
@@ -56,10 +59,19 @@ const CommentItem = ({ comment }: { comment: CommentType }) => {
   );
 };
 
-export function PostCard({ post }: PostCardProps) {
-  const { author, title, content, media, category, tags, createdAt, reactions, comments: postComments, commentCount, isBookmarked } = post;
+export function PostCard({ post, onToggleBookmark: onToggleBookmarkProp }: PostCardProps) {
+  const { author, title, content, media, category, tags, createdAt, reactions, comments: postComments, commentCount } = post;
+  const { user, isAuthenticated } = useAuth();
+  const [isBookmarking, setIsBookmarking] = useState(false);
   
-  // The API now provides the author object directly within the post
+  // Internal state for bookmark, initialized by prop, updated optimistically
+  const [isBookmarkedOptimistic, setIsBookmarkedOptimistic] = useState(!!post.isBookmarkedByCurrentUser);
+
+  React.useEffect(() => {
+    setIsBookmarkedOptimistic(!!post.isBookmarkedByCurrentUser);
+  }, [post.isBookmarkedByCurrentUser]);
+
+
   const postAuthor = author || { 
     id: post.authorId?.toString() || 'unknown', 
     name: 'Unknown User', 
@@ -69,8 +81,46 @@ export function PostCard({ post }: PostCardProps) {
     email: ''
   };
 
-  // Assuming comments are also enriched if present, or handled on detail page
   const displayComments = postComments?.slice(0, 2) || [];
+
+  const handleToggleBookmark = async () => {
+    if (!isAuthenticated || !user || !user.id || !post.id) {
+      toast.error("Please log in to bookmark posts.");
+      return;
+    }
+    if (isBookmarking) return;
+
+    setIsBookmarking(true);
+    const currentlyBookmarked = isBookmarkedOptimistic;
+    setIsBookmarkedOptimistic(!currentlyBookmarked); // Optimistic update
+
+    try {
+      const endpoint = currentlyBookmarked ? `/api/posts/${post.id}/unbookmark` : `/api/posts/${post.id}/bookmark`;
+      const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id }),
+      });
+
+      const result = await response.json();
+      if (!response.ok) {
+        setIsBookmarkedOptimistic(currentlyBookmarked); // Revert optimistic update
+        throw new Error(result.message || `Failed to ${currentlyBookmarked ? 'unbookmark' : 'bookmark'} post.`);
+      }
+      toast.success(result.message || `Post ${currentlyBookmarked ? 'unbookmarked' : 'bookmarked'}!`);
+      if (onToggleBookmarkProp) {
+        onToggleBookmarkProp(post.id, !currentlyBookmarked);
+      }
+
+    } catch (err) {
+      setIsBookmarkedOptimistic(currentlyBookmarked); // Revert optimistic update
+      toast.error(err instanceof Error ? err.message : 'An error occurred.');
+      console.error("Bookmark error:", err);
+    } finally {
+      setIsBookmarking(false);
+    }
+  };
+
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-subtle hover:shadow-md transition-shadow duration-300">
@@ -133,9 +183,9 @@ export function PostCard({ post }: PostCardProps) {
                 <CommentItem key={comment.id || comment._id?.toString()} comment={comment} />
               ))}
             </div>
-            {commentCount > 2 && (
+            {commentCount > 2 && post.id && ( // Ensure post.id is defined
               <Button variant="link" asChild className="text-xs p-0 h-auto mt-2">
-                <Link href={`/posts/${post.id || post._id?.toString()}`}>View all {commentCount} comments</Link>
+                <Link href={`/posts/${post.id}`}>View all {commentCount} comments</Link>
               </Button>
             )}
           </div>
@@ -151,9 +201,9 @@ export function PostCard({ post }: PostCardProps) {
           </Button>
           {reactions && reactions.length > 0 && <ReactionDisplay reactions={reactions} />}
         </div>
-        <Button variant="ghost" size="icon" className={`text-muted-foreground ${isBookmarked ? 'text-accent' : 'hover:text-accent'}`}>
-          <Bookmark className="h-5 w-5" />
-          <span className="sr-only">{isBookmarked ? 'Unbookmark' : 'Bookmark'}</span>
+        <Button variant="ghost" size="icon" onClick={handleToggleBookmark} disabled={isBookmarking || !isAuthenticated} className={`text-muted-foreground ${isBookmarkedOptimistic ? 'text-accent' : 'hover:text-accent'}`}>
+          {isBookmarking ? <Loader2 className="h-5 w-5 animate-spin" /> : <Bookmark className="h-5 w-5" />}
+          <span className="sr-only">{isBookmarkedOptimistic ? 'Unbookmark' : 'Bookmark'}</span>
         </Button>
       </CardFooter>
     </Card>

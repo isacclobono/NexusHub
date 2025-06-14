@@ -15,6 +15,17 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const EventDetailSkeleton = () => (
   <div className="container mx-auto py-8">
@@ -64,6 +75,7 @@ export default function EventDetailPage() {
   const [event, setEvent] = useState<Event | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isRsvpLoading, setIsRsvpLoading] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchEventDetails = useCallback(async () => {
@@ -71,25 +83,17 @@ export default function EventDetailPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // Fetch a single event. API GET /api/events now fetches all, so we filter.
-      // A dedicated /api/events/[eventId] GET endpoint would be more efficient.
-      const response = await fetch('/api/events'); 
+      // Fetch a single event.
+      const response = await fetch(`/api/events/${eventId}`); 
 
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || `Failed to fetch event details: ${response.statusText}`);
       }
       
-      const eventsData: Event[] = await response.json();
-      // The API now returns events with populated organizer and rsvps
-      const foundEvent = eventsData.find(e => e.id === eventId);
+      const foundEvent: Event = await response.json();
+      setEvent(foundEvent);
 
-      if (foundEvent) {
-        setEvent(foundEvent);
-      } else {
-        setError("Event not found.");
-        setEvent(null); // Ensure event state is cleared if not found
-      }
     } catch (e) {
       console.error("Failed to fetch event details:", e);
       setError(e instanceof Error ? e.message : "Failed to load event details.");
@@ -111,7 +115,7 @@ export default function EventDetailPage() {
         router.push(`/login?redirect=/events/${eventId}`);
         return;
     }
-    if (!event || !event.id) { // Check event.id as well
+    if (!event || !event.id) { 
         toast.error("Event details not loaded yet or event ID is missing.");
         return;
     }
@@ -129,7 +133,6 @@ export default function EventDetailPage() {
             throw new Error(result.message || 'Failed to RSVP for the event.');
         }
         
-        // API response should now contain the updated event with populated rsvps
         setEvent(result.event as Event); 
         toast.success(result.message || `Successfully RSVP'd for ${event.title}!`);
 
@@ -143,27 +146,31 @@ export default function EventDetailPage() {
   };
   
   const handleDeleteEvent = async () => {
-    if (!event || !currentUser || currentUser.id !== event.organizer?.id) { // Check against populated organizer.id
+    if (!event || !currentUser || currentUser.id !== event.organizer?.id) { 
       toast.error("You are not authorized to delete this event.");
       return;
     }
-    if (!confirm("Are you sure you want to delete this event? This action cannot be undone.")) {
-      return;
-    }
+    // Confirmation is handled by AlertDialog
 
-    setIsLoading(true); 
+    setIsDeleting(true); 
     try {
-      // TODO: Implement DELETE /api/events/[eventId] endpoint
-      // const response = await fetch(`/api/events/${event.id}`, { method: 'DELETE' });
-      // if (!response.ok) throw new Error("Failed to delete event.");
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate API call
-      toast.success(`Event "${event.title}" deleted (simulated).`);
+      const response = await fetch(`/api/events/${event.id}`, { 
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        // body: JSON.stringify({ userId: currentUser.id }) // If API needs to verify user
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to delete event.");
+      }
+      toast.success(`Event "${event.title}" deleted.`);
       router.push('/events');
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to delete event."
       toast.error(msg);
       console.error("Delete event error:", err);
-      setIsLoading(false);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -203,7 +210,7 @@ export default function EventDetailPage() {
     );
   }
 
-  const isOrganizer = currentUser?.id === event.organizer?.id; // Compare with populated organizer.id
+  const isOrganizer = currentUser?.id === event.organizer?.id; 
   const hasRSVPd = event.rsvps?.some(u => u.id === currentUser?.id);
   const rsvpCount = event.rsvps?.length || 0;
 
@@ -227,9 +234,9 @@ export default function EventDetailPage() {
         
         <div className="grid md:grid-cols-3">
             <div className="md:col-span-2 p-6 space-y-6">
-                 <CardDescription className="text-lg">
+                 <p className="text-lg text-foreground/90"> {/* Changed from CardDescription for better semantics */}
                     {event.description}
-                </CardDescription>
+                </p>
 
                 <div className="space-y-3">
                     <div className="flex items-start text-foreground">
@@ -265,7 +272,7 @@ export default function EventDetailPage() {
             </div>
 
             <div className="md:col-span-1 p-6 bg-muted/30 border-l space-y-6">
-                {event.organizer && event.organizer.id !== 'unknown' && ( // Check if organizer is not the fallback
+                {event.organizer && event.organizer.id !== 'unknown' && ( 
                      <div>
                         <h3 className="text-lg font-headline font-semibold mb-3 text-primary">Organized by</h3>
                         <Link href={`/profile/${event.organizer.id}`} className="flex items-center space-x-3 group">
@@ -324,7 +331,30 @@ export default function EventDetailPage() {
                         <h3 className="text-md font-semibold mb-2">Organizer Actions</h3>
                         <div className="flex space-x-2">
                             <Button variant="outline" size="sm" onClick={() => toast.error("Edit event functionality not implemented.")}><Edit className="mr-2 h-4 w-4"/> Edit Event</Button>
-                            <Button variant="destructive" size="sm" onClick={handleDeleteEvent}><Trash2 className="mr-2 h-4 w-4" /> Delete Event</Button>
+                            
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="destructive" size="sm" disabled={isDeleting}>
+                                  {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
+                                  Delete Event
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Are you sure?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This action cannot be undone. This will permanently delete the event "{event.title}".
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction onClick={handleDeleteEvent} disabled={isDeleting} className="bg-destructive hover:bg-destructive/90">
+                                    {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                    Yes, delete event
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                         </div>
                     </div>
                 )}

@@ -3,11 +3,13 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { PostCard } from '@/components/feed/PostCard';
-import type { Post, User, Comment as CommentType } from '@/lib/types';
+import type { Post, User } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Bookmark as BookmarkIcon, Loader2, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton'; 
+import { useAuth } from '@/hooks/use-auth-provider';
+import toast from 'react-hot-toast';
 
 const PostSkeleton = () => (
   <div className="w-full max-w-2xl mx-auto space-y-4 p-4 border rounded-lg shadow-sm bg-card">
@@ -33,57 +35,78 @@ const PostSkeleton = () => (
 
 export default function BookmarksPage() {
   const [bookmarkedPosts, setBookmarkedPosts] = useState<Post[]>([]);
-  const [allUsers, setAllUsers] = useState<User[]>([]); // For enriching comment authors
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
 
   const fetchBookmarkedPosts = useCallback(async () => {
+    if (!user || !user.id) {
+      if (!authLoading) { // Only set error if auth has finished loading and user is not available
+        setError("Please log in to view your bookmarks.");
+        setIsLoading(false);
+      }
+      return;
+    }
     setIsLoading(true);
     setError(null);
     try {
-      const [postsResponse, usersResponse] = await Promise.all([
-        fetch('/api/data/posts.json'),
-        fetch('/api/data/users.json')
-      ]);
-
-      if (!postsResponse.ok) throw new Error(`Failed to fetch posts: ${postsResponse.statusText}`);
-      if (!usersResponse.ok) throw new Error(`Failed to fetch users: ${usersResponse.statusText}`);
+      // Fetch posts specifically bookmarked by the current user
+      const response = await fetch(`/api/posts?bookmarkedById=${user.id}`);
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Failed to fetch bookmarked posts: ${response.statusText}`);
+      }
+      const postsData: Post[] = await response.json();
       
-      const postsData: Post[] = await postsResponse.json();
-      const usersData: User[] = await usersResponse.json();
-      setAllUsers(usersData);
+      // Enrich posts with isBookmarkedByCurrentUser, although for this page, they all are.
+      // The PostCard component might use this.
+      const enrichedPosts = postsData.map(p => ({...p, isBookmarkedByCurrentUser: true}));
+      setBookmarkedPosts(enrichedPosts);
 
-      const enrichedPosts = postsData.map(post => {
-        const author = usersData.find(u => u.id === post.authorId) || 
-                       { id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: new Date().toISOString() } as User;
-        const comments = post.comments?.map(comment => ({
-          ...comment,
-          author: usersData.find(u => u.id === comment.authorId) || 
-                  { id: 'unknown', name: 'Unknown Commenter', reputation: 0, joinedDate: new Date().toISOString() } as User
-        })) || [];
-        return {
-          ...post,
-          author,
-          comments,
-        };
-      });
-      
-      // Simulate user bookmarks - in a real app, this would come from user data
-      const allBookmarked = enrichedPosts.filter(post => post.isBookmarked && post.status === 'published'); 
-      setBookmarkedPosts(allBookmarked);
     } catch (e) {
       console.error("Failed to fetch bookmarked posts:", e);
       setError(e instanceof Error ? e.message : 'Failed to load bookmarks.');
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [user, authLoading]);
 
   useEffect(() => {
-    fetchBookmarkedPosts();
-  }, [fetchBookmarkedPosts]);
+    if (!authLoading) { // Wait for auth to resolve before fetching
+        if (isAuthenticated) {
+            fetchBookmarkedPosts();
+        } else {
+            setIsLoading(false);
+            setError("Please log in to view your bookmarks.");
+            // Optionally, redirect to login: router.push('/login?redirect=/bookmarks');
+        }
+    }
+  }, [authLoading, isAuthenticated, fetchBookmarkedPosts]);
 
-  if (isLoading) {
+  const handleUnbookmarkOptimistic = async (postId: string) => {
+    const originalPosts = [...bookmarkedPosts];
+    setBookmarkedPosts(prevPosts => prevPosts.filter(p => p.id !== postId));
+
+    try {
+      const response = await fetch(`/api/posts/${postId}/unbookmark`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user?.id }),
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to unbookmark post.');
+      }
+      toast.success('Post unbookmarked.');
+      // No need to refetch, already updated optimistically.
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not unbookmark post.');
+      setBookmarkedPosts(originalPosts); // Revert on error
+    }
+  };
+
+
+  if (isLoading || authLoading) {
     return (
       <div className="container mx-auto py-8">
         <div className="flex justify-between items-center mb-8">
@@ -126,7 +149,7 @@ export default function BookmarksPage() {
       {bookmarkedPosts.length > 0 ? (
         <div className="space-y-6">
           {bookmarkedPosts.map((post) => (
-            <PostCard key={post.id} post={post} allUsers={allUsers} />
+            <PostCard key={post.id!} post={{...post, isBookmarkedByCurrentUser: true}} onToggleBookmark={handleUnbookmarkOptimistic} />
           ))}
         </div>
       ) : (

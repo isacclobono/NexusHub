@@ -79,53 +79,47 @@ export default function UserProfilePage() {
   const { user: authUser, loading: authLoading } = useAuth();
   const [profileUser, setProfileUser] = useState<User | null>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
-  const [userBadges, setUserBadges] = useState<BadgeType[]>([]); // Badges still from JSON
+  const [userBadges, setUserBadges] = useState<BadgeType[]>([]); 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Determine which user ID to fetch (either from route or authenticated user for '/profile/me')
   const userIdToFetch = routeUserId === 'me' && authUser ? authUser.id : routeUserId;
 
-  const fetchProfileData = useCallback(async (currentUserId: string) => {
-    if (!currentUserId || currentUserId === 'me') { // If 'me' and authUser not loaded yet, wait.
+  const fetchProfileData = useCallback(async (currentUserId: string | undefined) => {
+    if (!currentUserId || currentUserId === 'me' && !authUser && !authLoading) {
         if (currentUserId === 'me' && !authUser && !authLoading) {
             setError("Cannot load 'me' profile. User not authenticated.");
-            setIsLoading(false);
-        } else if (currentUserId === 'me' && authLoading) {
-            // still waiting for authUser
-        } else if (!currentUserId){
+        } else if (!currentUserId) {
              setError("User ID is missing.");
-             setIsLoading(false);
         }
+        setIsLoading(false);
         return;
     }
+    
     setIsLoading(true);
     setError(null);
-    try {
-      // TODO: Create a dedicated API endpoint /api/users/[userId] to fetch specific user details from MongoDB
-      // For now, fetching all users and filtering (inefficient for production)
-      const usersResponse = await fetch('/api/data/users.json'); // Simulating fetch for profile user
-      if (!usersResponse.ok) throw new Error(`Failed to fetch user data: ${usersResponse.statusText}`);
-      const usersData: User[] = await usersResponse.json();
-      const foundUser = usersData.find(u => u.id === currentUserId);
-      setProfileUser(foundUser || null);
 
-      if (foundUser) {
-        // Fetch posts by this user from MongoDB
-        // TODO: Create /api/posts?authorId=[userId] endpoint
-        const postsResponse = await fetch('/api/posts'); // Fetches ALL posts for now
+    try {
+      const userResponse = await fetch(`/api/users/${currentUserId}`);
+      if (!userResponse.ok) {
+        const errorData = await userResponse.json();
+        throw new Error(errorData.message || `Failed to fetch user data: ${userResponse.statusText}`);
+      }
+      const foundUser: User = await userResponse.json();
+      setProfileUser(foundUser);
+
+      if (foundUser && foundUser.id) {
+        // Fetch posts by this user (authorId is an ObjectId in DB, foundUser.id is string)
+        const postsResponse = await fetch(`/api/posts?authorId=${foundUser.id}`); 
         if (!postsResponse.ok) throw new Error(`Failed to fetch posts: ${postsResponse.statusText}`);
-        let allPostsData: Post[] = await postsResponse.json();
-        const filteredUserPosts = allPostsData.filter(p => p.author?.id === foundUser.id && p.status === 'published');
-        setUserPosts(filteredUserPosts);
+        const allPostsData: Post[] = await postsResponse.json();
+        setUserPosts(allPostsData.filter(p => p.status === 'published'));
         
         // Badges are still fetched from JSON for demo
-        const badgesResponse = await fetch('/api/data/badges.json');
+        const badgesResponse = await fetch('/api/data/badges.json'); // This remains static for now
         if (!badgesResponse.ok) throw new Error(`Failed to fetch badges: ${badgesResponse.statusText}`);
         const badgesData: BadgeType[] = await badgesResponse.json();
-         // Assign all badges to the user for demo purposes on their own profile or a sample selection
         setUserBadges(foundUser.id === authUser?.id ? badgesData : badgesData.slice(0, Math.floor(Math.random() * badgesData.length + 1))); 
-
       } else {
         setError("User not found.");
         setProfileUser(null);
@@ -143,7 +137,6 @@ export default function UserProfilePage() {
     if (!authLoading && userIdToFetch) {
       fetchProfileData(userIdToFetch);
     } else if (routeUserId === 'me' && !authUser && !authLoading) {
-        // User is not authenticated and trying to access /profile/me
         toast.error("Please log in to view your profile.");
         router.push(`/login?redirect=/profile/me`);
     }
@@ -227,8 +220,7 @@ export default function UserProfilePage() {
           {userPosts.length > 0 ? (
             <div className="space-y-6">
               {userPosts.map(post => (
-                // PostCard expects an author object within post
-                <PostCard key={post.id} post={post} />
+                <PostCard key={post.id!} post={post} />
               ))}
             </div>
           ) : (

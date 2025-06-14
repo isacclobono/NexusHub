@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { User } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'; // CardHeader, CardTitle not used directly
 import { Users as UsersIcon, Loader2, AlertTriangle } from 'lucide-react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
@@ -34,9 +34,9 @@ const MemberCard = ({ member }: { member: User }) => (
         </Avatar>
       </Link>
       <div className="flex-1">
-        <CardTitle className="text-xl font-headline mb-1 hover:text-primary transition-colors">
+        <h2 className="text-xl font-headline mb-1 hover:text-primary transition-colors font-semibold"> {/* Changed from CardTitle */}
             <Link href={`/profile/${member.id}`}>{member.name}</Link>
-        </CardTitle>
+        </h2>
         <p className="text-sm text-muted-foreground mb-1">Reputation: {member.reputation}</p>
         <p className="text-xs text-muted-foreground mb-3">Joined: {new Date(member.joinedDate).toLocaleDateString()}</p>
         {member.bio && <p className="text-sm text-foreground line-clamp-2 mb-3">{member.bio}</p>}
@@ -57,9 +57,10 @@ export default function MembersPage() {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/data/users.json');
+      const response = await fetch('/api/users'); // Fetch from MongoDB via API
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status} ${response.statusText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP error! status: ${response.status} ${response.statusText}`);
       }
       const data: User[] = await response.json();
       setMembers(data);
@@ -115,7 +116,7 @@ export default function MembersPage() {
       {!isLoading && !error && members.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
           {members.map((member) => (
-            <MemberCard key={member.id} member={member} />
+            <MemberCard key={member.id!} member={member} />
           ))}
         </div>
       )}

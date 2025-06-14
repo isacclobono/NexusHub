@@ -1,6 +1,51 @@
 
 [
-  { "id": "badge1", "name": "Pioneer", "description": "Joined NexusHub in the first month.", "iconUrl": "https://placehold.co/50x50.png" },
-  { "id": "badge2", "name": "Contributor", "description": "Made 10+ valuable posts.", "iconUrl": "https://placehold.co/50x50.png" },
-  { "id": "badge3", "name": "Engager", "description": "Received 100+ reactions on posts/comments.", "iconUrl": "https://placehold.co/50x50.png" }
+  {
+    "id": "badge-pioneer",
+    "name": "Pioneer",
+    "description": "Joined NexusHub in the first month of its launch.",
+    "iconUrl": "https://placehold.co/64x64.png?text=PNR"
+  },
+  {
+    "id": "badge-first-post",
+    "name": "Icebreaker",
+    "description": "Made their first post in the community.",
+    "iconUrl": "https://placehold.co/64x64.png?text=FP"
+  },
+  {
+    "id": "badge-avid-commenter",
+    "name": "Conversationalist",
+    "description": "Posted 50 or more comments.",
+    "iconUrl": "https://placehold.co/64x64.png?text=AC"
+  },
+  {
+    "id": "badge-event-organizer",
+    "name": "Event Host",
+    "description": "Successfully organized a community event.",
+    "iconUrl": "https://placehold.co/64x64.png?text=EO"
+  },
+  {
+    "id": "badge-top-contributor",
+    "name": "Top Contributor",
+    "description": "Received 100+ likes on their posts and comments.",
+    "iconUrl": "https://placehold.co/64x64.png?text=TC"
+  },
+  {
+    "id": "badge-helpful-hand",
+    "name": "Helpful Hand",
+    "description": "Marked as helpful by other users 10+ times.",
+    "iconUrl": "https://placehold.co/64x64.png?text=HH"
+  },
+  {
+    "id": "badge-year-one-member",
+    "name": "Year One Veteran",
+    "description": "Active member for over one year.",
+    "iconUrl": "https://placehold.co/64x64.png?text=Y1"
+  },
+  {
+    "id": "badge-streak-master",
+    "name": "Streak Master",
+    "description": "Visited NexusHub for 30 consecutive days.",
+    "iconUrl": "https://placehold.co/64x64.png?text=SM"
+  }
 ]

@@ -2,7 +2,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Notification, User } from '@/lib/types';
+import type { Notification } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Bell, AlertTriangle, Loader2, Eye, EyeOff, Trash2 } from 'lucide-react';
@@ -13,18 +13,21 @@ import { Skeleton } from '@/components/ui/skeleton';
 import toast from 'react-hot-toast';
 
 const NotificationItemSkeleton = () => (
-  <div className="flex items-start space-x-4 p-4 border-b">
+  <div className="flex items-start space-x-4 p-4 border-b bg-card rounded-md shadow-sm">
     <Skeleton className="h-10 w-10 rounded-full" />
     <div className="flex-1 space-y-2">
       <Skeleton className="h-4 w-3/4" />
       <Skeleton className="h-3 w-1/2" />
       <Skeleton className="h-3 w-1/4" />
     </div>
-    <Skeleton className="h-8 w-8" />
+    <div className="flex flex-col space-y-1">
+      <Skeleton className="h-8 w-8 rounded-sm" />
+      <Skeleton className="h-8 w-8 rounded-sm" />
+    </div>
   </div>
 );
 
-const NotificationItem = ({ notification, onToggleRead, onDelete }: { notification: Notification; onToggleRead: (id: string) => void; onDelete: (id: string) => void; }) => {
+const NotificationItem = ({ notification, onToggleRead, onDelete }: { notification: Notification; onToggleRead: (id: string, currentReadStatus: boolean) => void; onDelete: (id: string) => void; }) => {
   return (
     <Card className={`mb-4 ${notification.isRead ? 'bg-muted/50 opacity-70' : 'bg-card'} shadow-sm hover:shadow-md transition-shadow`}>
       <CardContent className="p-4 flex items-start space-x-4">
@@ -32,8 +35,8 @@ const NotificationItem = ({ notification, onToggleRead, onDelete }: { notificati
           <Bell className={`h-6 w-6 ${notification.isRead ? 'text-muted-foreground' : 'text-primary'}`} />
         </div>
         <div className="flex-1">
-          <CardTitle className="text-base font-semibold mb-1">{notification.title}</CardTitle>
-          <CardDescription className="text-sm mb-2">{notification.message}</CardDescription>
+          <h3 className="text-base font-semibold mb-1">{notification.title}</h3> {/* Changed from CardTitle */}
+          <p className="text-sm mb-2 text-foreground/80">{notification.message}</p> {/* Changed from CardDescription */}
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>{formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}</span>
             {notification.link && (
@@ -44,10 +47,10 @@ const NotificationItem = ({ notification, onToggleRead, onDelete }: { notificati
           </div>
         </div>
         <div className="flex flex-col space-y-1">
-          <Button variant="ghost" size="icon" onClick={() => onToggleRead(notification.id)} title={notification.isRead ? "Mark as unread" : "Mark as read"}>
+          <Button variant="ghost" size="icon" onClick={() => onToggleRead(notification.id!, notification.isRead)} title={notification.isRead ? "Mark as unread" : "Mark as read"}>
             {notification.isRead ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
           </Button>
-           <Button variant="ghost" size="icon" onClick={() => onDelete(notification.id)} title="Delete notification" className="text-destructive hover:text-destructive">
+           <Button variant="ghost" size="icon" onClick={() => onDelete(notification.id!)} title="Delete notification" className="text-destructive hover:text-destructive">
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
@@ -60,58 +63,124 @@ export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, isAuthenticated } = useAuth();
   
 
   const fetchNotifications = useCallback(async () => {
-    if (!user) return;
+    if (!user || !user.id) {
+        if(!authLoading) { // Only set error if auth has resolved and user is not available
+            setError("Please log in to view notifications.");
+            setIsLoading(false);
+        }
+        return;
+    }
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/data/notifications.json');
+      // Fetch from MongoDB via API, passing userId
+      const response = await fetch(`/api/notifications?userId=${user.id}`); 
       if (!response.ok) {
-        throw new Error(`Failed to fetch notifications: ${response.statusText}`);
+        const errorData = await response.json();
+        throw new Error(errorData.message || `Failed to fetch notifications: ${response.statusText}`);
       }
-      let allNotifications: Notification[] = await response.json();
-      allNotifications = allNotifications.filter(n => n.userId === user.id);
-      setNotifications(allNotifications.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()));
+      const data: Notification[] = await response.json();
+      setNotifications(data); // API already sorts by createdAt desc
     } catch (e) {
       console.error("Failed to fetch notifications:", e);
       setError(e instanceof Error ? e.message : 'Failed to load notifications.');
     } finally {
       setIsLoading(false);
     }
-  }, [user]);
+  }, [user, authLoading]);
 
   useEffect(() => {
-    if (!authLoading && user) {
-      fetchNotifications();
-    } else if (!authLoading && !user) {
-      setIsLoading(false);
-      setError("Please log in to view notifications.");
+     if (!authLoading) { // Wait for auth to resolve
+        if (isAuthenticated) {
+            fetchNotifications();
+        } else {
+            setIsLoading(false);
+            setError("Please log in to view notifications.");
+        }
     }
-  }, [authLoading, user, fetchNotifications]);
+  }, [authLoading, isAuthenticated, fetchNotifications]);
 
-  const handleToggleRead = async (id: string) => {
+  const handleToggleRead = async (id: string, currentReadStatus: boolean) => {
+    if (!user || !user.id) return;
+    const newReadStatus = !currentReadStatus;
+    // Optimistic update
     setNotifications(prev =>
-      prev.map(n => (n.id === id ? { ...n, isRead: !n.isRead } : n))
+      prev.map(n => (n.id === id ? { ...n, isRead: newReadStatus } : n))
     );
-    toast("Notification status updated (simulated).");
+    try {
+        const response = await fetch(`/api/notifications/${id}`, {
+            method: 'PATCH',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ userId: user.id, isRead: newReadStatus })
+        });
+        if(!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || "Failed to update notification status.");
+        }
+        toast.success(`Notification marked as ${newReadStatus ? 'read' : 'unread'}.`);
+    } catch (err) {
+        setNotifications(prev => prev.map(n => (n.id === id ? { ...n, isRead: currentReadStatus } : n))); // Revert
+        toast.error(err instanceof Error ? err.message : "Could not update notification.");
+    }
   };
 
   const handleDelete = async (id: string) => {
-    setNotifications(prev => prev.filter(n => n.id !== id));
-    toast.error("Notification deleted (simulated).");
+    if (!user || !user.id) return;
+    const originalNotifications = [...notifications];
+    setNotifications(prev => prev.filter(n => n.id !== id)); // Optimistic update
+    try {
+        const response = await fetch(`/api/notifications/${id}?userId=${user.id}`, { method: 'DELETE' });
+        if(!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || "Failed to delete notification.");
+        }
+        toast.success("Notification deleted.");
+    } catch (err) {
+        setNotifications(originalNotifications); // Revert
+        toast.error(err instanceof Error ? err.message : "Could not delete notification.");
+    }
   };
 
-  const handleMarkAllRead = () => {
+  const handleMarkAllRead = async () => {
+    if (!user || !user.id || notifications.filter(n => !n.isRead).length === 0) return;
+    const originalNotifications = notifications.map(n => ({...n}));
     setNotifications(prev => prev.map(n => ({ ...n, isRead: true })));
-    toast("All notifications marked as read (simulated).");
+    try {
+        const response = await fetch(`/api/notifications`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ userId: user.id, action: 'markAllRead' })
+        });
+        if(!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || "Failed to mark all as read.");
+        }
+        toast.success("All notifications marked as read.");
+    } catch (err) {
+        setNotifications(originalNotifications); // Revert
+        toast.error(err instanceof Error ? err.message : "Could not mark all as read.");
+    }
   };
   
-  const handleDeleteAll = () => {
+  const handleDeleteAll = async () => {
+    if (!user || !user.id || notifications.length === 0) return;
+    const originalNotifications = [...notifications];
     setNotifications([]);
-    toast.error("All notifications deleted (simulated).");
+     try {
+        const response = await fetch(`/api/notifications?userId=${user.id}`, { method: 'DELETE' });
+        if(!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || "Failed to delete all notifications.");
+        }
+        toast.success("All notifications deleted.");
+    } catch (err) {
+        setNotifications(originalNotifications); // Revert
+        toast.error(err instanceof Error ? err.message : "Could not delete all notifications.");
+    }
   };
 
 
@@ -140,7 +209,7 @@ export default function NotificationsPage() {
         </h1>
         {notifications.length > 0 && (
           <div className="flex gap-2">
-            <Button variant="outline" onClick={handleMarkAllRead}>Mark All as Read</Button>
+            <Button variant="outline" onClick={handleMarkAllRead} disabled={notifications.filter(n => !n.isRead).length === 0}>Mark All as Read</Button>
             <Button variant="destructive" onClick={handleDeleteAll}>Delete All</Button>
           </div>
         )}
@@ -172,7 +241,7 @@ export default function NotificationsPage() {
         <div className="space-y-4">
           {notifications.map(notification => (
             <NotificationItem 
-              key={notification.id} 
+              key={notification.id!} 
               notification={notification}
               onToggleRead={handleToggleRead}
               onDelete={handleDelete}
