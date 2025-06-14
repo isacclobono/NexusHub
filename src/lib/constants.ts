@@ -108,3 +108,4 @@ export const COMMUNITY_PRIVACY_OPTIONS = [
   { value: 'public', label: 'Public (Anyone can find, view, and join)' },
   { value: 'private', label: 'Private (Only members can see content and who\'s in the group. Join by request - approval not implemented yet.)' },
 ];
+
