@@ -55,7 +55,6 @@ export async function POST(request: NextRequest) {
         if (!community) {
             return NextResponse.json({ message: 'Community not found.' }, { status: 404 });
         }
-        // Optional: Check if organizer is a member of the community
     }
 
     const newEventDocument = {
@@ -84,7 +83,7 @@ export async function POST(request: NextRequest) {
         ...newEventDocument,
         _id: result.insertedId,
         id: result.insertedId.toHexString(),
-        organizerId: newEventDocument.organizerId, 
+        organizerId: newEventDocument.organizerId.toHexString() as any, // Ensure string for client
         organizer: { 
              _id: organizer._id,
              id: organizer._id!.toHexString(),
@@ -97,7 +96,7 @@ export async function POST(request: NextRequest) {
         },
         rsvpIds: [], 
         rsvps: [],   
-        communityId: newEventDocument.communityId,
+        communityId: newEventDocument.communityId ? newEventDocument.communityId.toHexString() as any : undefined, // Ensure string for client
         communityName: community?.name,
     };
 
@@ -151,6 +150,8 @@ export async function GET(request: NextRequest) {
           bio: organizerDoc.bio,
           reputation: organizerDoc.reputation,
           joinedDate: organizerDoc.joinedDate,
+          bookmarkedPostIds: [], // ensure it exists
+          communityIds: [], // ensure it exists
         } : undefined;
         
         let rsvpsForClient: User[] = [];
@@ -166,6 +167,8 @@ export async function GET(request: NextRequest) {
             bio: doc.bio,
             reputation: doc.reputation,
             joinedDate: doc.joinedDate,
+            bookmarkedPostIds: [], // ensure it exists
+            communityIds: [], // ensure it exists
           }));
         }
 
@@ -178,12 +181,12 @@ export async function GET(request: NextRequest) {
         return {
           ...eventDoc,
           id: eventDoc._id.toHexString(),
-          organizerId: eventDoc.organizerId, 
-          organizer: organizerForClient || { id: 'unknown', name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString() } as User,
-          rsvpIds: eventDoc.rsvpIds?.map((id: ObjectId | string) => typeof id === 'string' ? new ObjectId(id) : id) || [], 
+          organizerId: eventDoc.organizerId.toHexString(), 
+          organizer: organizerForClient || { id: 'unknown', name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [], communityIds: [] } as User,
+          rsvpIds: (eventDoc.rsvpIds?.map((id: ObjectId | string) => (typeof id === 'string' ? id : id.toHexString())) || []) as any, // Ensure string IDs
           rsvps: rsvpsForClient,
           _id: eventDoc._id, 
-          communityId: eventDoc.communityId,
+          communityId: eventDoc.communityId ? eventDoc.communityId.toHexString() : undefined,
           communityName: communityName,
         } as Event;
       })
@@ -196,3 +199,4 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
+

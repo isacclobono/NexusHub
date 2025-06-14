@@ -32,7 +32,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useAuth } from '@/hooks/use-auth-provider';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import type { Community } from '@/lib/types';
 
 const eventFormSchema = z.object({
@@ -60,8 +60,31 @@ export default function CreateEventPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const preselectedCommunityId = searchParams.get('communityId');
   const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
   const [loadingCommunities, setLoadingCommunities] = useState(false);
+  
+
+  const form = useForm<EventFormValues>({
+    resolver: zodResolver(eventFormSchema),
+    defaultValues: {
+      title: '',
+      description: '',
+      location: '',
+      category: '',
+      tags: '',
+      imageUrl: '',
+      communityId: preselectedCommunityId || '',
+    },
+  });
+
+  useEffect(() => {
+    if (preselectedCommunityId) {
+      form.setValue('communityId', preselectedCommunityId);
+    }
+  }, [preselectedCommunityId, form]);
+
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -99,18 +122,6 @@ export default function CreateEventPage() {
   }, [authLoading, isAuthenticated, user, router]);
   
 
-  const form = useForm<EventFormValues>({
-    resolver: zodResolver(eventFormSchema),
-    defaultValues: {
-      title: '',
-      description: '',
-      location: '',
-      category: '',
-      tags: '',
-      imageUrl: '',
-    },
-  });
-
   async function onSubmit(data: EventFormValues) {
     if (!user || !user.id) { 
       toast.error("Authentication error or user ID missing. Please log in again.");
@@ -144,8 +155,12 @@ export default function CreateEventPage() {
         }
       } else {
         toast.success(`Your event "${result.event.title}" has been successfully created.`);
-        form.reset();
-        router.push(`/events/${result.event.id}`); 
+        form.reset({ title: '', description: '', location: '', category: '', tags: '', imageUrl: '', communityId: preselectedCommunityId || '' });
+        if (result.event.communityId) {
+            router.push(`/communities/${result.event.communityId}`);
+        } else {
+            router.push(`/events/${result.event.id}`); 
+        }
       }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred.';
@@ -221,10 +236,10 @@ export default function CreateEventPage() {
                 render={({ field }) => (
                     <FormItem>
                     <FormLabel className="flex items-center"><UsersRound className="mr-2 h-4 w-4 text-muted-foreground"/>Associate with a Community (Optional)</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value || ''} disabled={loadingCommunities}>
                         <FormControl>
                         <SelectTrigger>
-                            <SelectValue placeholder="Select a community (optional)" />
+                            <SelectValue placeholder={loadingCommunities ? "Loading communities..." : "Select a community (optional)"} />
                         </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -461,3 +476,4 @@ export default function CreateEventPage() {
     </div>
   );
 }
+

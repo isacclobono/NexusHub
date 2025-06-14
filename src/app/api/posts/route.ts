@@ -134,6 +134,8 @@ export async function POST(request: NextRequest) {
         likeCount: 0,
         commentIds: [],
         commentCount: 0,
+        isLikedByCurrentUser: false,
+        isBookmarkedByCurrentUser: false,
         communityId: newPostDocument.communityId,
         communityName: community?.name,
     };
@@ -185,16 +187,13 @@ export async function GET(request: NextRequest) {
       if (statusParam && ['draft', 'scheduled', 'published'].includes(statusParam)) {
             query.status = statusParam;
         } else {
-            // If fetching for a specific author without a status, default to published.
-            // If 'My Posts' page needs all, it should specify a status or this logic needs adjustment.
             query.status = 'published'; 
         }
     } else if (communityIdParam && ObjectId.isValid(communityIdParam)) {
         query.communityId = new ObjectId(communityIdParam);
-        query.status = 'published'; // Only show published posts within a community feed for now
+        query.status = 'published'; 
     }
      else {
-        // General feed fetching - only published posts if no specific author/community context
         query.status = 'published';
     }
 
@@ -221,12 +220,17 @@ export async function GET(request: NextRequest) {
         const recentCommentsPopulated: Comment[] = await Promise.all(
             recentCommentsDocs.map(async (commentDoc) => {
                 const commentAuthorDoc = await usersCollection.findOne({_id: commentDoc.authorId}, {projection: {passwordHash: 0}});
+                const caForClient: User | undefined = commentAuthorDoc ? {
+                    ...commentAuthorDoc,
+                    id: commentAuthorDoc._id.toHexString(),
+                    bookmarkedPostIds: Array.isArray(commentAuthorDoc.bookmarkedPostIds) ? commentAuthorDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
+                } : undefined;
                 return {
                     ...commentDoc,
                     id: commentDoc._id.toHexString(),
                     postId: commentDoc.postId,
                     authorId: commentDoc.authorId,
-                    author: commentAuthorDoc ? { ...commentAuthorDoc, id: commentAuthorDoc._id.toHexString(), bookmarkedPostIds: commentAuthorDoc.bookmarkedPostIds || [] } : undefined,
+                    author: caForClient || { _id: commentDoc.authorId, id: commentDoc.authorId.toHexString(), name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [] } as User,
                 } as Comment;
             })
         );
@@ -248,7 +252,7 @@ export async function GET(request: NextRequest) {
           ...postDoc,
           id: postDoc._id.toHexString(),
           authorId: postDoc.authorId, 
-          author: authorForClient || { id: 'unknown', name: 'Unknown User', email:'', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds:[] } as User,
+          author: authorForClient || { _id: postDoc.authorId, id: postDoc.authorId.toHexString(), name: 'Unknown User', email:'', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds:[] } as User,
           likedBy: postLikedBy.map(id => new ObjectId(id.toString())),
           likeCount: postDoc.likeCount || 0,
           isLikedByCurrentUser,
@@ -269,3 +273,4 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: errorMessage, posts: [], comments: [] }, { status: 500 });
   }
 }
+

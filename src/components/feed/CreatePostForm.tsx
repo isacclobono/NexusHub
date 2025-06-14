@@ -47,13 +47,17 @@ const postFormSchema = z.object({
   media: z.any().optional(), 
   isDraft: z.boolean().default(false),
   scheduledAt: z.date().optional(),
-  communityId: z.string().optional(), // For selecting a community
+  communityId: z.string().optional(), 
 }).refine(data => !data.scheduledAt || data.scheduledAt > new Date(), {
     message: "Scheduled date must be in the future.",
     path: ["scheduledAt"],
 });
 
 type PostFormValues = z.infer<typeof postFormSchema>;
+
+interface CreatePostFormProps {
+  preselectedCommunityId?: string;
+}
 
 const GenAICallout = ({ icon: Icon, title, children }: { icon: React.ElementType, title: string, children: React.ReactNode }) => (
   <div className="mt-2 mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg flex">
@@ -66,7 +70,7 @@ const GenAICallout = ({ icon: Icon, title, children }: { icon: React.ElementType
 );
 
 
-export function CreatePostForm() {
+export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isCategorizing, setIsCategorizing] = useState(false);
   const [suggestedCategory, setSuggestedCategory] = useState<string | null>(null);
@@ -77,6 +81,22 @@ export function CreatePostForm() {
   const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
   const [loadingCommunities, setLoadingCommunities] = useState(false);
 
+  const form = useForm<PostFormValues>({
+    resolver: zodResolver(postFormSchema),
+    defaultValues: {
+      content: '',
+      isDraft: false,
+      communityId: preselectedCommunityId || '',
+    },
+  });
+
+  useEffect(() => {
+    if (preselectedCommunityId) {
+      form.setValue('communityId', preselectedCommunityId);
+    }
+  }, [preselectedCommunityId, form]);
+
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       toast.error("You must be logged in to create a post.");
@@ -86,34 +106,21 @@ export function CreatePostForm() {
       const fetchUserCommunities = async () => {
         setLoadingCommunities(true);
         try {
-          // This API endpoint needs to exist or be adapted: fetch communities user is a member of
-          // For now, this will likely be an empty list or require a new API.
-          // Let's assume for now it fetches communities they CREATED.
-          const response = await fetch(`/api/communities?creatorId=${user.id}`); // Placeholder, needs specific API
-          if(response.ok) {
-            const data = await response.json();
-            setMemberCommunities(data);
-          } else {
-            // setMemberCommunities([]); // Could also fetch `/api/users/${user.id}` and get `communityIds` then fetch those.
-            // For simplicity, we'll assume the user can only post to communities they created, for now.
-            // This needs a more robust /api/users/[userId]/communitiesMemberOf endpoint
             const userDetailsResponse = await fetch(`/api/users/${user.id}`);
             if (userDetailsResponse.ok) {
                 const userData = await userDetailsResponse.json();
                 if (userData.communityIds && userData.communityIds.length > 0) {
-                    // Fetch details for these communities
                     const communityDetailsPromises = userData.communityIds.map((id: string) =>
                         fetch(`/api/communities/${id}`).then(res => res.json())
                     );
                     const communitiesData = await Promise.all(communityDetailsPromises);
-                    setMemberCommunities(communitiesData.filter(c => c && c.id)); // Filter out any failed fetches
+                    setMemberCommunities(communitiesData.filter(c => c && c.id));
                 } else {
                     setMemberCommunities([]);
                 }
             } else {
                 setMemberCommunities([]);
             }
-          }
         } catch (error) {
           console.error("Failed to fetch user's communities", error);
           setMemberCommunities([]);
@@ -125,13 +132,6 @@ export function CreatePostForm() {
     }
   }, [authLoading, isAuthenticated, user, router]);
 
-  const form = useForm<PostFormValues>({
-    resolver: zodResolver(postFormSchema),
-    defaultValues: {
-      content: '',
-      isDraft: false,
-    },
-  });
 
   const handleSuggestCategoryAndTags = useCallback(async () => {
     const content = form.getValues('content');
@@ -176,7 +176,7 @@ export function CreatePostForm() {
       ...data,
       userId: user.id, 
       scheduledAt: (showSchedule && data.scheduledAt) ? data.scheduledAt.toISOString() : undefined,
-      communityId: data.communityId || undefined, // Ensure it's undefined if empty
+      communityId: data.communityId || undefined, 
     };
 
     try {
@@ -201,10 +201,15 @@ export function CreatePostForm() {
         }
       } else {
         toast.success(`Your post "${result.post?.title || 'Untitled'}" has been successfully created.`);
-        form.reset();
+        form.reset({ content: '', isDraft: false, communityId: preselectedCommunityId || '' }); // Keep preselected community
         setSuggestedCategory(null);
         setSuggestedTags([]);
         setShowSchedule(false);
+        if (finalData.communityId) {
+          router.push(`/communities/${finalData.communityId}`);
+        } else {
+          router.push('/feed');
+        }
       }
     } catch (error) {
       console.error("Error submitting post:", error);
@@ -269,10 +274,10 @@ export function CreatePostForm() {
                 render={({ field }) => (
                     <FormItem>
                     <FormLabel className="flex items-center"><UsersRound className="mr-2 h-4 w-4 text-muted-foreground"/>Post to a Community (Optional)</FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select onValueChange={field.onChange} value={field.value || ''} disabled={loadingCommunities}>
                         <FormControl>
                         <SelectTrigger>
-                            <SelectValue placeholder="Select a community (optional)" />
+                            <SelectValue placeholder={loadingCommunities ? "Loading communities..." : "Select a community (optional)"} />
                         </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -482,7 +487,7 @@ export function CreatePostForm() {
 
 
             <div className="flex justify-end space-x-2 pt-4">
-               <Button type="button" variant="outline" onClick={() => {form.reset(); setShowSchedule(false); setSuggestedCategory(null); setSuggestedTags([]);}} disabled={isSubmitting}>
+               <Button type="button" variant="outline" onClick={() => {form.reset({ content: '', isDraft: false, communityId: preselectedCommunityId || '' }); setShowSchedule(false); setSuggestedCategory(null); setSuggestedTags([]);}} disabled={isSubmitting}>
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting || authLoading} className="btn-gradient min-w-[120px]">
@@ -496,3 +501,4 @@ export function CreatePostForm() {
     </Card>
   );
 }
+

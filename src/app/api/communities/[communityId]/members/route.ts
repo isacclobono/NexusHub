@@ -8,6 +8,60 @@ interface CommunityMemberParams {
   params: { communityId: string };
 }
 
+type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
+  _id: ObjectId;
+  passwordHash?: string;
+  bookmarkedPostIds?: ObjectId[];
+  communityIds?: ObjectId[];
+};
+
+export async function GET(request: NextRequest, { params }: CommunityMemberParams) {
+  const { communityId } = params;
+  if (!communityId || !ObjectId.isValid(communityId)) {
+    return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
+  }
+
+  try {
+    const db = await getDb();
+    const communitiesCollection = db.collection('communities');
+    const usersCollection = db.collection<DbUser>('users');
+
+    const communityObjectId = new ObjectId(communityId);
+    const community = await communitiesCollection.findOne({ _id: communityObjectId }) as Community | null;
+
+    if (!community) {
+      return NextResponse.json({ message: 'Community not found.' }, { status: 404 });
+    }
+
+    if (!community.memberIds || community.memberIds.length === 0) {
+      return NextResponse.json([], { status: 200 }); // Return empty array if no members
+    }
+    
+    // Ensure memberIds are ObjectIds
+    const memberObjectIds = community.memberIds.map(id => typeof id === 'string' ? new ObjectId(id) : id);
+
+    const memberDocs = await usersCollection.find(
+      { _id: { $in: memberObjectIds } },
+      { projection: { passwordHash: 0 } } // Exclude passwordHash
+    ).toArray();
+
+    const membersForClient: User[] = memberDocs.map(doc => ({
+      ...doc,
+      id: doc._id.toHexString(),
+      bookmarkedPostIds: doc.bookmarkedPostIds || [],
+      communityIds: doc.communityIds || [],
+    }));
+
+    return NextResponse.json(membersForClient, { status: 200 });
+
+  } catch (error) {
+    console.error(`API Error fetching members for community ${communityId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return NextResponse.json({ message: errorMessage }, { status: 500 });
+  }
+}
+
+
 export async function POST(request: NextRequest, { params }: CommunityMemberParams) { // Join a community
   const { communityId } = params;
   if (!communityId || !ObjectId.isValid(communityId)) {
@@ -42,12 +96,6 @@ export async function POST(request: NextRequest, { params }: CommunityMemberPara
       return NextResponse.json({ message: 'User is already a member of this community.' }, { status: 200 });
     }
 
-    // For now, public communities allow direct join. Private would need approval flow.
-    // if (community.privacy === 'private') {
-    //   TODO: Implement join request logic for private communities
-    //   return NextResponse.json({ message: 'This is a private community. Join request sent.' }, { status: 202 });
-    // }
-
     const updateCommunityResult = await communitiesCollection.updateOne(
       { _id: communityObjectId },
       { $addToSet: { memberIds: userObjectId } }
@@ -63,7 +111,6 @@ export async function POST(request: NextRequest, { params }: CommunityMemberPara
       return NextResponse.json({ message: 'Community not found or failed to update members.' }, { status: 404 });
     }
     if (updateUserResult.modifiedCount === 0 && updateUserResult.matchedCount === 0) {
-        // This should ideally not happen if user check passed. Log warning if community was updated but user wasn't.
         console.warn(`User ${userId} joined community ${communityId}, but user's communityIds list was not updated.`);
     }
 
@@ -84,7 +131,6 @@ export async function DELETE(request: NextRequest, { params }: CommunityMemberPa
   }
 
   try {
-    // In a real app, userId should come from authenticated session
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId'); 
 
@@ -104,14 +150,13 @@ export async function DELETE(request: NextRequest, { params }: CommunityMemberPa
       return NextResponse.json({ message: 'Community not found.' }, { status: 404 });
     }
     
-    // User cannot leave if they are the creator (for now - more complex logic for transferring ownership later)
     if (community.creatorId.equals(userObjectId)) {
         return NextResponse.json({ message: 'Creator cannot leave the community. Consider deleting it or transferring ownership (not implemented).' }, { status: 403 });
     }
 
     const updateCommunityResult = await communitiesCollection.updateOne(
       { _id: communityObjectId },
-      { $pull: { memberIds: userObjectId, adminIds: userObjectId } } // Remove from members and admins if they were one
+      { $pull: { memberIds: userObjectId, adminIds: userObjectId } } 
     );
 
     const updateUserResult = await usersCollection.updateOne(
@@ -138,3 +183,4 @@ export async function DELETE(request: NextRequest, { params }: CommunityMemberPa
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
+
