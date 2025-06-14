@@ -527,28 +527,29 @@ const sidebarMenuButtonVariants = cva(
 const SidebarMenuButton = React.forwardRef<
   HTMLButtonElement,
   React.ComponentProps<"button"> & {
-    asChild?: boolean;
+    asChild?: boolean; // This is the prop SidebarMenuButton itself defines
     isActive?: boolean;
     tooltip?: string | React.ComponentProps<typeof TooltipContent>;
   } & VariantProps<typeof sidebarMenuButtonVariants>
 >(
   (
     {
-      asChild: ownAsChild = false, 
+      asChild: propAsChild = false, // Aliased for SidebarMenuButton's own use
       isActive = false,
       variant = "default",
       size = "default",
       tooltip: tooltipProp,
       className,
       children,
-      ...restProps 
+      ...restProps // This object will contain `asChild` if passed from Link or another parent
     },
     ref
   ) => {
-    const Comp = ownAsChild ? Slot : "button";
+    const Comp = propAsChild ? Slot : "button";
     const { isMobile, state } = useSidebar();
 
-    const { asChild: _parentAsChild, ...safeRestProps } = restProps;
+    // Destructure asChild from restProps to remove it, renaming it to avoid conflict
+    const { asChild: _removedAsChildFromParent, ...safeRestProps } = restProps;
 
     const buttonElement = (
       <Comp
@@ -557,7 +558,7 @@ const SidebarMenuButton = React.forwardRef<
         data-size={size}
         data-active={isActive}
         className={cn(sidebarMenuButtonVariants({ variant, size, className }))}
-        {...safeRestProps} 
+        {...safeRestProps} // Spread the props that do NOT include asChild from parent
       >
         {children}
       </Comp>
