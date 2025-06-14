@@ -3,7 +3,8 @@ import type { User } from './types';
 
 export async function fetchUsers(): Promise<User[]> {
   try {
-    const response = await fetch('/api/data/users.json');
+    // Add cache-busting parameter to ensure fresh data after registration
+    const response = await fetch(`/api/data/users.json?v=${Date.now()}`);
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
@@ -23,14 +24,12 @@ export async function getCurrentUser(): Promise<User | null> {
         return JSON.parse(storedUser);
       } catch (e) {
         console.error("Error parsing user from session storage", e);
-        // Fall through to fetching default if session storage is corrupt
+        sessionStorage.removeItem('currentUser'); // Clear corrupted data
+        return null;
       }
     }
   }
-  
-  // Fallback for server-side or if no user in session: get the first user from the list
-  // This is a placeholder; in a real app, server-side auth would be different.
-  console.warn("getCurrentUser falling back to fetching first user from users.json. This is for demo/SSR placeholder.");
-  const users = await fetchUsers();
-  return users.length > 0 ? users[0] : null;
+  // If not in session storage (e.g., first load, or SSR context where window is undefined), return null.
+  // AuthProvider will handle the actual loading from session storage on the client side.
+  return null;
 }

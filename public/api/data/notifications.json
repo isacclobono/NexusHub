@@ -1,2 +1,54 @@
-
-[]
+[
+  {
+    "id": "notif-1",
+    "userId": "user-1700000000000-abcde", 
+    "type": "new_comment",
+    "title": "New Comment on Your Post",
+    "message": "Bob Green commented on your post 'Exciting News!'",
+    "link": "/feed", 
+    "isRead": false,
+    "createdAt": "2024-07-28T10:00:00.000Z",
+    "relatedEntityId": "post-1700000000001-random1" 
+  },
+  {
+    "id": "notif-2",
+    "userId": "user-1700000000000-abcde",
+    "type": "event_reminder",
+    "title": "Event Reminder: Tech Meetup Tomorrow",
+    "message": "Don't forget about the 'Summer Tech Meetup' happening tomorrow at 2 PM.",
+    "link": "/events",
+    "isRead": true,
+    "createdAt": "2024-07-27T14:30:00.000Z",
+    "relatedEntityId": "event-1"
+  },
+  {
+    "id": "notif-3",
+    "userId": "user-1700000000001-fghij", 
+    "type": "mention",
+    "title": "You were mentioned",
+    "message": "Alice Wonderland mentioned you in a comment on 'Community Guidelines Update'.",
+    "link": "/feed",
+    "isRead": false,
+    "createdAt": "2024-07-28T11:00:00.000Z",
+    "relatedEntityId": "post-1700000000002-random2"
+  },
+  {
+    "id": "notif-4",
+    "userId": "user-1700000000000-abcde",
+    "type": "new_post",
+    "title": "New Post in 'Technology'",
+    "message": "Charlie Davis just published a new post: 'The Future of AI'.",
+    "link": "/feed",
+    "isRead": false,
+    "createdAt": "2024-07-28T12:00:00.000Z"
+  },
+  {
+    "id": "notif-5",
+    "userId": "user-1700000000000-abcde",
+    "type": "system",
+    "title": "Welcome to NexusHub!",
+    "message": "Thanks for joining our community. Explore and connect!",
+    "isRead": true,
+    "createdAt": "2024-07-26T09:00:00.000Z"
+  }
+]
