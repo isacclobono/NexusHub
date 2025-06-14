@@ -15,9 +15,10 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea'; // Added Textarea
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Sparkles, Lightbulb, UsersRound, Edit } from 'lucide-react';
-import React, { useState, useCallback, useEffect } from 'react';
+import React, { useState, useCallback, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
 import {
@@ -33,20 +34,15 @@ import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
 import type { Community, Post } from '@/lib/types';
 import Link from 'next/link';
-import dynamic from 'next/dynamic';
 import { Skeleton } from '@/components/ui/skeleton';
 
-const ReactQuill = dynamic(() => import('react-quill'), {
-  ssr: false,
-  loading: () => <Skeleton className="h-[150px] w-full rounded-md border border-input" />
-});
 
 const NO_COMMUNITY_VALUE = "__NONE__";
 const NO_CATEGORY_SELECTED_VALUE = "__NONE__";
 
 const postEditSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(15000, "Content can't exceed 15000 characters."),
+  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."),
   category: z.string().optional().nullable(),
   tags: z.string().optional().nullable(),
   communityId: z.string().optional().nullable(),
@@ -77,6 +73,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
   const router = useRouter();
   const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
   const [loadingCommunities, setLoadingCommunities] = useState(false);
+
 
   const form = useForm<PostEditFormValues>({
     resolver: zodResolver(postEditSchema),
@@ -150,17 +147,6 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
       form.setValue('tags', suggestedTags.join(', '), { shouldValidate: true });
       setSuggestedTags([]);
     }
-  };
-
-  const quillModules = {
-    toolbar: [
-      [{ 'header': [1, 2, 3, false] }],
-      ['bold', 'italic', 'underline', 'strike'],
-      [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-      [{ 'color': [] }, { 'background': [] }],
-      ['link'],
-      ['clean']
-    ],
   };
 
   async function onSubmit(data: PostEditFormValues) {
@@ -240,26 +226,21 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                 </FormItem>
               )}
             />
-            <Controller
-              name="content"
+            <FormField
               control={form.control}
-              rules={{ required: "Content is required." }}
+              name="content"
               render={({ field }) => (
                 <FormItem>
                   <FormLabel>Content</FormLabel>
                   <FormControl>
-                    <ReactQuill
-                      theme="snow"
-                      value={field.value}
-                      onChange={field.onChange}
-                      onBlur={field.onBlur}
-                      forwardedRef={field.ref}
+                    <Textarea
                       placeholder="Share your thoughts with the community..."
-                      modules={quillModules}
+                      className="min-h-[200px]"
+                      {...field}
                     />
                   </FormControl>
                    <FormDescription>
-                    Use the editor to format your post content. Rich text editor support coming soon!
+                    Your post content.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -378,4 +359,3 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     </Card>
   );
 }
-
