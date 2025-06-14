@@ -94,8 +94,8 @@ export async function GET(request: NextRequest) {
     const communitiesCollection = db.collection<DbCommunity>('communities');
     const usersCollection = db.collection<User>('users');
 
-    // For now, fetching all public communities. Add filters for private/user membership later.
-    const communitiesFromDb = await communitiesCollection.find({ privacy: 'public' }).sort({ createdAt: -1 }).toArray();
+    // Fetching ALL communities. Removed privacy filter for now.
+    const communitiesFromDb = await communitiesCollection.find({}).sort({ createdAt: -1 }).toArray();
 
     const enrichedCommunities: Community[] = await Promise.all(
       communitiesFromDb.map(async (communityDoc) => {
