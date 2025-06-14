@@ -26,12 +26,12 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { PlusCircle, LogOut, UserCircle } from 'lucide-react';
 import type { NavItem } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
-import { cn } from '@/lib/utils'; // Added missing import
+import { cn } from '@/lib/utils';
 
 const SidebarButtonContentWrapper = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { item: NavItem | { icon: React.ElementType; title: string }, isActive?: boolean }
->(({ item, isActive, ...props }, ref) => {
+  React.HTMLAttributes<HTMLDivElement> & { item: NavItem | { icon: React.ElementType; title: string }, isActive?: boolean, asChild?: boolean }
+>(({ item, isActive, asChild: _removedAsChild, ...props }, ref) => {
   const IconComponent = item.icon;
   return (
     <div ref={ref} {...props}>
@@ -44,8 +44,8 @@ SidebarButtonContentWrapper.displayName = 'SidebarButtonContentWrapper';
 
 const UserProfileButtonContentWrapper = React.forwardRef<
   HTMLDivElement,
-  React.HTMLAttributes<HTMLDivElement> & { user?: { avatarUrl?: string, name: string } | null, loading?: boolean }
->(({ user, loading, ...props }, ref) => {
+  React.HTMLAttributes<HTMLDivElement> & { user?: { avatarUrl?: string, name: string } | null, loading?: boolean, asChild?: boolean }
+>(({ user, loading, asChild: _removedAsChild, ...props }, ref) => {
   if (loading) {
     return (
       <div ref={ref} {...props} className="flex items-center w-full">
@@ -65,7 +65,7 @@ const UserProfileButtonContentWrapper = React.forwardRef<
   return (
     <div ref={ref} {...props} className="flex items-center w-full">
       <Avatar className="h-8 w-8 mr-2">
-        <AvatarImage src={user.avatarUrl} alt={user.name} data-ai-hint="profile avatar small"/>
+        <AvatarImage src={user.avatarUrl || `https://placehold.co/32x32.png`} alt={user.name} data-ai-hint="profile avatar small"/>
         <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
       </Avatar>
       <span className="truncate">{user.name}</span>
@@ -136,13 +136,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             </SidebarMenuButton>
           </Link>
           {resolvedUserNavItems.map((item) => {
-            // Hide profile link from generic user items if user is logged in (handled by UserProfileButtonContentWrapper)
             if (item.title === 'Profile' && user) return null;
-            // Hide logout if user is not logged in
             if (item.title === 'Logout' && !user) return null;
-            // Hide settings link if user is not logged in and it's the default settings link
             if(item.title === 'Settings' && !user && item.href === '/settings') return null;
-
 
             const isActive = pathname === item.href;
             return (
