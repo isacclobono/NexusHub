@@ -15,7 +15,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Using Textarea as fallback
+import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Loader2, UploadCloud, Sparkles, Lightbulb, Calendar as CalendarIcon, UsersRound } from 'lucide-react';
@@ -38,14 +38,13 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
 import type { Community } from '@/lib/types';
-import { Skeleton } from '@/components/ui/skeleton';
 
 
 const NO_COMMUNITY_VALUE = "__NONE__";
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(5000, "Content can't exceed 5000 characters."), // Adjusted max length
+  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."),
   category: z.string().optional(),
   tags: z.string().optional(),
   media: z.any().optional(),
