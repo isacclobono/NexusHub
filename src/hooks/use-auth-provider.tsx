@@ -67,13 +67,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const login = async (emailOrUsername: string, pass: string): Promise<boolean> => {
     setLoading(true);
     // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 750)); 
+    await new Promise(resolve => setTimeout(resolve, 750));
     try {
       const allUsers = await fetchAllUsers();
       const normalizedInput = emailOrUsername.toLowerCase();
       // In a real app, you would also verify the password (hashed)
-      const foundUser = allUsers.find(u => 
-        u.email?.toLowerCase() === normalizedInput || 
+      const foundUser = allUsers.find(u =>
+        u.email?.toLowerCase() === normalizedInput ||
         u.name.toLowerCase() === normalizedInput
       );
 
@@ -102,24 +102,30 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const register = async (name: string, email: string, pass: string): Promise<boolean> => {
     setLoading(true);
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
-    // Simulate checking if email already exists
+
     const allUsers = await fetchAllUsers();
     const emailExists = allUsers.some(u => u.email?.toLowerCase() === email.toLowerCase());
 
     if (emailExists) {
       console.warn("Registration attempt with existing email:", email);
       setLoading(false);
-      return false; // Indicate failure (e.g. email already in use)
+      return false;
     }
 
-    // Simulate successful registration. 
-    // IMPORTANT: This does NOT add the user to users.json. A backend is needed for that.
-    if (name && email && pass) {
-      console.log("Simulated registration for:", { name, email });
+    // Simulate successful registration.
+    console.warn(
+      `Simulated registration for: {name: "${name}", email: "${email}"}. ` +
+      "IMPORTANT: This new user is NOT saved to users.json. " +
+      "To test login with this account, you must manually add it to public/api/data/users.json, " +
+      "or use an existing account."
+    );
+
+    // This part just simulates that the input data is valid for registration
+    if (name && email && pass && pass.length >=8) { // Added basic password length check for simulation
       setLoading(false);
-      return true; 
+      return true;
     }
+
     setLoading(false);
     return false;
   };

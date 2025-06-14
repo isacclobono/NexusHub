@@ -41,13 +41,14 @@ export default function RegisterPage() {
 
     if (success) {
       toast({
-        title: "Registration Almost Complete!",
-        description: "Welcome to NexusHub! Please log in to continue.",
+        title: "Registration Simulated!",
+        description: "Your registration is simulated. For this demo, new users are NOT saved persistently. Please use an existing account from users.json to log in, or manually add this user to that file.",
+        duration: 9000, // Longer duration for more info
       });
-      router.push('/login'); 
+      router.push('/login');
     } else {
       // Assuming register function might return a more specific error or it's generic
-      const regError = "Could not create your account. The email might already be in use or another issue occurred.";
+      const regError = "Could not simulate registration. The email might already be in use (check users.json) or another issue occurred.";
       setError(regError);
       toast({
         title: "Registration Failed",
