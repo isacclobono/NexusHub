@@ -39,6 +39,8 @@ import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
 import type { Community } from '@/lib/types';
 
+const NO_COMMUNITY_VALUE = "__NONE__"; // Special value for "None" option
+
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
   content: z.string().min(1, 'Content is required.').max(5000, "Content can't exceed 5000 characters."),
@@ -176,7 +178,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
       ...data,
       userId: user.id, 
       scheduledAt: (showSchedule && data.scheduledAt) ? data.scheduledAt.toISOString() : undefined,
-      communityId: data.communityId || undefined, 
+      communityId: data.communityId === NO_COMMUNITY_VALUE ? undefined : data.communityId, 
     };
 
     try {
@@ -201,7 +203,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
         }
       } else {
         toast.success(`Your post "${result.post?.title || 'Untitled'}" has been successfully created.`);
-        form.reset({ content: '', isDraft: false, communityId: preselectedCommunityId || '' }); // Keep preselected community
+        form.reset({ content: '', isDraft: false, communityId: preselectedCommunityId || '' }); 
         setSuggestedCategory(null);
         setSuggestedTags([]);
         setShowSchedule(false);
@@ -281,7 +283,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                         </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                        <SelectItem value="">None (Post to main feed)</SelectItem>
+                        <SelectItem value={NO_COMMUNITY_VALUE}>None (Post to main feed)</SelectItem>
                         {memberCommunities.map(community => (
                             <SelectItem key={community.id!} value={community.id!}>{community.name}</SelectItem>
                         ))}
@@ -501,4 +503,3 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
     </Card>
   );
 }
-

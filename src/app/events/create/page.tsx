@@ -35,6 +35,8 @@ import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { Community } from '@/lib/types';
 
+const NO_COMMUNITY_VALUE = "__NONE__"; // Special value for "None" option
+
 const eventFormSchema = z.object({
   title: z.string().min(3, 'Title must be at least 3 characters.').max(100),
   description: z.string().min(10, 'Description must be at least 10 characters.').max(2000),
@@ -75,7 +77,7 @@ export default function CreateEventPage() {
       category: '',
       tags: '',
       imageUrl: '',
-      communityId: preselectedCommunityId || '',
+      communityId: preselectedCommunityId || '', // Default to preselected or empty (placeholder shows)
     },
   });
 
@@ -135,7 +137,7 @@ export default function CreateEventPage() {
       startTime: data.startTime.toISOString(),
       endTime: data.endTime.toISOString(),
       imageUrl: data.imageUrl || `https://placehold.co/1200x400.png?text=${encodeURIComponent(data.title)}`,
-      communityId: data.communityId || undefined,
+      communityId: data.communityId === NO_COMMUNITY_VALUE ? undefined : data.communityId,
     };
 
     try {
@@ -243,7 +245,7 @@ export default function CreateEventPage() {
                         </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                        <SelectItem value="">None (General event)</SelectItem>
+                        <SelectItem value={NO_COMMUNITY_VALUE}>None (General event)</SelectItem>
                         {memberCommunities.map(community => (
                             <SelectItem key={community.id!} value={community.id!}>{community.name}</SelectItem>
                         ))}
@@ -476,4 +478,3 @@ export default function CreateEventPage() {
     </div>
   );
 }
-
