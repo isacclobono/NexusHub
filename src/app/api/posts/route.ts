@@ -135,28 +135,37 @@ export async function GET(request: NextRequest) {
     const commentsCollection = db.collection<DbComment>('comments');
     
     const { searchParams } = new URL(request.url);
-    const authorId = searchParams.get('authorId');
-    const bookmarkedById = searchParams.get('bookmarkedById');
-    const forUserId = searchParams.get('forUserId'); 
+    const authorIdParam = searchParams.get('authorId');
+    const bookmarkedByIdParam = searchParams.get('bookmarkedById');
+    const forUserIdParam = searchParams.get('forUserId'); 
+    const statusParam = searchParams.get('status'); // 'published', 'draft', 'scheduled'
 
-    let query: any = { status: 'published' }; 
-    if (authorId && ObjectId.isValid(authorId)) {
-      query.authorId = new ObjectId(authorId);
-    }
-
+    let query: any = {}; 
     let currentUser: User | null = null;
-    if (forUserId && ObjectId.isValid(forUserId)) {
-        currentUser = await usersCollection.findOne({ _id: new ObjectId(forUserId) });
+
+    if (forUserIdParam && ObjectId.isValid(forUserIdParam)) {
+        currentUser = await usersCollection.findOne({ _id: new ObjectId(forUserIdParam) });
     }
 
 
-    if (bookmarkedById && ObjectId.isValid(bookmarkedById)) {
-        const userWithBookmarks = await usersCollection.findOne({ _id: new ObjectId(bookmarkedById) });
+    if (bookmarkedByIdParam && ObjectId.isValid(bookmarkedByIdParam)) {
+        const userWithBookmarks = await usersCollection.findOne({ _id: new ObjectId(bookmarkedByIdParam) });
         if (userWithBookmarks && userWithBookmarks.bookmarkedPostIds && userWithBookmarks.bookmarkedPostIds.length > 0) {
             query._id = { $in: userWithBookmarks.bookmarkedPostIds.map(id => new ObjectId(id)) };
         } else {
             return NextResponse.json([], { status: 200 }); 
         }
+        query.status = 'published'; // Bookmarks are always for published posts
+    } else if (authorIdParam && ObjectId.isValid(authorIdParam)) {
+      query.authorId = new ObjectId(authorIdParam);
+      if (statusParam && ['draft', 'scheduled', 'published'].includes(statusParam)) {
+            query.status = statusParam;
+        } else {
+            query.status = 'published'; // Default to published if authorId is given but no specific status
+        }
+    } else {
+        // General feed fetching - only published posts
+        query.status = 'published';
     }
 
 
@@ -192,15 +201,19 @@ export async function GET(request: NextRequest) {
             })
         );
         
-        const isLikedByCurrentUser = currentUser && Array.isArray(postDoc.likedBy) ? postDoc.likedBy.some(id => id.equals(currentUser!._id!)) : false;
-        const isBookmarkedByCurrentUser = currentUser && Array.isArray(currentUser.bookmarkedPostIds) ? currentUser.bookmarkedPostIds.some(id => id.equals(postDoc._id)) : false;
+        const postLikedBy = Array.isArray(postDoc.likedBy) ? postDoc.likedBy : [];
+        const isLikedByCurrentUser = currentUser && currentUser._id ? postLikedBy.some(id => id.equals(currentUser!._id!)) : false;
+        
+        const userBookmarkedPostIds = currentUser && Array.isArray(currentUser.bookmarkedPostIds) ? currentUser.bookmarkedPostIds : [];
+        const isBookmarkedByCurrentUser = currentUser && postDoc._id ? userBookmarkedPostIds.some(id => id.equals(postDoc._id)) : false;
+
 
         return {
           ...postDoc,
           id: postDoc._id.toHexString(),
           authorId: postDoc.authorId, 
           author: authorForClient || { id: 'unknown', name: 'Unknown User', email:'', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds:[] } as User,
-          likedBy: Array.isArray(postDoc.likedBy) ? postDoc.likedBy.map(id => new ObjectId(id.toString())) : [],
+          likedBy: postLikedBy.map(id => new ObjectId(id.toString())),
           likeCount: postDoc.likeCount || 0,
           isLikedByCurrentUser,
           commentIds: Array.isArray(postDoc.commentIds) ? postDoc.commentIds.map((id: ObjectId | string) => typeof id === 'string' ? new ObjectId(id) : id) : [],
@@ -218,3 +231,4 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: errorMessage, posts: [], comments: [] }, { status: 500 });
   }
 }
+

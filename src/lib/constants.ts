@@ -1,6 +1,6 @@
 
 import type { NavItem } from './types';
-import { Home, MessageSquareText, CalendarDays, Users, Settings, Search, Bookmark, LogOut, UserCircle, UserPlus, LogIn, Bell } from 'lucide-react'; // Added Bell
+import { Home, MessageSquareText, CalendarDays, Users, Settings, Search, Bookmark, LogOut, UserCircle, UserPlus, LogIn, Bell, Archive } from 'lucide-react'; // Added Archive, Bell
 
 export const APP_NAME = 'NexusHub';
 
@@ -35,6 +35,11 @@ export const SIDENAV_ITEMS: NavItem[] = [
     title: 'Bookmarks',
     href: '/bookmarks',
     icon: Bookmark,
+  },
+  {
+    title: 'My Posts', // New Item
+    href: '/my-posts',
+    icon: Archive,
   },
   {
     title: 'Notifications',
@@ -94,3 +99,4 @@ export const CATEGORIES = [
   'News',
   'Other',
 ];
+
