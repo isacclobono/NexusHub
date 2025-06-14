@@ -101,6 +101,11 @@ export default function FeedPage() {
     );
   };
 
+  const handlePostDeleted = (deletedPostId: string) => {
+    setAllPosts(prev => prev.filter(p => p.id !== deletedPostId));
+    setDisplayedPosts(prev => prev.filter(p => p.id !== deletedPostId));
+  };
+
 
   const handlePersonalizeFeed = async () => {
     if (!user || allPosts.length === 0) {
@@ -234,6 +239,7 @@ export default function FeedPage() {
                 post={post} 
                 onToggleBookmark={handlePostBookmarkToggle} 
                 onToggleLike={handlePostLikeToggle}
+                onPostDeleted={handlePostDeleted}
             /> 
           ))}
         </div>
@@ -250,3 +256,4 @@ export default function FeedPage() {
     </div>
   );
 }
+

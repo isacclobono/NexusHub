@@ -6,17 +6,35 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2, Send, Share2 } from 'lucide-react';
+import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2, Send, Share2, Trash2, Edit } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
 import React, { useState, useEffect } from 'react';
 import type { ObjectId } from 'mongodb';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface PostCardProps {
   post: Post;
   onToggleBookmark?: (postId: string, isCurrentlyBookmarked: boolean) => Promise<void> | void;
   onToggleLike?: (postId: string, isCurrentlyLiked: boolean, updatedPost: Post) => Promise<void> | void;
+  onPostDeleted?: (postId: string) => void;
 }
 
 
@@ -53,11 +71,13 @@ const CommentItem = ({ comment }: { comment: CommentType }) => {
   );
 };
 
-export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmarkProp, onToggleLike: onToggleLikeProp }: PostCardProps) {
+export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmarkProp, onToggleLike: onToggleLikeProp, onPostDeleted }: PostCardProps) {
   const { user, isAuthenticated } = useAuth();
   const [post, setPost] = useState<Post>(initialPost);
   const [newComment, setNewComment] = useState('');
   const [isSubmittingComment, setIsSubmittingComment] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [isDeletingPost, setIsDeletingPost] = useState(false);
 
 
   useEffect(() => {
@@ -79,6 +99,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
   const isLikedByCurrentUser = isAuthenticated && user && post.id && Array.isArray(post.likedBy) && user._id ?
     post.likedBy.some(likedById => likedById.toString() === user._id!.toString()) : false;
 
+  const canCurrentUserManagePost = isAuthenticated && user && user.id === post.author?.id;
 
   const { author: postAuthorData, title, content, media, category, tags, createdAt } = post;
   const postComments = post.comments || [];
@@ -261,40 +282,65 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       try {
         await navigator.share(shareData);
         toast.success('Post shared successfully!');
-        sharedViaApi = true; // Mark that sharing was attempted and succeeded or was aborted by user
+        sharedViaApi = true; 
         return; 
       } catch (err) {
         const shareError = err as Error;
         if (shareError.name === 'AbortError') {
           console.log('Share action cancelled by user.');
-          sharedViaApi = true; // User interacted with dialog
+          sharedViaApi = true; 
           return; 
         } else if (shareError.name === 'NotAllowedError') {
           console.warn('Web Share API permission denied:', shareError);
-          toast.info('Sharing via system dialog failed due to permissions. Trying to copy link...');
+          toast.info('Sharing via system dialog failed. Trying to copy link...');
         } else {
           console.error('Web Share API error:', shareError);
           toast.error('Could not share using system dialog. Trying to copy link...');
         }
-        // If error was not AbortError, proceed to clipboard fallback
       }
     }
 
-    // Fallback to clipboard copy if Web Share API is not available or failed (and wasn't aborted)
     try {
       await navigator.clipboard.writeText(postUrl);
       toast.success('Post link copied to clipboard!');
     } catch (copyError) {
       console.error('Clipboard API error:', copyError);
-      // Only show error if Web Share wasn't available or explicitly failed before this.
       if (!navigator.share || !sharedViaApi) {
           toast.error('Could not copy link to clipboard.');
       }
     }
   };
 
+  const handleDeletePost = async () => {
+    if (!canCurrentUserManagePost || !post.id) {
+      toast.error("You are not authorized to delete this post or post ID is missing.");
+      return;
+    }
+    setIsDeletingPost(true);
+    try {
+      const response = await fetch(`/api/posts/${post.id}?userId=${user!.id}`, {
+        method: 'DELETE',
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || "Failed to delete post.");
+      }
+      toast.success(`Post "${post.title || 'Post'}" deleted successfully.`);
+      if (onPostDeleted) {
+        onPostDeleted(post.id);
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not delete post.");
+      console.error("Delete post error:", err);
+    } finally {
+      setIsDeletingPost(false);
+      setShowDeleteDialog(false);
+    }
+  };
+
 
   return (
+    <>
     <Card className="w-full max-w-2xl mx-auto shadow-subtle hover:shadow-md transition-shadow duration-300">
       <CardHeader className="p-4">
         <div className="flex items-center space-x-3">
@@ -312,20 +358,41 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
             </div>
           </Link>
           <div className="ml-auto">
-             <Button variant="ghost" size="icon" onClick={handleShare} title="Share post">
-              <Share2 className="h-5 w-5 text-muted-foreground hover:text-primary" />
-              <span className="sr-only">Share</span>
-            </Button>
-            <Button variant="ghost" size="icon" title="More options">
-              <MoreHorizontal className="h-5 w-5 text-muted-foreground hover:text-primary" />
-              <span className="sr-only">More options</span>
-            </Button>
+             <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                    <Button variant="ghost" size="icon" title="More options">
+                        <MoreHorizontal className="h-5 w-5 text-muted-foreground hover:text-primary" />
+                        <span className="sr-only">More options</span>
+                    </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                    <DropdownMenuItem onClick={handleShare} disabled={isDeletingPost}>
+                        <Share2 className="mr-2 h-4 w-4" /> Share
+                    </DropdownMenuItem>
+                    {canCurrentUserManagePost && (
+                      <>
+                        <DropdownMenuItem onClick={() => toast.info("Edit post feature coming soon!")} disabled={isDeletingPost}>
+                            <Edit className="mr-2 h-4 w-4" /> Edit Post
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem onClick={() => setShowDeleteDialog(true)} className="text-destructive focus:text-destructive" disabled={isDeletingPost}>
+                            <Trash2 className="mr-2 h-4 w-4" /> Delete Post
+                        </DropdownMenuItem>
+                      </>
+                    )}
+                </DropdownMenuContent>
+             </DropdownMenu>
           </div>
         </div>
       </CardHeader>
       <CardContent className="p-4 pt-0">
-        {title && <CardTitle className="text-xl mb-2 font-headline">{title}</CardTitle>}
+        {title && <CardTitle className="text-xl mb-2 font-headline"><Link href={`/posts/${post.id}`}>{title}</Link></CardTitle>}
         <p className="text-foreground whitespace-pre-wrap break-words mb-3">{content.substring(0, 300)}{content.length > 300 && '...'}</p>
+        {content.length > 300 && post.id && (
+          <Button variant="link" asChild className="p-0 h-auto text-sm">
+            <Link href={`/posts/${post.id}`}>Read more</Link>
+          </Button>
+        )}
         {media && Array.isArray(media) && media.length > 0 && (
           <div className={`grid gap-2 ${media.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} mb-3`}>
             {media.map((item, index) => (
@@ -426,6 +493,24 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
         </Button>
       </CardFooter>
     </Card>
+    <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the post titled "<strong>{post.title || 'this post'}</strong>".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingPost}>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeletePost} disabled={isDeletingPost} className="bg-destructive hover:bg-destructive/90">
+              {isDeletingPost ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              Yes, delete post
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
   );
 }
 

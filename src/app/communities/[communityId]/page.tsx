@@ -195,10 +195,12 @@ export default function CommunityDetailPage() {
   }, [communityId, fetchCommunityDetails, fetchCommunityContent]);
 
   const handlePostUpdate = () => {
-    // This can be called after like/bookmark to refresh post states if needed,
-    // or after deleting a post from within this community view (if implemented)
     if(communityId) fetchCommunityContent(); 
   }
+
+  const handlePostDeletedInCommunity = (deletedPostId: string) => {
+    setCommunityPosts(prevPosts => prevPosts.filter(post => post.id !== deletedPostId));
+  };
 
 
   const handleJoinLeaveCommunity = async () => {
@@ -213,7 +215,6 @@ export default function CommunityDetailPage() {
     }
     if (community.privacy === 'private') {
         toast.error("Joining private communities requires admin approval (not yet implemented).");
-        // In a full implementation, this would trigger a join request.
         return;
     }
 
@@ -235,9 +236,9 @@ export default function CommunityDetailPage() {
         }
 
         toast.success(result.message || `Successfully ${isMember ? 'left' : 'joined'} ${community.name}!`);
-        await fetchCommunityDetails(); // Refreshes community details (like member count)
-        await fetchCommunityContent(); // Refreshes members list
-        await refreshUser(); // Refreshes current user's communityIds list
+        await fetchCommunityDetails(); 
+        await fetchCommunityContent(); 
+        await refreshUser(); 
 
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : "An unknown error occurred.";
@@ -380,7 +381,7 @@ export default function CommunityDetailPage() {
                         {postsError && <p className="text-destructive text-center py-5">{postsError}</p>}
                         {!loadingPosts && !postsError && communityPosts.length > 0 ? (
                             <div className="space-y-6">
-                                {communityPosts.map(post => <PostCard key={post.id} post={post} onToggleBookmark={handlePostUpdate} onToggleLike={handlePostUpdate} />)}
+                                {communityPosts.map(post => <PostCard key={post.id} post={post} onToggleBookmark={handlePostUpdate} onToggleLike={handlePostUpdate} onPostDeleted={handlePostDeletedInCommunity} />)}
                             </div>
                         ) : (
                            !loadingPosts && !postsError &&
@@ -396,7 +397,7 @@ export default function CommunityDetailPage() {
                  <Card>
                     <CardHeader  className="flex flex-row items-center justify-between">
                         <CardTitle>Community Events</CardTitle>
-                        {isMember && ( // Only members can create events in a community
+                        {isMember && ( 
                             <Button size="sm" asChild className="btn-gradient">
                                 <Link href={`/events/create?communityId=${communityId}`}><PlusCircle className="mr-2 h-4 w-4"/>Create Event</Link>
                             </Button>
@@ -469,3 +470,4 @@ export default function CommunityDetailPage() {
     </div>
   );
 }
+

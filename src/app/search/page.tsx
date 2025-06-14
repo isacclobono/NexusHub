@@ -84,6 +84,13 @@ export default function SearchPage() {
     }));
   };
 
+  const handlePostDeleted = (deletedPostId: string) => {
+    setSearchResults(prevResults => ({
+      ...prevResults,
+      posts: prevResults.posts.filter(p => p.id !== deletedPostId)
+    }));
+  };
+
 
   return (
     <div className="container mx-auto py-8">
@@ -180,6 +187,7 @@ export default function SearchPage() {
                         post={post} 
                         onToggleBookmark={handlePostBookmarkToggle} 
                         onToggleLike={handlePostLikeToggle}
+                        onPostDeleted={handlePostDeleted}
                     />
                   ))}
                 </div>
@@ -221,3 +229,4 @@ export default function SearchPage() {
     </div>
   );
 }
+

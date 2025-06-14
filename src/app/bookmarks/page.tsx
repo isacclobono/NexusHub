@@ -113,6 +113,12 @@ export default function BookmarksPage() {
     );
   };
 
+  const handlePostDeleted = (deletedPostId: string) => {
+    setBookmarkedPosts(prev => prev.filter(p => p.id !== deletedPostId));
+    // Also, consider refreshing user context if bookmark counts are important elsewhere
+    refreshUser();
+  };
+
 
   if (isLoading || authLoading) {
     return (
@@ -162,6 +168,7 @@ export default function BookmarksPage() {
               post={{...post, isBookmarkedByCurrentUser: true}} // Explicitly true for this page
               onToggleBookmark={handleUnbookmarkOptimistic} 
               onToggleLike={handleLikeToggleOptimistic}
+              onPostDeleted={handlePostDeleted}
             />
           ))}
         </div>
@@ -180,3 +187,4 @@ export default function BookmarksPage() {
     </div>
   );
 }
+

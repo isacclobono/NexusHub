@@ -37,7 +37,7 @@ const PostSkeleton = () => (
 type PostStatus = 'published' | 'draft' | 'scheduled';
 
 export default function MyPostsPage() {
-  const { user, loading: authLoading, isAuthenticated, refreshUser } = useAuth();
+  const { user, loading: authLoading, isAuthenticated, refreshUser, router } = useAuth();
   const [postsByStatus, setPostsByStatus] = useState<Record<PostStatus, Post[]>>({
     published: [],
     draft: [],
@@ -94,40 +94,22 @@ export default function MyPostsPage() {
     }
   }, [authLoading, isAuthenticated, fetchPosts]);
 
+
+  const handlePostDeleted = (deletedPostId: string) => {
+    setPostsByStatus(prev => ({
+        published: prev.published.filter(p => p.id !== deletedPostId),
+        draft: prev.draft.filter(p => p.id !== deletedPostId),
+        scheduled: prev.scheduled.filter(p => p.id !== deletedPostId),
+    }));
+    refreshUser(); // Refresh user context if needed (e.g., post counts)
+  };
+  
   const handlePostUpdate = async () => {
-    // This function can be called after a post is deleted, liked, bookmarked, etc.
-    // to refresh the relevant lists.
     if (user && user.id) {
-      await refreshUser(); // Refresh user context (e.g., for bookmark counts)
-      // Refetch all statuses as an action on one post might affect its status or presence in lists
+      await refreshUser(); 
       fetchPosts('published');
       fetchPosts('draft');
       fetchPosts('scheduled');
-    }
-  };
-  
-  const handleDeletePost = async (postId: string, postTitle?: string) => {
-    if (!user || !user.id) {
-        toast.error("You must be logged in to delete posts.");
-        return;
-    }
-    if (!confirm(`Are you sure you want to delete the post "${postTitle || 'this post'}"? This action cannot be undone.`)) {
-        return;
-    }
-
-    try {
-        const response = await fetch(`/api/posts/${postId}?userId=${user.id}`, {
-            method: 'DELETE',
-        });
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || "Failed to delete post.");
-        }
-        toast.success(`Post "${postTitle || 'Post'}" deleted successfully.`);
-        handlePostUpdate(); // Refresh all lists
-    } catch (err) {
-        toast.error(err instanceof Error ? err.message : "Could not delete post.");
-        console.error("Delete post error:", err);
     }
   };
 
@@ -176,19 +158,8 @@ export default function MyPostsPage() {
                 post={post} 
                 onToggleBookmark={handlePostUpdate} 
                 onToggleLike={handlePostUpdate}
+                onPostDeleted={handlePostDeleted}
             />
-            {user && user.id === post.author.id && (
-                 <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-                     {post.status !== 'published' && (
-                        <Button size="sm" variant="outline" onClick={() => toast.error('Edit functionality not implemented yet.')} className="bg-background/80 hover:bg-background">
-                            <Edit className="mr-1 h-3 w-3" /> Edit
-                        </Button>
-                     )}
-                     <Button size="sm" variant="destructive" onClick={() => handleDeletePost(post.id!, post.title)} className="bg-destructive/80 hover:bg-destructive">
-                         <Trash2 className="mr-1 h-3 w-3" /> Delete
-                     </Button>
-                 </div>
-            )}
             {post.status === 'scheduled' && post.scheduledAt && (
                 <div className="text-xs text-center py-1 bg-blue-100 text-blue-700 border-t border-blue-200">
                     Scheduled for: {new Date(post.scheduledAt).toLocaleString()}
@@ -261,3 +232,4 @@ export default function MyPostsPage() {
     </div>
   );
 }
+
