@@ -1,3 +1,4 @@
+
 import type { Post } from '@/lib/types';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -38,20 +39,18 @@ export function PostCard({ post }: PostCardProps) {
     <Card className="w-full max-w-2xl mx-auto shadow-subtle hover:shadow-md transition-shadow duration-300">
       <CardHeader className="p-4">
         <div className="flex items-center space-x-3">
-          <Link href={`/profile/${author.id}`} legacyBehavior>
-            <a className="flex items-center space-x-3">
-              <Avatar className="h-10 w-10">
-                <AvatarImage src={author.avatarUrl} alt={author.name} data-ai-hint="profile avatar" />
-                <AvatarFallback>{author.name.charAt(0)}</AvatarFallback>
-              </Avatar>
-              <div>
-                <p className="font-semibold text-sm font-headline group-hover:underline">{author.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
-                  {category && ` · ${category}`}
-                </p>
-              </div>
-            </a>
+          <Link href={`/profile/${author.id}`} className="flex items-center space-x-3">
+            <Avatar className="h-10 w-10">
+              <AvatarImage src={author.avatarUrl} alt={author.name} data-ai-hint="profile avatar" />
+              <AvatarFallback>{author.name.charAt(0)}</AvatarFallback>
+            </Avatar>
+            <div>
+              <p className="font-semibold text-sm font-headline group-hover:underline">{author.name}</p>
+              <p className="text-xs text-muted-foreground">
+                {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
+                {category && ` · ${category}`}
+              </p>
+            </div>
           </Link>
           <Button variant="ghost" size="icon" className="ml-auto">
             <MoreHorizontal className="h-5 w-5" />
@@ -82,10 +81,8 @@ export function PostCard({ post }: PostCardProps) {
         {tags && tags.length > 0 && (
           <div className="mt-3 flex flex-wrap gap-2">
             {tags.map(tag => (
-              <Link href={`/tags/${tag}`} key={tag} legacyBehavior>
-                <a className="text-xs bg-secondary hover:bg-muted text-secondary-foreground px-2 py-1 rounded-full transition-colors">
-                  #{tag}
-                </a>
+              <Link href={`/tags/${tag}`} key={tag} className="text-xs bg-secondary hover:bg-muted text-secondary-foreground px-2 py-1 rounded-full transition-colors">
+                #{tag}
               </Link>
             ))}
           </div>
