@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { User as UserIcon, Bell, Palette, Lock, Loader2, AlertTriangle, Eye, EyeOff } from 'lucide-react'; // Added Eye, EyeOff
+import { User as UserIcon, Bell, Palette, Lock, Loader2, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth-provider";
@@ -81,11 +81,14 @@ export default function SettingsPage() {
     }
     setIsSubmittingSettings(true);
     try {
+      // Ensure payload sends values consistent with how API expects them (e.g., empty strings vs null)
+      // The Zod schema handles .optional().nullable() so `data` can have nulls.
+      // The API should handle converting these to DB-friendly formats if needed.
       const payload = {
-        ...data,
-        bio: data.bio === '' ? null : data.bio,
-        avatarUrl: data.avatarUrl === '' ? null : data.avatarUrl,
-        notificationPreferences: {
+        name: data.name,
+        bio: data.bio, // Send null if null, empty string if empty string
+        avatarUrl: data.avatarUrl, // Send null or empty string as is
+        notificationPreferences: { // Ensure full object is sent
             emailNewPosts: data.notificationPreferences?.emailNewPosts ?? true,
             eventReminders: data.notificationPreferences?.eventReminders ?? true,
             mentionNotifications: data.notificationPreferences?.mentionNotifications ?? false,
@@ -103,7 +106,8 @@ export default function SettingsPage() {
         throw new Error(result.message || "Failed to update settings.");
       }
       toast.success("Settings updated successfully!");
-      await refreshUser();
+      await refreshUser(); // Refresh user context which might re-trigger useEffect and form.reset
+      // form.reset should ideally be called with the new user data from result if it's fresher
       if (result.user) {
          form.reset({
             name: result.user.name || '',
@@ -188,7 +192,7 @@ export default function SettingsPage() {
                                     id="bio"
                                     placeholder="Tell us a little about yourself..."
                                     {...field}
-                                    value={field.value ?? ''}
+                                    value={field.value ?? ''} // Ensure value is never undefined for controlled component
                                 />
                             </FormControl>
                             <FormMessage />
@@ -206,7 +210,7 @@ export default function SettingsPage() {
                                     id="avatarUrl"
                                     placeholder="https://example.com/avatar.png"
                                     {...field}
-                                    value={field.value ?? ''}
+                                    value={field.value ?? ''} // Ensure value is never undefined
                                 />
                             </FormControl>
                             <FormMessage />
@@ -222,7 +226,7 @@ export default function SettingsPage() {
                             <FormControl>
                               <RadioGroup
                                 onValueChange={field.onChange}
-                                value={field.value}
+                                value={field.value || 'public'} // Ensure value is not undefined
                                 className="flex flex-col space-y-1 md:flex-row md:space-y-0 md:space-x-4"
                               >
                                 <FormItem className="flex items-center space-x-3 space-y-0">
@@ -268,7 +272,7 @@ export default function SettingsPage() {
                                 <FormControl>
                                     <Switch
                                     id="emailNotificationsNewPosts"
-                                    checked={field.value}
+                                    checked={field.value ?? true} // Default to true if undefined
                                     onCheckedChange={field.onChange}
                                     />
                                 </FormControl>
@@ -284,7 +288,7 @@ export default function SettingsPage() {
                                 <FormControl>
                                     <Switch
                                     id="eventReminders"
-                                    checked={field.value}
+                                    checked={field.value ?? true} // Default to true if undefined
                                     onCheckedChange={field.onChange}
                                     />
                                 </FormControl>
@@ -300,7 +304,7 @@ export default function SettingsPage() {
                                 <FormControl>
                                     <Switch
                                     id="mentionNotifications"
-                                    checked={field.value}
+                                    checked={field.value ?? false} // Default to false if undefined
                                     onCheckedChange={field.onChange}
                                     />
                                 </FormControl>
@@ -324,8 +328,8 @@ export default function SettingsPage() {
             </AccordionTrigger>
             <AccordionContent className="p-4 bg-card rounded-b-lg border border-t-0 shadow-sm">
               <div className="space-y-4">
-                <Button variant="outline" type="button" className="w-full md:w-auto" onClick={() => toast.error("Change password not implemented.")}>Change Password</Button>
-                <Button variant="destructive" type="button" className="w-full md:w-auto" onClick={() => toast.error("Delete account not implemented.")}>Delete Account</Button>
+                <Button variant="outline" type="button" className="w-full md:w-auto" onClick={() => toast.error("Change password feature is not yet implemented.")}>Change Password</Button>
+                <Button variant="destructive" type="button" className="w-full md:w-auto" onClick={() => toast.error("Delete account feature is not yet implemented.")}>Delete Account</Button>
                 <p className="text-xs text-muted-foreground">Account deletion is permanent and cannot be undone.</p>
               </div>
             </AccordionContent>
