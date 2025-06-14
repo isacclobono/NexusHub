@@ -7,7 +7,7 @@ import type { Event, User } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader } from '@/components/ui/card'; 
-import { CalendarDays, MapPin, Users, Ticket, Edit, Trash2, Loader2, AlertTriangle, DollarSign } from 'lucide-react';
+import { CalendarDays, MapPin, Users, Ticket, Edit, Trash2, Loader2, AlertTriangle, DollarSign, UsersRound } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { format } from 'date-fns';
@@ -210,7 +210,7 @@ export default function EventDetailPage() {
   const rsvpCount = event.rsvps?.length || 0;
   const isFreeEvent = event.price === undefined || event.price === null || event.price <= 0;
   const displayPrice = isFreeEvent ? "Free" : `${new Intl.NumberFormat('en-US', { style: 'currency', currency: event.currency || 'USD' }).format(event.price || 0)}`;
-
+  const isFull = !isOrganizer && !!event.maxAttendees && rsvpCount >= event.maxAttendees && !hasRSVPd;
 
   return (
     <div className="container mx-auto py-8">
@@ -270,6 +270,16 @@ export default function EventDetailPage() {
                       ))}
                     </div>
                   </div>
+                )}
+                {event.communityName && event.communityId && (
+                     <div className="pt-4 border-t">
+                        <h3 className="text-lg font-headline font-semibold mb-2 text-primary flex items-center">
+                            <UsersRound className="h-5 w-5 mr-2"/>Part of Community
+                        </h3>
+                        <Link href={`/communities/${event.communityId}`} className="text-primary hover:underline font-medium text-md">
+                            {event.communityName}
+                        </Link>
+                     </div>
                 )}
                 
                 {event.rsvps && event.rsvps.length > 0 && (
@@ -342,9 +352,9 @@ export default function EventDetailPage() {
                     )}
                 </div>
 
-                 <Button onClick={handleRSVP} size="lg" className="w-full btn-gradient" disabled={isRsvpLoading || (!isOrganizer && !!event.maxAttendees && rsvpCount >= event.maxAttendees && !hasRSVPd) }>
+                 <Button onClick={handleRSVP} size="lg" className="w-full btn-gradient" disabled={isRsvpLoading || isFull}>
                     {isRsvpLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ticket className="h-5 w-5 mr-2" />}
-                    {hasRSVPd ? "You're Going!" : ((!isOrganizer && !!event.maxAttendees && rsvpCount >= event.maxAttendees) ? "Event Full" : (isFreeEvent ? "RSVP to this Event" : `Get Ticket (${displayPrice})`))}
+                    {hasRSVPd ? "You're Going!" : (isFull ? "Event Full" : (isFreeEvent ? "RSVP to this Event" : `Get Ticket (${displayPrice})`))}
                 </Button>
                 {!isFreeEvent && <p className="text-xs text-muted-foreground text-center mt-1">(Payment processing not implemented for this demo)</p>}
 
@@ -353,7 +363,9 @@ export default function EventDetailPage() {
                     <div className="pt-4 border-t mt-6">
                         <h3 className="text-md font-semibold mb-2">Organizer Actions</h3>
                         <div className="flex space-x-2">
-                            <Button variant="outline" size="sm" onClick={() => toast.error("Edit event functionality not implemented.")}><Edit className="mr-2 h-4 w-4"/> Edit Event</Button>
+                            <Button variant="outline" size="sm" asChild>
+                                <Link href={`/events/${event.id}/edit`}><Edit className="mr-2 h-4 w-4"/> Edit Event</Link>
+                            </Button>
                             
                             <AlertDialog>
                               <AlertDialogTrigger asChild>
