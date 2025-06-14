@@ -1,70 +1,132 @@
+
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Search as SearchIcon, ListFilter, Loader2 } from 'lucide-react';
 import { PostCard } from '@/components/feed/PostCard';
-import { mockPosts, mockEvents } from '@/lib/mock-data'; // Using mock data for search results
-import type { Post, Event } from '@/lib/types';
-
-// Mock search function
-const performSearch = async (query: string, type: string, sortBy: string): Promise<{ posts: Post[], events: Event[] }> => {
-  console.log(`Searching for "${query}" in ${type}, sorted by ${sortBy}`);
-  await new Promise(resolve => setTimeout(resolve, 700)); // Simulate API delay
-
-  let filteredPosts: Post[] = [];
-  let filteredEvents: Event[] = [];
-
-  if (type === 'all' || type === 'posts') {
-    filteredPosts = mockPosts.filter(post =>
-      post.title?.toLowerCase().includes(query.toLowerCase()) ||
-      post.content.toLowerCase().includes(query.toLowerCase()) ||
-      post.tags?.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
-    );
-  }
-
-  if (type === 'all' || type === 'events') {
-    filteredEvents = mockEvents.filter(event =>
-      event.title.toLowerCase().includes(query.toLowerCase()) ||
-      event.description.toLowerCase().includes(query.toLowerCase()) ||
-      event.tags?.some(tag => tag.toLowerCase().includes(query.toLowerCase()))
-    );
-  }
-  
-  // Simple sort (in a real app, this would be more complex or backend-driven)
-  if (sortBy === 'relevance') { // Placeholder for relevance
-      // No specific relevance sort for mock data, keep as is
-  } else if (sortBy === 'newest') {
-      filteredPosts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      filteredEvents.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
-  } else if (sortBy === 'oldest') {
-      filteredPosts.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
-      filteredEvents.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-  }
+import type { Post, Event as EventType, User } from '@/lib/types'; // Renamed Event to EventType to avoid conflict
+import Link from 'next/link';
+import { Skeleton } from '@/components/ui/skeleton';
 
 
-  return { posts: filteredPosts, events: filteredEvents };
-};
-
+const SearchResultSkeleton = () => (
+  <section className="space-y-4">
+    <Skeleton className="h-7 w-1/4 mb-4" />
+    <div className="space-y-6">
+      <Skeleton className="h-48 w-full rounded-lg" />
+      <Skeleton className="h-48 w-full rounded-lg" />
+    </div>
+  </section>
+);
 
 export default function SearchPage() {
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchType, setSearchType] = useState('all'); // 'all', 'posts', 'events', 'users'
-  const [sortBy, setSortBy] = useState('relevance'); // 'relevance', 'newest', 'oldest'
-  const [searchResults, setSearchResults] = useState<{ posts: Post[], events: Event[] }>({ posts: [], events: [] });
+  const [searchType, setSearchType] = useState('all');
+  const [sortBy, setSortBy] = useState('relevance');
+  const [searchResults, setSearchResults] = useState<{ posts: Post[], events: EventType[] }>({ posts: [], events: [] });
   const [isLoading, setIsLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Store all data to filter client-side for this example
+  const [allPosts, setAllPosts] = useState<Post[]>([]);
+  const [allEvents, setAllEvents] = useState<EventType[]>([]);
+  const [allUsers, setAllUsers] = useState<User[]>([]); // To enrich posts/events
+  const [dataLoaded, setDataLoaded] = useState(false);
+
+  const loadAllData = useCallback(async () => {
+    try {
+      const [postsRes, eventsRes, usersRes] = await Promise.all([
+        fetch('/api/data/posts.json'),
+        fetch('/api/data/events.json'),
+        fetch('/api/data/users.json')
+      ]);
+      if (!postsRes.ok || !eventsRes.ok || !usersRes.ok) throw new Error("Failed to load initial data for search.");
+      
+      const postsData: Post[] = await postsRes.json();
+      const eventsData: EventType[] = await eventsRes.json();
+      const usersData: User[] = await usersRes.json();
+
+      setAllUsers(usersData);
+
+      const enrichedPosts = postsData.map(post => ({
+        ...post,
+        author: usersData.find(u => u.id === post.authorId) || {id: 'unknown', name: 'Unknown', reputation: 0, joinedDate: ''} as User,
+      }));
+      setAllPosts(enrichedPosts);
+
+      const enrichedEvents = eventsData.map(event => ({
+        ...event,
+        organizer: usersData.find(u => u.id === event.organizerId) || {id: 'unknown', name: 'Unknown', reputation: 0, joinedDate: ''} as User,
+        rsvps: event.rsvpIds.map(id => usersData.find(u => u.id === id)).filter(Boolean) as User[],
+      }));
+      setAllEvents(enrichedEvents);
+      
+      setDataLoaded(true);
+    } catch (e) {
+      console.error("Error loading data for search:", e);
+      setError(e instanceof Error ? e.message : "Could not load data for search.");
+      setDataLoaded(true); // Still set to true to stop loading indicator
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAllData();
+  }, [loadAllData]);
+  
+
+  const performClientSearch = (query: string, type: string, sort: string): { posts: Post[], events: EventType[] } => {
+    let filteredPosts: Post[] = [];
+    let filteredEvents: EventType[] = [];
+    const lowerQuery = query.toLowerCase();
+
+    if (type === 'all' || type === 'posts') {
+      filteredPosts = allPosts.filter(post =>
+        post.title?.toLowerCase().includes(lowerQuery) ||
+        post.content.toLowerCase().includes(lowerQuery) ||
+        post.tags?.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
+        post.author?.name.toLowerCase().includes(lowerQuery)
+      );
+    }
+
+    if (type === 'all' || type === 'events') {
+      filteredEvents = allEvents.filter(event =>
+        event.title.toLowerCase().includes(lowerQuery) ||
+        event.description.toLowerCase().includes(lowerQuery) ||
+        event.tags?.some(tag => tag.toLowerCase().includes(lowerQuery)) ||
+        event.organizer?.name.toLowerCase().includes(lowerQuery)
+      );
+    }
+    
+    if (sort === 'newest') {
+        filteredPosts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+        filteredEvents.sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+    } else if (sort === 'oldest') {
+        filteredPosts.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        filteredEvents.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+    }
+    // 'relevance' sort is not implemented for client-side mock search
+
+    return { posts: filteredPosts, events: filteredEvents };
+  };
+
 
   const handleSearch = async (e?: React.FormEvent<HTMLFormElement>) => {
     if (e) e.preventDefault();
-    if (!searchQuery.trim()) return;
+    if (!searchQuery.trim() || !dataLoaded) return;
 
     setIsLoading(true);
     setHasSearched(true);
-    const results = await performSearch(searchQuery, searchType, sortBy);
+    setError(null);
+    
+    // Simulate API delay for search
+    await new Promise(resolve => setTimeout(resolve, 500)); 
+    
+    const results = performClientSearch(searchQuery, searchType, sortBy);
     setSearchResults(results);
     setIsLoading(false);
   };
@@ -82,20 +144,20 @@ export default function SearchPage() {
                 <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   type="search"
-                  placeholder="Search for posts, events, users..."
+                  placeholder="Search for posts, events..."
                   className="pl-10"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   aria-label="Search query"
                 />
               </div>
-              <Button type="submit" disabled={isLoading || !searchQuery.trim()} className="w-full sm:w-auto btn-gradient">
+              <Button type="submit" disabled={isLoading || !searchQuery.trim() || !dataLoaded} className="w-full sm:w-auto btn-gradient">
                 {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                 Search
               </Button>
             </div>
             <div className="flex flex-col sm:flex-row gap-4">
-              <Select value={searchType} onValueChange={setSearchType}>
+              <Select value={searchType} onValueChange={setSearchType} disabled={!dataLoaded}>
                 <SelectTrigger className="w-full sm:w-[180px]" aria-label="Search type">
                   <SelectValue placeholder="Search in..." />
                 </SelectTrigger>
@@ -103,10 +165,10 @@ export default function SearchPage() {
                   <SelectItem value="all">All Content</SelectItem>
                   <SelectItem value="posts">Posts</SelectItem>
                   <SelectItem value="events">Events</SelectItem>
-                  <SelectItem value="users" disabled>Users</SelectItem>
+                  <SelectItem value="users" disabled>Users (soon)</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={sortBy} onValueChange={setSortBy}>
+              <Select value={sortBy} onValueChange={setSortBy} disabled={!dataLoaded}>
                 <SelectTrigger className="w-full sm:w-[180px]" aria-label="Sort by">
                   <SelectValue placeholder="Sort by..." />
                 </SelectTrigger>
@@ -124,60 +186,77 @@ export default function SearchPage() {
         </CardContent>
       </Card>
 
-      {isLoading && (
-        <div className="text-center py-10">
+      {!dataLoaded && !error && (
+         <div className="text-center py-10">
           <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
-          <p className="mt-4 text-muted-foreground">Searching...</p>
+          <p className="mt-4 text-muted-foreground">Loading search data...</p>
         </div>
       )}
 
-      {!isLoading && hasSearched && (searchResults.posts.length === 0 && searchResults.events.length === 0) && (
-        <div className="text-center py-10">
-           <SearchIcon className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
-          <h2 className="text-xl font-semibold">No results found for "{searchQuery}"</h2>
-          <p className="text-muted-foreground">Try refining your search terms or adjusting filters.</p>
+      {dataLoaded && error && (
+         <div className="text-center py-10 text-destructive">
+          <p>Error initializing search: {error}</p>
         </div>
       )}
 
-      {!isLoading && (searchResults.posts.length > 0 || searchResults.events.length > 0) && (
-        <div className="space-y-8">
-          {searchResults.posts.length > 0 && (
-            <section>
-              <h2 className="text-xl font-semibold mb-4 font-headline">Posts ({searchResults.posts.length})</h2>
-              <div className="space-y-6">
-                {searchResults.posts.map(post => <PostCard key={post.id} post={post} />)}
-              </div>
-            </section>
+      {dataLoaded && !error && (
+        <>
+          {isLoading && (
+            <div className="space-y-8">
+              <SearchResultSkeleton />
+              {(searchType === 'all' || searchType === 'events') && <SearchResultSkeleton />}
+            </div>
           )}
 
-          {searchResults.events.length > 0 && (
-            <section>
-              <h2 className="text-xl font-semibold mb-4 font-headline">Events ({searchResults.events.length})</h2>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {searchResults.events.map(event => (
-                  // Simple event display for search, could be an EventCard component
-                  <Card key={event.id} className="shadow-subtle">
-                    <CardHeader>
-                      <CardTitle className="text-md">{event.title}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                      <p className="text-sm text-muted-foreground line-clamp-3">{event.description}</p>
-                    </CardContent>
-                    <CardFooter>
-                        <Button variant="link" asChild className="p-0 h-auto text-primary"><Link href={`/events/${event.id}`}>View Event</Link></Button>
-                    </CardFooter>
-                  </Card>
-                ))}
-              </div>
-            </section>
+          {!isLoading && hasSearched && (searchResults.posts.length === 0 && searchResults.events.length === 0) && (
+            <div className="text-center py-10">
+              <SearchIcon className="h-16 w-16 mx-auto mb-4 text-muted-foreground opacity-50" />
+              <h2 className="text-xl font-semibold">No results found for "{searchQuery}"</h2>
+              <p className="text-muted-foreground">Try refining your search terms or adjusting filters.</p>
+            </div>
           )}
-        </div>
-      )}
-       {!isLoading && !hasSearched && (
-        <div className="text-center py-20 text-muted-foreground">
-          <SearchIcon className="h-16 w-16 mx-auto mb-4 opacity-30" />
-          <p>Enter a query above to start searching NexusHub.</p>
-        </div>
+
+          {!isLoading && (searchResults.posts.length > 0 || searchResults.events.length > 0) && (
+            <div className="space-y-8">
+              {searchResults.posts.length > 0 && (searchType === 'all' || searchType === 'posts') && (
+                <section>
+                  <h2 className="text-xl font-semibold mb-4 font-headline">Posts ({searchResults.posts.length})</h2>
+                  <div className="space-y-6">
+                    {searchResults.posts.map(post => <PostCard key={post.id} post={post} />)}
+                  </div>
+                </section>
+              )}
+
+              {searchResults.events.length > 0 && (searchType === 'all' || searchType === 'events') && (
+                <section>
+                  <h2 className="text-xl font-semibold mb-4 font-headline">Events ({searchResults.events.length})</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {searchResults.events.map(event => (
+                      <Card key={event.id} className="shadow-subtle">
+                        <CardHeader>
+                          <CardTitle className="text-md">{event.title}</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-muted-foreground line-clamp-3">{event.description}</p>
+                          {event.imageUrl && <div className="mt-2 relative h-32 w-full"><Image src={event.imageUrl} alt={event.title} layout="fill" objectFit="cover" className="rounded" data-ai-hint="event highlight" /></div>}
+                        </CardContent>
+                        <CardFooter>
+                            <Button variant="link" asChild className="p-0 h-auto text-primary"><Link href={`/events/${event.id}`}>View Event</Link></Button>
+                        </CardFooter>
+                      </Card>
+                    ))}
+                  </div>
+                </section>
+              )}
+            </div>
+          )}
+          {!isLoading && !hasSearched && (
+            <div className="text-center py-20 text-muted-foreground">
+              <SearchIcon className="h-16 w-16 mx-auto mb-4 opacity-30" />
+              <p>Enter a query above to start searching NexusHub.</p>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

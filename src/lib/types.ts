@@ -1,3 +1,4 @@
+
 export interface User {
   id: string;
   name: string;
@@ -15,16 +16,21 @@ export interface Reaction {
 
 export interface Comment {
   id: string;
-  author: User;
+  postId?: string; // Added for linking comment to post
+  parentId?: string; // For replies
+  authorId: string; // Changed from User object to ID
+  author?: User; // Optional: populated after fetching
   content: string;
   createdAt: string;
   reactions: Reaction[];
-  replies?: Comment[];
+  replyIds?: string[]; // IDs of replies
+  replies?: Comment[]; // Optional: populated after fetching
 }
 
 export interface Post {
   id: string;
-  author: User;
+  authorId: string; // Changed from User object to ID
+  author?: User; // Optional: populated after fetching
   title?: string;
   content: string;
   media?: { type: 'image' | 'video' | 'document'; url: string; name?: string }[];
@@ -33,7 +39,8 @@ export interface Post {
   createdAt: string;
   updatedAt?: string;
   reactions: Reaction[];
-  comments: Comment[];
+  commentIds?: string[]; // IDs of top-level comments
+  comments?: Comment[]; // Optional: populated after fetching
   commentCount: number;
   isBookmarked?: boolean;
   scheduledAt?: string;
@@ -48,18 +55,24 @@ export interface Event {
   startTime: string;
   endTime: string;
   location?: string;
-  organizer: User;
-  rsvps: User[];
-  waitlist: User[];
+  organizerId: string; // Changed from User object to ID
+  organizer?: User; // Optional: populated after fetching
+  rsvpIds: string[]; // Changed from User objects to IDs
+  rsvps?: User[]; // Optional: populated after fetching
+  waitlistIds: string[]; // Changed from User objects to IDs
+  waitlist?: User[]; // Optional: populated after fetching
   maxAttendees?: number;
   category?: string;
   tags?: string[];
-  feedback?: EventFeedback[];
+  feedbackIds?: string[]; // IDs of feedback
+  feedback?: EventFeedback[]; // Optional: populated after fetching
 }
 
 export interface EventFeedback {
   id: string;
-  user: User;
+  eventId: string; // Added for linking
+  userId: string; // Changed from User object to ID
+  user?: User; // Optional: populated after fetching
   rating: number;
   comment?: string;
   createdAt: string;

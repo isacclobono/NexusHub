@@ -1,11 +1,11 @@
+
 'use server';
 
 import { z } from 'zod';
 import type { Post, User } from '@/lib/types';
-import { getCurrentUser, mockPosts } from '@/lib/mock-data'; // Assuming mock data for now
-import { categorizeContent, CategorizeContentInput } from '@/ai/flows/smart-content-categorization';
-import { intelligentContentModeration, IntelligentContentModerationInput } from '@/ai/flows/intelligent-content-moderation';
-
+import { getCurrentUser } from '@/lib/mock-data'; // Adjusted to fetch current user
+// Note: Direct manipulation of mockPosts array is removed as data is now from static JSON files.
+// Full persistence would require a backend API.
 
 const postFormSchema = z.object({
   title: z.string().max(150).optional(),
@@ -24,62 +24,46 @@ export async function createPostAction(
 ): Promise<{ success: boolean; post?: Post; error?: string }> {
   const validation = postFormSchema.safeParse(data);
   if (!validation.success) {
-    return { success: false, error: validation.error.flatten().fieldErrors_toString() };
+    // Convert ZodError to a string message
+    const errorMessages = validation.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+    return { success: false, error: errorMessages };
   }
 
-  const currentUser = getCurrentUser(); // In a real app, get this from session
+  const currentUser = await getCurrentUser();
   if (!currentUser) {
     return { success: false, error: 'User not authenticated.' };
   }
-
-  // Simulate AI Moderation (already done in form, but could be re-checked here)
-  // const moderationInput: IntelligentContentModerationInput = { content: data.content, sensitivityLevel: 'medium' };
-  // const moderationResult = await intelligentContentModeration(moderationInput);
-  // if (moderationResult.isFlagged) {
-  //   return { success: false, error: `Content flagged: ${moderationResult.reason}` };
-  // }
-
-  // Simulate AI Categorization if not provided (already done in form, but for direct API calls)
-  // let category = data.category;
-  // let tagsArray = data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
-
-  // if (!category && data.content.length > 20) {
-  //   try {
-  //     const categorizationInput: CategorizeContentInput = { content: data.content };
-  //     const categorizationResult = await categorizeContent(categorizationInput);
-  //     category = categorizationResult.category;
-  //     if (tagsArray.length === 0) {
-  //       tagsArray = categorizationResult.tags;
-  //     }
-  //   } catch (aiError) {
-  //     console.warn('AI categorization failed during server action:', aiError);
-  //   }
-  // }
-
+  
+  // AI Moderation and Categorization would still work as they are API calls.
+  // This part is simplified as it's already in CreatePostForm.tsx.
 
   const newPost: Post = {
-    id: `post${Date.now()}`,
-    author: currentUser,
+    id: `post${Date.now()}`, // Temporary ID generation
+    authorId: currentUser.id,
+    author: currentUser, // Include author object for immediate UI update if needed
     title: data.title,
     content: data.content,
-    category: data.category, // or use AI suggested category
-    tags: data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [], // or use AI suggested tags
+    category: data.category,
+    tags: data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [],
     createdAt: new Date().toISOString(),
     reactions: [],
+    commentIds: [],
     comments: [],
     commentCount: 0,
     status: data.isDraft ? 'draft' : (data.scheduledAt ? 'scheduled' : 'published'),
     scheduledAt: data.scheduledAt?.toISOString(),
-    // media handling would be more complex, involving file storage
+    // media handling would be more complex
   };
 
-  // In a real app, save to database
-  mockPosts.unshift(newPost); 
-  console.log('New post created (mock):', newPost);
+  // IMPORTANT: This action currently does NOT persist the post to any JSON file.
+  // It simulates a successful creation for the frontend.
+  // For actual data persistence, a backend API that can write to a database or files is needed.
+  console.log('Simulated new post created (not persisted to JSON):', newPost);
 
-  // Revalidate relevant paths if using Next.js caching and server components for feed
-  // revalidatePath('/');
-  // revalidatePath('/feed');
+  // To make the UI update optimistically if needed, you might return the post.
+  // Revalidation of paths (e.g., revalidatePath('/feed')) would be necessary if using
+  // server-side caching that needs to be busted after a new post.
+  // Since we are fetching client-side from static JSON, revalidation has no effect here.
 
   return { success: true, post: newPost };
 }

@@ -1,0 +1,38 @@
+
+[
+  {
+    "id": "comment1",
+    "postId": "post1",
+    "authorId": "user2",
+    "content": "Great post! Really insightful.",
+    "createdAt": "2024-07-20T10:30:00Z",
+    "reactions": [{ "emoji": "👍", "count": 3 }],
+    "replyIds": ["reply1"]
+  },
+  {
+    "id": "comment2",
+    "postId": "post1",
+    "authorId": "user3",
+    "content": "I have a question about the third point, can you elaborate?",
+    "createdAt": "2024-07-20T11:00:00Z",
+    "reactions": [],
+    "replyIds": []
+  },
+  {
+    "id": "reply1",
+    "parentId": "comment1",
+    "authorId": "user1",
+    "content": "Thanks Bob! Glad you liked it.",
+    "createdAt": "2024-07-20T10:35:00Z",
+    "reactions": [{ "emoji": "❤️", "count": 1 }]
+  },
+  {
+    "id": "comment1_post2",
+    "postId": "post2",
+    "authorId": "user1",
+    "content": "Looks great Bob!",
+    "createdAt": "2024-07-19T15:00:00Z",
+    "reactions": [{ "emoji": "👍", "count": 5 }],
+    "replyIds": []
+  }
+]

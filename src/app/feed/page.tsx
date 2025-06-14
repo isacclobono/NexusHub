@@ -2,15 +2,15 @@
 'use client';
 
 import { PostCard } from '@/components/feed/PostCard';
-import { mockPosts } from '@/lib/mock-data';
-import type { Post } from '@/lib/types';
-import React, { useState, useEffect } from 'react';
+import type { Post, User } from '@/lib/types';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, MessageSquarePlus, SlidersHorizontal } from 'lucide-react';
 import Link from 'next/link';
 import { personalizeFeed, PersonalizeFeedInput } from '@/ai/flows/personalized-feed-curation';
 import { useAuth } from '@/hooks/use-auth';
 import { Skeleton } from '@/components/ui/skeleton';
+import Image from 'next/image'; // Added for empty state image
 
 const PostSkeleton = () => (
   <div className="w-full max-w-2xl mx-auto space-y-4 p-4 border rounded-lg shadow-sm bg-card">
@@ -36,31 +36,61 @@ const PostSkeleton = () => (
 
 
 export default function FeedPage() {
-  const [posts, setPosts] = useState<Post[]>([]);
+  const [allPosts, setAllPosts] = useState<Post[]>([]); // Store all fetched posts
+  const [displayedPosts, setDisplayedPosts] = useState<Post[]>([]); // Posts to render
+  const [allUsers, setAllUsers] = useState<User[]>([]); // Store all users
   const [isLoading, setIsLoading] = useState(true);
   const [isCurating, setIsCurating] = useState(false);
   const [curationReasoning, setCurationReasoning] = useState<string | null>(null);
-  const { user } = useAuth();
+  const [error, setError] = useState<string | null>(null);
+  const { user, loading: authLoading } = useAuth();
 
-  useEffect(() => {
-    // Simulate fetching posts
-    setTimeout(() => {
-      setPosts(mockPosts.filter(p => p.status === 'published'));
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [postsResponse, usersResponse] = await Promise.all([
+        fetch('/api/data/posts.json'),
+        fetch('/api/data/users.json')
+      ]);
+
+      if (!postsResponse.ok) throw new Error(`Failed to fetch posts: ${postsResponse.statusText}`);
+      if (!usersResponse.ok) throw new Error(`Failed to fetch users: ${usersResponse.statusText}`);
+      
+      const postsData: Post[] = await postsResponse.json();
+      const usersData: User[] = await usersResponse.json();
+      setAllUsers(usersData);
+
+      // Enrich posts with author data
+      const enrichedPosts = postsData.map(post => ({
+        ...post,
+        author: usersData.find(u => u.id === post.authorId) || { id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: new Date().toISOString() } as User,
+      }));
+      
+      setAllPosts(enrichedPosts);
+      setDisplayedPosts(enrichedPosts.filter(p => p.status === 'published'));
+
+    } catch (e) {
+      console.error("Error fetching feed data:", e);
+      setError(e instanceof Error ? e.message : "Failed to load feed.");
+    } finally {
       setIsLoading(false);
-    }, 1000);
+    }
   }, []);
 
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
+
   const handlePersonalizeFeed = async () => {
-    if (!user) {
-      // Handle case where user is not available
+    if (!user || allPosts.length === 0) {
       return;
     }
     setIsCurating(true);
     setCurationReasoning(null);
     try {
-      // Example user history and available posts (in a real app, this would be dynamic)
       const userHistory = `User ${user.name} has shown interest in AI, technology, and community gardening. They recently viewed posts about machine learning and local volunteering.`;
-      const availablePostsSummary = mockPosts
+      const availablePostsSummary = allPosts
         .filter(p => p.status === 'published')
         .map(p => `Title: ${p.title || 'Untitled Post'}\nDescription: ${p.content.substring(0,100)}...\nTags: ${p.tags?.join(', ')}\nCategory: ${p.category}`)
         .join('\n\n');
@@ -72,12 +102,17 @@ export default function FeedPage() {
       
       const result = await personalizeFeed(input);
       
-      // Filter and reorder posts based on AI curation (simplified)
-      const curatedTitles = result.curatedFeed.split('\n').map(t => t.trim()).filter(Boolean);
-      const curatedPosts = curatedTitles.map(title => mockPosts.find(p => p.title === title || p.content.startsWith(title.substring(0,20)))).filter(Boolean) as Post[];
-      const otherPosts = mockPosts.filter(p => p.status === 'published' && !curatedPosts.some(cp => cp.id === p.id));
+      const curatedTitles = result.curatedFeed.split('\n').map(t => t.trim().toLowerCase()).filter(Boolean);
       
-      setPosts([...curatedPosts, ...otherPosts]);
+      const curatedPosts = allPosts.filter(p => 
+        p.status === 'published' && 
+        (p.title && curatedTitles.includes(p.title.toLowerCase())) || 
+        curatedTitles.some(ct => p.content.toLowerCase().startsWith(ct.substring(0,20)))
+      );
+      
+      const otherPosts = allPosts.filter(p => p.status === 'published' && !curatedPosts.some(cp => cp.id === p.id));
+      
+      setDisplayedPosts([...curatedPosts, ...otherPosts]);
       setCurationReasoning(result.reasoning);
 
     } catch (error) {
@@ -88,6 +123,30 @@ export default function FeedPage() {
     }
   };
 
+  if (authLoading || isLoading) {
+    return (
+      <div className="container mx-auto py-8 space-y-6">
+        <div className="flex flex-col sm:flex-row justify-between items-center mb-2 gap-4">
+          <Skeleton className="h-9 w-1/3" />
+          <div className="flex gap-2">
+            <Skeleton className="h-10 w-44" />
+            <Skeleton className="h-10 w-36" />
+          </div>
+        </div>
+        <PostSkeleton />
+        <PostSkeleton />
+        <PostSkeleton />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="container mx-auto py-8 text-center text-destructive">
+        Error loading feed: {error}
+      </div>
+    );
+  }
 
   return (
     <div className="container mx-auto py-8">
@@ -114,21 +173,15 @@ export default function FeedPage() {
         </div>
       )}
 
-      {isLoading ? (
+      {displayedPosts.length > 0 ? (
         <div className="space-y-6">
-          <PostSkeleton />
-          <PostSkeleton />
-          <PostSkeleton />
-        </div>
-      ) : posts.length > 0 ? (
-        <div className="space-y-6">
-          {posts.map((post) => (
+          {displayedPosts.map((post) => (
             <PostCard key={post.id} post={post} />
           ))}
         </div>
       ) : (
         <div className="text-center py-10">
-          <Image src="https://placehold.co/300x200.png" alt="Empty feed" data-ai-hint="empty state illustration" width={300} height={200} className="mx-auto mb-4 opacity-70" />
+          <Image src="https://placehold.co/300x200.png" alt="Empty feed" data-ai-hint="empty state illustration" width={300} height={200} className="mx-auto mb-4 opacity-70 rounded-lg" />
           <h2 className="text-2xl font-semibold mb-2">It's a bit quiet here...</h2>
           <p className="text-muted-foreground mb-4">Be the first to share something amazing with the community!</p>
           <Link href="/posts/create" passHref>

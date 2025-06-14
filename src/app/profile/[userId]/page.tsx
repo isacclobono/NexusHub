@@ -1,19 +1,23 @@
+
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import type { User, Post, Badge as BadgeType } from '@/lib/types';
-import { mockUsers, mockPosts, mockBadges } from '@/lib/mock-data';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarDays, Edit3, Award, Star } from 'lucide-react';
+import { CalendarDays, Edit3, Star, Loader2 } from 'lucide-react';
 import { PostCard } from '@/components/feed/PostCard';
 import { format } from 'date-fns';
 import Image from 'next/image';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Skeleton } from '@/components/ui/skeleton';
+import { useAuth } from '@/hooks/use-auth';
 
-const Badge = ({ badge }: { badge: BadgeType }) => (
+
+const BadgeDisplayComponent = ({ badge }: { badge: BadgeType }) => (
   <TooltipProvider>
     <Tooltip>
       <TooltipTrigger asChild>
@@ -30,70 +34,119 @@ const Badge = ({ badge }: { badge: BadgeType }) => (
   </TooltipProvider>
 );
 
-
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
-import { Skeleton } from '@/components/ui/skeleton';
-
-
 const ProfileSkeleton = () => (
   <div className="container mx-auto py-8">
-    <Card className="mb-8">
-      <CardContent className="p-6 flex flex-col md:flex-row items-center md:items-start gap-6">
-        <Skeleton className="h-32 w-32 rounded-full" />
-        <div className="flex-1 text-center md:text-left">
-          <Skeleton className="h-8 w-48 mb-2" />
-          <Skeleton className="h-4 w-64 mb-4" />
-          <div className="flex items-center justify-center md:justify-start space-x-4 text-sm text-muted-foreground mb-4">
-            <Skeleton className="h-4 w-24" />
-            <Skeleton className="h-4 w-20" />
+    <Card className="mb-8 shadow-lg overflow-hidden">
+      <Skeleton className="h-40 bg-muted" />
+      <CardContent className="p-6 pt-0 relative">
+        <div className="flex flex-col md:flex-row items-center md:items-start gap-6 -mt-16">
+          <Skeleton className="h-32 w-32 rounded-full border-4 border-card shadow-md" />
+          <div className="flex-1 pt-16 text-center md:text-left">
+            <Skeleton className="h-8 w-48 mb-2" />
+            <Skeleton className="h-4 w-64 mb-2" />
+            <Skeleton className="h-4 w-32 mb-4" />
           </div>
-          <Skeleton className="h-10 w-32" />
+          <div className="pt-16">
+            <Skeleton className="h-10 w-32" />
+          </div>
         </div>
       </CardContent>
     </Card>
-    <Skeleton className="h-10 w-1/2 mb-4" /> 
-    <div className="space-y-6">
-      <Skeleton className="h-64 w-full" />
-      <Skeleton className="h-64 w-full" />
-    </div>
+    <Tabs defaultValue="posts" className="w-full">
+      <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-10 w-full" />
+      </TabsList>
+      <TabsContent value="posts">
+        <div className="space-y-6">
+          <Skeleton className="h-64 w-full rounded-lg" />
+          <Skeleton className="h-64 w-full rounded-lg" />
+        </div>
+      </TabsContent>
+    </Tabs>
   </div>
 );
 
 
 export default function UserProfilePage() {
   const params = useParams();
-  const userId = params.userId as string;
-  const [user, setUser] = useState<User | null>(null);
+  const routeUserId = params.userId as string;
+  
+  const { user: authUser, loading: authLoading } = useAuth();
+  const [profileUser, setProfileUser] = useState<User | null>(null);
   const [userPosts, setUserPosts] = useState<Post[]>([]);
   const [userBadges, setUserBadges] = useState<BadgeType[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (userId) {
-      setIsLoading(true);
-      // Simulate fetching user data
-      const foundUser = mockUsers.find(u => u.id === userId || (userId === 'me' && u.id === mockUsers[0].id) );
-      setUser(foundUser || null);
+  const userIdToFetch = routeUserId === 'me' && authUser ? authUser.id : routeUserId;
+
+  const fetchProfileData = useCallback(async (currentUserId: string) => {
+    if (!currentUserId) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [usersResponse, postsResponse, badgesResponse] = await Promise.all([
+        fetch('/api/data/users.json'),
+        fetch('/api/data/posts.json'),
+        fetch('/api/data/badges.json')
+      ]);
+
+      if (!usersResponse.ok) throw new Error(`Failed to fetch users: ${usersResponse.statusText}`);
+      if (!postsResponse.ok) throw new Error(`Failed to fetch posts: ${postsResponse.statusText}`);
+      if (!badgesResponse.ok) throw new Error(`Failed to fetch badges: ${badgesResponse.statusText}`);
+      
+      const usersData: User[] = await usersResponse.json();
+      const postsData: Post[] = await postsResponse.json();
+      const badgesData: BadgeType[] = await badgesResponse.json();
+
+      const foundUser = usersData.find(u => u.id === currentUserId);
+      setProfileUser(foundUser || null);
+
       if (foundUser) {
-        setUserPosts(mockPosts.filter(p => p.author.id === foundUser.id && p.status === 'published'));
-        setUserBadges(mockBadges.slice(0, Math.floor(Math.random() * mockBadges.length + 1))); // Random badges
+        const enrichedPosts = postsData
+          .filter(p => p.authorId === foundUser.id && p.status === 'published')
+          .map(post => ({
+            ...post,
+            author: foundUser, // Already have the author info
+          }));
+        setUserPosts(enrichedPosts);
+        setUserBadges(badgesData.slice(0, Math.floor(Math.random() * badgesData.length + 1))); // Random badges for demo
+      } else {
+        setError("User not found.");
       }
-      setTimeout(() => setIsLoading(false), 500);
+    } catch (e) {
+      console.error("Failed to fetch profile data:", e);
+      setError(e instanceof Error ? e.message : "Failed to load profile.");
+    } finally {
+      setIsLoading(false);
     }
-  }, [userId]);
+  }, []);
+  
+  useEffect(() => {
+    if (!authLoading && userIdToFetch) {
+      fetchProfileData(userIdToFetch);
+    } else if (!authLoading && routeUserId !== 'me') {
+       fetchProfileData(routeUserId);
+    }
+  }, [userIdToFetch, authLoading, routeUserId, fetchProfileData]);
 
-  if (isLoading) {
+
+  if (authLoading || isLoading) {
     return <ProfileSkeleton />;
   }
 
-  if (!user) {
+  if (error) {
+    return <div className="container mx-auto py-8 text-center text-destructive">{error}</div>;
+  }
+
+  if (!profileUser) {
     return <div className="container mx-auto py-8 text-center">User not found.</div>;
   }
+  
+  const isOwnProfile = authUser?.id === profileUser.id;
 
   return (
     <div className="container mx-auto py-8">
@@ -104,20 +157,22 @@ export default function UserProfilePage() {
         <CardContent className="p-6 pt-0 relative">
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6 -mt-16">
             <Avatar className="h-32 w-32 border-4 border-card shadow-md">
-              <AvatarImage src={user.avatarUrl} alt={user.name} data-ai-hint="profile avatar large" />
-              <AvatarFallback className="text-4xl">{user.name.charAt(0)}</AvatarFallback>
+              <AvatarImage src={profileUser.avatarUrl || 'https://placehold.co/128x128.png'} alt={profileUser.name} data-ai-hint="profile avatar large" />
+              <AvatarFallback className="text-4xl">{profileUser.name.charAt(0)}</AvatarFallback>
             </Avatar>
             <div className="flex-1 pt-16 text-center md:text-left">
-              <h1 className="text-3xl font-bold font-headline">{user.name}</h1>
-              {user.bio && <p className="text-muted-foreground mt-1">{user.bio}</p>}
+              <h1 className="text-3xl font-bold font-headline">{profileUser.name}</h1>
+              {profileUser.bio && <p className="text-muted-foreground mt-1">{profileUser.bio}</p>}
               <div className="flex items-center justify-center md:justify-start space-x-4 text-sm text-muted-foreground mt-2">
-                <span className="flex items-center"><CalendarDays className="h-4 w-4 mr-1" /> Joined {format(new Date(user.joinedDate), 'MMMM yyyy')}</span>
-                <span className="flex items-center"><Star className="h-4 w-4 mr-1 text-yellow-400" /> {user.reputation} Reputation</span>
+                <span className="flex items-center"><CalendarDays className="h-4 w-4 mr-1" /> Joined {format(new Date(profileUser.joinedDate), 'MMMM yyyy')}</span>
+                <span className="flex items-center"><Star className="h-4 w-4 mr-1 text-yellow-400" /> {profileUser.reputation} Reputation</span>
               </div>
             </div>
-            <div className="pt-16">
-              <Button variant="outline"><Edit3 className="h-4 w-4 mr-2" /> Edit Profile</Button>
-            </div>
+            {isOwnProfile && (
+              <div className="pt-16">
+                <Button variant="outline"><Edit3 className="h-4 w-4 mr-2" /> Edit Profile</Button>
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -147,7 +202,7 @@ export default function UserProfilePage() {
           {userBadges.length > 0 ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
               {userBadges.map(badge => (
-                <Badge key={badge.id} badge={badge} />
+                <BadgeDisplayComponent key={badge.id} badge={badge} />
               ))}
             </div>
           ) : (

@@ -1,16 +1,37 @@
+
 'use client';
 
-import { useState, useEffect } from 'react';
-import type { Event } from '@/lib/types';
-import { mockEvents } from '@/lib/mock-data';
+import { useState, useEffect, useCallback } from 'react';
+import type { Event, User } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Calendar, MapPin, Users, PlusCircle, Ticket, Clock } from 'lucide-react';
+import { Calendar, MapPin, Users, PlusCircle, Ticket, Clock, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Calendar as ShadCalendar } from "@/components/ui/calendar" // Renamed to avoid conflict
+import { Calendar as ShadCalendar } from "@/components/ui/calendar";
+import { Skeleton } from '@/components/ui/skeleton';
+
+
+const EventCardSkeleton = () => (
+  <Card className="overflow-hidden shadow-sm">
+    <Skeleton className="h-48 w-full" />
+    <CardHeader className="p-4">
+      <Skeleton className="h-6 w-3/4 mb-2" />
+      <Skeleton className="h-4 w-1/2" />
+    </CardHeader>
+    <CardContent className="p-4 pt-0">
+      <Skeleton className="h-4 w-full mb-1" />
+      <Skeleton className="h-4 w-5/6 mb-2" />
+      <Skeleton className="h-3 w-1/3 mb-1" />
+      <Skeleton className="h-3 w-1/2" />
+    </CardContent>
+    <CardFooter className="p-4 border-t">
+      <Skeleton className="h-9 w-full" />
+    </CardFooter>
+  </Card>
+);
 
 const EventCard = ({ event }: { event: Event }) => (
   <Card className="overflow-hidden shadow-subtle hover:shadow-md transition-shadow duration-300">
@@ -38,7 +59,7 @@ const EventCard = ({ event }: { event: Event }) => (
         </div>
       )}
       <div className="text-xs text-muted-foreground flex items-center">
-        <Users className="h-3 w-3 mr-1.5" /> {event.rsvps.length} attending
+        <Users className="h-3 w-3 mr-1.5" /> {event.rsvps?.length || event.rsvpIds?.length || 0} attending
         {event.maxAttendees && ` / ${event.maxAttendees}`}
       </div>
     </CardContent>
@@ -73,7 +94,6 @@ const EventCalendarView = () => {
           <CardTitle className="font-headline">Events for {date ? format(date, 'MMMM d, yyyy') : 'selected date'}</CardTitle>
         </CardHeader>
         <CardContent>
-          {/* Placeholder for events on selected date */}
           <div className="text-center py-10 text-muted-foreground">
             <Clock className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>No events scheduled for this day.</p>
@@ -89,19 +109,45 @@ const EventCalendarView = () => {
 export default function EventsPage() {
   const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Simulate fetching events
-    setTimeout(() => {
-      setEvents(mockEvents);
+  const fetchEventData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [eventsResponse, usersResponse] = await Promise.all([
+        fetch('/api/data/events.json'),
+        fetch('/api/data/users.json')
+      ]);
+
+      if (!eventsResponse.ok) throw new Error(`Failed to fetch events: ${eventsResponse.statusText}`);
+      if (!usersResponse.ok) throw new Error(`Failed to fetch users: ${usersResponse.statusText}`);
+
+      const eventsData: Event[] = await eventsResponse.json();
+      const usersData: User[] = await usersResponse.json();
+      
+      const enrichedEvents = eventsData.map(event => {
+        const organizer = usersData.find(u => u.id === event.organizerId);
+        const rsvps = event.rsvpIds.map(id => usersData.find(u => u.id === id)).filter(Boolean) as User[];
+        return {
+          ...event,
+          organizer: organizer || {id: 'unknown', name: 'Unknown User', reputation: 0, joinedDate: ''} as User,
+          rsvps,
+        };
+      });
+      setEvents(enrichedEvents);
+    } catch (e) {
+      console.error("Failed to fetch events data:", e);
+      setError(e instanceof Error ? e.message : "Failed to load events.");
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
   }, []);
+  
+  useEffect(() => {
+    fetchEventData();
+  }, [fetchEventData]);
 
-  if (isLoading) {
-    // Basic loading state
-    return <div className="container mx-auto py-8 text-center">Loading events...</div>;
-  }
 
   return (
     <div className="container mx-auto py-8">
@@ -120,14 +166,23 @@ export default function EventsPage() {
           <TabsTrigger value="calendar">Calendar View</TabsTrigger>
         </TabsList>
         <TabsContent value="list">
-          {events.length > 0 ? (
+          {isLoading && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[...Array(3)].map((_, i) => <EventCardSkeleton key={i} />)}
+            </div>
+          )}
+          {!isLoading && error && (
+            <p className="text-destructive text-center py-10">Error loading events: {error}</p>
+          )}
+          {!isLoading && !error && events.length === 0 && (
+            <p className="text-muted-foreground text-center py-10">No upcoming events. Check back soon!</p>
+          )}
+          {!isLoading && !error && events.length > 0 && (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {events.map(event => (
                 <EventCard key={event.id} event={event} />
               ))}
             </div>
-          ) : (
-            <p className="text-muted-foreground text-center py-10">No upcoming events. Check back soon!</p>
           )}
         </TabsContent>
         <TabsContent value="calendar">

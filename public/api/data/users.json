@@ -1,0 +1,6 @@
+
+[
+  { "id": "user1", "name": "Alice Wonderland", "avatarUrl": "https://placehold.co/100x100.png", "reputation": 1250, "joinedDate": "2023-01-15", "bio": "Curiouser and curiouser! Exploring the world of tech." },
+  { "id": "user2", "name": "Bob The Builder", "avatarUrl": "https://placehold.co/100x100.png", "reputation": 800, "joinedDate": "2023-03-22", "bio": "Can we fix it? Yes, we can! Passionate about open source." },
+  { "id": "user3", "name": "Charlie Chaplin", "avatarUrl": "https://placehold.co/100x100.png", "reputation": 150, "joinedDate": "2024-05-01", "bio": "A day without laughter is a day wasted." }
+]

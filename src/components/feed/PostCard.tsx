@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { MessageCircle, ThumbsUp, Heart, Laugh, Zap, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon } from 'lucide-react';
+import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 
 interface PostCardProps {
@@ -35,17 +35,20 @@ const MediaIcon = ({ type }: { type: 'image' | 'video' | 'document' }) => {
 export function PostCard({ post }: PostCardProps) {
   const { author, title, content, media, category, tags, createdAt, reactions, commentCount, isBookmarked } = post;
 
+  // Ensure author is defined, provide a fallback if not (e.g., data still loading/error)
+  const postAuthor = author || { id: 'unknown', name: 'Unknown User', avatarUrl: undefined };
+
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-subtle hover:shadow-md transition-shadow duration-300">
       <CardHeader className="p-4">
         <div className="flex items-center space-x-3">
-          <Link href={`/profile/${author.id}`} className="flex items-center space-x-3">
+          <Link href={`/profile/${postAuthor.id}`} className="flex items-center space-x-3 group">
             <Avatar className="h-10 w-10">
-              <AvatarImage src={author.avatarUrl} alt={author.name} data-ai-hint="profile avatar" />
-              <AvatarFallback>{author.name.charAt(0)}</AvatarFallback>
+              <AvatarImage src={postAuthor.avatarUrl || `https://placehold.co/40x40.png`} alt={postAuthor.name} data-ai-hint="profile avatar" />
+              <AvatarFallback>{postAuthor.name.charAt(0)}</AvatarFallback>
             </Avatar>
             <div>
-              <p className="font-semibold text-sm font-headline group-hover:underline">{author.name}</p>
+              <p className="font-semibold text-sm font-headline group-hover:underline">{postAuthor.name}</p>
               <p className="text-xs text-muted-foreground">
                 {formatDistanceToNow(new Date(createdAt), { addSuffix: true })}
                 {category && ` · ${category}`}

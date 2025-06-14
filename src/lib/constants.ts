@@ -1,5 +1,6 @@
+
 import type { NavItem } from './types';
-import { Home, MessageSquareText, CalendarDays, Users, Settings, Search, Bookmark, PlusCircle, LogOut } from 'lucide-react';
+import { Home, MessageSquareText, CalendarDays, Users, Settings, Search, Bookmark, LogOut } from 'lucide-react';
 
 export const APP_NAME = 'NexusHub';
 
@@ -23,7 +24,7 @@ export const SIDENAV_ITEMS: NavItem[] = [
     title: 'Members',
     href: '/members',
     icon: Users,
-    disabled: true,
+    disabled: false, // Enabled Members page
   },
   {
     title: 'Search',
@@ -41,7 +42,12 @@ export const SIDENAV_USER_ITEMS: NavItem[] = [
  {
     title: 'Profile',
     href: '/profile/me', // Will be dynamically set to current user's ID
-    icon: Settings, // Using Settings as a placeholder for User icon
+    icon: Settings, 
+  },
+  {
+    title: 'Settings',
+    href: '/settings',
+    icon: Settings,
   },
   {
     title: 'Logout',

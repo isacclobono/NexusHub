@@ -1,0 +1,6 @@
+
+[
+  { "id": "badge1", "name": "Pioneer", "description": "Joined NexusHub in the first month.", "iconUrl": "https://placehold.co/50x50.png" },
+  { "id": "badge2", "name": "Contributor", "description": "Made 10+ valuable posts.", "iconUrl": "https://placehold.co/50x50.png" },
+  { "id": "badge3", "name": "Engager", "description": "Received 100+ reactions on posts/comments.", "iconUrl": "https://placehold.co/50x50.png" }
+]
