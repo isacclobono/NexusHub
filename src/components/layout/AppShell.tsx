@@ -58,7 +58,7 @@ const UserProfileButtonContentWrapper = React.forwardRef<
       </div>
     );
   }
-  if (!user) { 
+  if (!user) {
      return (
       <div ref={ref} {...rest} className={cn("flex items-center w-full", props.className)}>
         <LogIn className="h-5 w-5 mr-2 text-muted-foreground" />
@@ -84,25 +84,17 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const { user, loading: authLoading, logout, isAuthenticated } = useAuth();
   const router = useRouter();
 
-  const handleLogout = () => {
-    logout();
-    toast.success("You have been successfully logged out.");
-    router.push('/login');
-  };
-
   const userNavItems: NavItem[] = React.useMemo(() => {
-    if (authLoading) return []; 
-    if (isAuthenticated && user) {
-      return [
-        // "Profile" and "Settings" removed from here
-        { title: 'Logout', onClick: handleLogout, icon: LogOut, href: '#' }
-      ];
+    if (authLoading) return [];
+    if (isAuthenticated) {
+      return []; // Authenticated users will not have Profile, Settings, or Logout in sidebar footer
     }
+    // Not authenticated, show Login and Register
     return [
       { title: 'Login', href: '/login', icon: LogIn },
       { title: 'Register', href: '/register', icon: UserPlus }
     ];
-  }, [user, authLoading, isAuthenticated, router]); // router removed from dependencies as handleLogout is now stable
+  }, [authLoading, isAuthenticated]);
 
 
   return (
@@ -159,22 +151,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           ) : (
             userNavItems.map((item) => {
               const isActive = pathname === item.href;
-              if (item.onClick) {
-                return (
-                   <SidebarMenuItem key={item.title}>
-                      <SidebarMenuButton
-                        onClick={item.onClick}
-                        asChild
-                        isActive={isActive}
-                        tooltip={item.title}
-                        variant="ghost"
-                        className={cn(item.title === 'Logout' && 'text-destructive hover:bg-destructive/10 hover:text-destructive focus:text-destructive focus:bg-destructive/10')}
-                      >
-                         <SidebarButtonContentWrapper item={item} isActive={isActive} />
-                      </SidebarMenuButton>
-                  </SidebarMenuItem>
-                );
-              }
               return (
                 <SidebarMenuItem key={item.title}>
                   <Link href={item.href} passHref legacyBehavior={false}>

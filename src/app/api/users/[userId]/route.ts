@@ -98,7 +98,7 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
     }
 
-    const updatePayload: any = { // Use 'any' for $set flexibility, or a more complex Partial type
+    const updatePayload: { $set: Partial<UserWithPasswordHash> } = {
         $set: { updatedAt: new Date().toISOString() }
     };
 
@@ -130,27 +130,16 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     if (validatedData.privacy !== undefined) {
       updatePayload.$set.privacy = validatedData.privacy;
     }
-    
-    // Only proceed if there are fields to update besides 'updatedAt'
-    if (Object.keys(updatePayload.$set).length === 1 && 'updatedAt' in updatePayload.$set) {
-        // No actual user-modifiable fields were changed, but we can consider 'updatedAt' a valid update.
-        // To ensure the client gets the document, we can still run the update and fetch.
-        // Or, if we want to be strict, we could return a 304 Not Modified or a 200 with a message.
-        // For simplicity and to ensure `refreshUser` works, let's proceed with the update.
-    }
-    
+        
     const updateResult = await usersCollection.updateOne(
       { _id: userObjectId },
       updatePayload 
     );
 
     if (updateResult.matchedCount === 0) {
-      // This case should be caught by the 'existingUser' check above, but good for safety.
       return NextResponse.json({ message: 'User not found during update operation.' }, { status: 404 });
     }
     
-    // If updateOne doesn't modify (e.g. data is identical), modifiedCount would be 0
-    // But we always update 'updatedAt', so modifiedCount should be 1 if matchedCount is 1.
     // After update, fetch the document to return to the client
     const updatedUserDoc = await usersCollection.findOne(
         { _id: userObjectId },
@@ -158,9 +147,8 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     );
 
     if (!updatedUserDoc) {
-        // This would be very unusual if the update matched.
         console.error(`User ${pathUserId} updated, but could not be re-fetched.`);
-        return NextResponse.json({ message: 'Profile updated, but failed to retrieve updated details.' }, { status: 500 });
+        return NextResponse.json({ message: 'Profile update operation failed. The document might not have been modified or an unexpected error occurred.' }, { status: 500 });
     }
 
     const updatedUserForClient: User = {
@@ -182,4 +170,3 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
-```
