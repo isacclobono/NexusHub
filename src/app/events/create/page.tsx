@@ -98,24 +98,23 @@ export default function CreateEventPage() {
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       toast.error("You must be logged in to create an event.");
-      router.push('/login?redirect=/events/create');
+      const redirectQuery = preselectedCommunityId ? `?communityId=${preselectedCommunityId}` : '';
+      router.push(`/login?redirect=${encodeURIComponent(`/events/create${redirectQuery}`)}`);
     }
      if (isAuthenticated && user?.id) {
       const fetchUserCommunities = async () => {
         setLoadingCommunities(true);
         try {
-            const userDetailsResponse = await fetch(`/api/users/${user.id}`);
-            if (userDetailsResponse.ok) {
-                const userData = await userDetailsResponse.json();
-                if (userData.communityIds && userData.communityIds.length > 0) {
-                    const communityDetailsPromises = userData.communityIds.map((id: string) =>
-                        fetch(`/api/communities/${id}`).then(res => res.json())
-                    );
-                    const communitiesData = await Promise.all(communityDetailsPromises);
-                    setMemberCommunities(communitiesData.filter(c => c && c.id));
-                } else {
-                    setMemberCommunities([]);
-                }
+            // Since user.communityIds might not be fully populated initially or after just joining one,
+            // we'll rely on an API that can list communities the user is a member of.
+            // For now, let's assume user.communityIds is correctly populated in the AuthContext
+            // by login or refreshUser. If not, a dedicated API /api/users/[userId]/communities would be better.
+            if (user.communityIds && user.communityIds.length > 0) {
+                const communityDetailsPromises = user.communityIds.map((id) =>
+                    fetch(`/api/communities/${id.toString()}`).then(res => res.ok ? res.json() : null) // Handle potential errors
+                );
+                const communitiesData = await Promise.all(communityDetailsPromises);
+                setMemberCommunities(communitiesData.filter(c => c && c.id) as Community[]);
             } else {
                 setMemberCommunities([]);
             }
@@ -128,7 +127,7 @@ export default function CreateEventPage() {
       };
       fetchUserCommunities();
     }
-  }, [authLoading, isAuthenticated, user, router]);
+  }, [authLoading, isAuthenticated, user, router, preselectedCommunityId]);
   
 
   async function onSubmit(data: EventFormValues) {
@@ -182,19 +181,19 @@ export default function CreateEventPage() {
     }
   }
 
-  if (authLoading || loadingCommunities) {
+  if (authLoading || (isAuthenticated && loadingCommunities)) {
     return (
       <div className="container mx-auto py-8 flex justify-center items-center min-h-[calc(100vh-200px)]">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
   }
-  if (!isAuthenticated && !authLoading) {
+  if (!isAuthenticated && !authLoading) { 
      return (
       <div className="container mx-auto py-8 text-center">
+        {/* This part might not be reached if redirect in useEffect is fast enough */}
         <AlertTriangle className="h-12 w-12 mx-auto mb-4 text-destructive" />
-        <p className="text-lg text-muted-foreground">Access Denied. Please log in to create events.</p>
-        <Button onClick={() => router.push('/login?redirect=/events/create')} className="mt-4">Login</Button>
+        <p className="text-lg text-muted-foreground">Redirecting to login...</p>
       </div>
     );
   }
@@ -418,7 +417,6 @@ export default function CreateEventPage() {
                          <Input 
                             type="number" 
                             placeholder="Enter 0 for a free event" 
-                            {...field}
                             value={field.value === undefined ? '' : String(field.value)}
                             onChange={e => {
                                 const val = e.target.value;
@@ -493,7 +491,6 @@ export default function CreateEventPage() {
                       <Input 
                         type="number" 
                         placeholder="e.g., 100" 
-                        {...field} 
                         value={field.value === undefined ? '' : String(field.value)}
                         onChange={e => {
                             const val = e.target.value;
@@ -538,4 +535,3 @@ export default function CreateEventPage() {
     </div>
   );
 }
-

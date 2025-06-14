@@ -3,7 +3,7 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import type { Community, User, Post, Event as EventType } from '@/lib/types'; // Added Post, EventType
+import type { Community, User, Post, Event as EventType } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -16,7 +16,7 @@ import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { PostCard } from '@/components/feed/PostCard'; // For Discussion tab
+import { PostCard } from '@/components/feed/PostCard';
 
 const CommunityDetailSkeleton = () => (
   <div className="container mx-auto py-8">
@@ -70,6 +70,9 @@ const CommunityEventCard = ({ event }: { event: EventType }) => (
         data-ai-hint="event banner small"
         className="rounded-t-lg transition-transform duration-300 group-hover:scale-105"
       />
+       <Badge variant="secondary" className="absolute top-2 right-2 text-xs bg-background/80 backdrop-blur-sm">
+        {event.price === undefined || event.price === null || event.price <= 0 ? "Free" : `$${event.price.toFixed(2)} ${event.currency || 'USD'}`}
+      </Badge>
     </Link>
     <CardHeader className="p-3">
       <CardTitle className="text-md font-headline group-hover:text-primary transition-colors">
@@ -192,7 +195,9 @@ export default function CommunityDetailPage() {
   }, [communityId, fetchCommunityDetails, fetchCommunityContent]);
 
   const handlePostUpdate = () => {
-    if(communityId) fetchCommunityContent(); // Re-fetch posts
+    // This can be called after like/bookmark to refresh post states if needed,
+    // or after deleting a post from within this community view (if implemented)
+    if(communityId) fetchCommunityContent(); 
   }
 
 
@@ -204,6 +209,11 @@ export default function CommunityDetailPage() {
     }
     if (!community || !community.id) {
         toast.error("Community details not loaded yet.");
+        return;
+    }
+    if (community.privacy === 'private') {
+        toast.error("Joining private communities requires admin approval (not yet implemented).");
+        // In a full implementation, this would trigger a join request.
         return;
     }
 
@@ -225,9 +235,9 @@ export default function CommunityDetailPage() {
         }
 
         toast.success(result.message || `Successfully ${isMember ? 'left' : 'joined'} ${community.name}!`);
-        await fetchCommunityDetails();
-        await fetchCommunityContent(); // Re-fetch members
-        await refreshUser();
+        await fetchCommunityDetails(); // Refreshes community details (like member count)
+        await fetchCommunityContent(); // Refreshes members list
+        await refreshUser(); // Refreshes current user's communityIds list
 
     } catch (err) {
         const errorMessage = err instanceof Error ? err.message : "An unknown error occurred.";
@@ -307,10 +317,10 @@ export default function CommunityDetailPage() {
                             onClick={handleJoinLeaveCommunity}
                             size="default"
                             className="w-full md:w-auto btn-gradient"
-                            disabled={isMembershipProcessing || (isCreator && community.privacy === 'public')}
+                            disabled={isMembershipProcessing || (isCreator && community.privacy === 'public') || (community.privacy === 'private' && !isMember) } 
                          >
                             {isMembershipProcessing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : (isMember ? <LogOut className="mr-2 h-4 w-4" /> : <UserPlus className="mr-2 h-4 w-4" />)}
-                            {isMember ? 'Leave Community' : 'Join Community'}
+                            {isMember ? 'Leave Community' : (community.privacy === 'private' ? 'Request to Join (Pending)' : 'Join Community')}
                         </Button>
                     )}
                     {!isAuthenticated && (
@@ -349,9 +359,9 @@ export default function CommunityDetailPage() {
         <CardContent className="p-6">
             <Tabs defaultValue="discussion" className="w-full">
               <TabsList className="mb-6 grid w-full grid-cols-2 sm:grid-cols-4 max-w-xl">
-                <TabsTrigger value="discussion"><MessageSquare className="mr-2 h-4 w-4" />Discussion</TabsTrigger>
-                <TabsTrigger value="events"><CalendarDays className="mr-2 h-4 w-4" />Events</TabsTrigger>
-                <TabsTrigger value="members"><UsersRound className="mr-2 h-4 w-4" />Members</TabsTrigger>
+                <TabsTrigger value="discussion"><MessageSquare className="mr-2 h-4 w-4" />Discussion ({communityPosts.length})</TabsTrigger>
+                <TabsTrigger value="events"><CalendarDays className="mr-2 h-4 w-4" />Events ({communityEvents.length})</TabsTrigger>
+                <TabsTrigger value="members"><UsersRound className="mr-2 h-4 w-4" />Members ({communityMembers.length})</TabsTrigger>
                 <TabsTrigger value="about"><Info className="mr-2 h-4 w-4" />About</TabsTrigger>
               </TabsList>
 
@@ -386,7 +396,7 @@ export default function CommunityDetailPage() {
                  <Card>
                     <CardHeader  className="flex flex-row items-center justify-between">
                         <CardTitle>Community Events</CardTitle>
-                        {isMember && (
+                        {isMember && ( // Only members can create events in a community
                             <Button size="sm" asChild className="btn-gradient">
                                 <Link href={`/events/create?communityId=${communityId}`}><PlusCircle className="mr-2 h-4 w-4"/>Create Event</Link>
                             </Button>
@@ -436,7 +446,20 @@ export default function CommunityDetailPage() {
                         <p>{community.description}</p>
                         <h4 className="font-semibold mt-4">Privacy:</h4>
                         <p className="capitalize">{community.privacy}</p>
-                        {/* Future: Add rules, more details here */}
+                        <h4 className="font-semibold mt-4">Created:</h4>
+                        <p>{format(new Date(community.createdAt), "MMMM d, yyyy")}</p>
+                        {community.creator && (
+                             <h4 className="font-semibold mt-4">Creator:</h4>
+                        )}
+                        {community.creator && (
+                            <Link href={`/profile/${community.creator.id}`} className="flex items-center space-x-2 not-prose hover:bg-muted/50 p-2 rounded-md transition-colors w-fit">
+                                <Avatar className="h-8 w-8">
+                                    <AvatarImage src={community.creator.avatarUrl || `https://placehold.co/32x32.png`} alt={community.creator.name} data-ai-hint="creator avatar"/>
+                                    <AvatarFallback>{community.creator.name.charAt(0)}</AvatarFallback>
+                                </Avatar>
+                                <span className="font-medium text-primary">{community.creator.name}</span>
+                            </Link>
+                        )}
                     </CardContent>
                 </Card>
               </TabsContent>
@@ -446,4 +469,3 @@ export default function CommunityDetailPage() {
     </div>
   );
 }
-

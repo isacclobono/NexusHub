@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
         id: creator._id.toHexString(),
         name: creator.name,
         avatarUrl: creator.avatarUrl,
-        email: creator.email, // Added for completeness, if needed
+        email: creator.email, 
         reputation: creator.reputation,
         joinedDate: creator.joinedDate,
       },
@@ -94,8 +94,8 @@ export async function GET(request: NextRequest) {
     const communitiesCollection = db.collection<DbCommunity>('communities');
     const usersCollection = db.collection<User>('users');
 
-    // Fetching ALL communities. Removed privacy filter for now.
-    const communitiesFromDb = await communitiesCollection.find({}).sort({ createdAt: -1 }).toArray();
+    // Fetching only public communities for the general listing
+    const communitiesFromDb = await communitiesCollection.find({ privacy: 'public' }).sort({ createdAt: -1 }).toArray();
 
     const enrichedCommunities: Community[] = await Promise.all(
       communitiesFromDb.map(async (communityDoc) => {
@@ -103,7 +103,6 @@ export async function GET(request: NextRequest) {
         const creatorForClient: User | undefined = creatorDoc ? {
           ...creatorDoc,
           id: creatorDoc._id.toHexString(),
-          // ensure bookmarkedPostIds is an array if it exists, or empty array
           bookmarkedPostIds: Array.isArray(creatorDoc.bookmarkedPostIds) ? creatorDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
         } : undefined;
 

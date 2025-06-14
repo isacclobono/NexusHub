@@ -85,6 +85,17 @@ export async function POST(request: NextRequest, { params }: CommunityMemberPara
     if (!community) {
       return NextResponse.json({ message: 'Community not found.' }, { status: 404 });
     }
+    
+    // For private communities, this is where join request logic would go.
+    // For now, direct join for public, or a message for private (client handles display).
+    if (community.privacy === 'private') {
+        // In a full implementation, you might add to a 'pendingMemberIds' array
+        // and notify admins. For now, we'll let the client decide if it can proceed.
+        // Or, simply block joining private communities here if no request system is in place.
+        // For this iteration, we'll assume client handles the "Join" button visibility/action for private.
+        // The check below will handle existing members.
+    }
+
 
     const user = await usersCollection.findOne({ _id: userObjectId });
     if (!user) {
@@ -151,12 +162,13 @@ export async function DELETE(request: NextRequest, { params }: CommunityMemberPa
     }
     
     if (community.creatorId.equals(userObjectId)) {
+        // For this iteration, creator cannot leave. Future: Transfer ownership or delete community.
         return NextResponse.json({ message: 'Creator cannot leave the community. Consider deleting it or transferring ownership (not implemented).' }, { status: 403 });
     }
 
     const updateCommunityResult = await communitiesCollection.updateOne(
       { _id: communityObjectId },
-      { $pull: { memberIds: userObjectId, adminIds: userObjectId } } 
+      { $pull: { memberIds: userObjectId, adminIds: userObjectId } } // Remove from admins too if they were one
     );
 
     const updateUserResult = await usersCollection.updateOne(
@@ -168,6 +180,7 @@ export async function DELETE(request: NextRequest, { params }: CommunityMemberPa
       return NextResponse.json({ message: 'Community not found or user was not a member.' }, { status: 404 });
     }
      if (updateCommunityResult.modifiedCount === 0 && updateCommunityResult.matchedCount > 0) {
+      // This can happen if $pull doesn't find the element (user wasn't a member).
       return NextResponse.json({ message: 'User was not a member of this community or already left.' }, { status: 200 });
     }
      if (updateUserResult.modifiedCount === 0 && updateUserResult.matchedCount === 0) {
@@ -183,4 +196,3 @@ export async function DELETE(request: NextRequest, { params }: CommunityMemberPa
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
-
