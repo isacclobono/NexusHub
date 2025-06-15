@@ -10,7 +10,7 @@ import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Ima
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import type { ObjectId } from 'mongodb';
 import {
   DropdownMenu,
@@ -29,7 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import Quill from 'quill'; // Import Quill type
+import DOMPurify from 'dompurify';
 
 interface PostCardProps {
   post: Post;
@@ -81,8 +81,6 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
   const [isPublishingDraft, setIsPublishingDraft] = useState(false);
-  const [quillContent, setQuillContent] = React.useState<string>('');
-  const quillRef = React.useRef<Quill | null>(null);
 
 
   useEffect(() => {
@@ -92,21 +90,12 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       likedBy: Array.isArray(initialPost.likedBy) ? initialPost.likedBy : [],
       commentIds: Array.isArray(initialPost.commentIds) ? initialPost.commentIds : [],
     }));
-    // Attempt to render HTML content using Quill for display
-    // This part is tricky without a dedicated Quill viewer component or sanitizing HTML
-    if (initialPost.content && typeof document !== 'undefined') {
-        // Create a temporary div to render HTML content if it's complex
-        // For simple display, directly using dangerouslySetInnerHTML might be an option,
-        // but needs careful sanitation (not done here for brevity).
-        // A proper solution would use a read-only Quill instance or an HTML sanitizer.
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = initialPost.content;
-        setQuillContent(tempDiv.innerText || tempDiv.textContent || ''); // Get text content
-    } else {
-        setQuillContent('');
-    }
-
   }, [initialPost]);
+
+  const sanitizedContent = useMemo(() => {
+    if (typeof window === 'undefined' || !post.content) return '';
+    return DOMPurify.sanitize(post.content);
+  }, [post.content]);
 
 
   const [isBookmarking, setIsBookmarking] = useState(false);
@@ -120,7 +109,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
 
   const canCurrentUserManagePost = isAuthenticated && user && user.id === post.author?.id;
 
-  const { author: postAuthorData, title, content, media, category, tags, createdAt } = post;
+  const { author: postAuthorData, title, media, category, tags, createdAt } = post;
   const postComments = post.comments || [];
   const commentCount = post.commentCount || 0;
 
@@ -462,20 +451,11 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       <CardContent className="p-4 pt-0">
         {title && <CardTitle className="text-xl mb-2 font-headline"><Link href={`/posts/${post.id}`}>{title}</Link></CardTitle>}
         
-        {/* For displaying HTML content from Quill */}
         <div
             className="prose dark:prose-invert max-w-none break-words mb-3"
-            dangerouslySetInnerHTML={{ __html: post.content }}
+            dangerouslySetInnerHTML={{ __html: sanitizedContent }}
         />
         
-        {/* Fallback for short content or if Read More is needed later for very long non-HTML content */}
-        {/* <p className="text-foreground whitespace-pre-wrap break-words mb-3">{quillContent.substring(0, 300)}{quillContent.length > 300 && '...'}</p>
-        {quillContent.length > 300 && post.id && (
-          <Button variant="link" asChild className="p-0 h-auto text-sm">
-            <Link href={`/posts/${post.id}`}>Read more</Link>
-          </Button>
-        )} */}
-
         {media && Array.isArray(media) && media.length > 0 && (
           <div className={`grid gap-2 ${media.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} mb-3`}>
             {media.map((item, index) => (

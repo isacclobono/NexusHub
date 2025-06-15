@@ -2,7 +2,7 @@
 'use client';
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import type { Post, Comment as CommentType, User } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -16,6 +16,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ObjectId } from 'mongodb';
+import DOMPurify from 'dompurify';
 
 import {
   DropdownMenu,
@@ -183,6 +184,11 @@ export default function PostPage() {
       fetchComments();
     }
   }, [postId, fetchPostData, fetchComments]);
+
+  const sanitizedContent = useMemo(() => {
+    if (typeof window === 'undefined' || !post?.content) return '';
+    return DOMPurify.sanitize(post.content);
+  }, [post?.content]);
   
   const handleToggleBookmark = async () => {
     if (!isAuthenticated || !user || !post) {
@@ -373,7 +379,7 @@ export default function PostPage() {
         <CardContent className="p-4 md:p-6">
           <div 
             className="prose dark:prose-invert max-w-none break-words mb-6 text-foreground/90"
-            dangerouslySetInnerHTML={{ __html: post.content }}
+            dangerouslySetInnerHTML={{ __html: sanitizedContent }}
           />
           {post.media && post.media.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
@@ -476,4 +482,3 @@ export default function PostPage() {
     </div>
   );
 }
-
