@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import getDb from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
-import type { Community, User } from '@/lib/types';
+import type { Community, User, Post, Event as EventType } from '@/lib/types';
 import { z } from 'zod';
 
 interface CommunityParams {
@@ -13,6 +13,26 @@ interface CommunityParams {
 type DbCommunity = Omit<Community, 'id' | 'creator' | 'memberCount'> & {
   _id: ObjectId;
 };
+type DbPost = Omit<Post, 'id' | 'author' | 'comments' | 'isLikedByCurrentUser' | 'isBookmarkedByCurrentUser' | 'authorId' | 'likedBy' | 'commentIds' | 'communityId' | 'communityName'> & {
+  _id: ObjectId;
+  authorId: ObjectId;
+  likedBy: ObjectId[];
+  commentIds: ObjectId[];
+  communityId?: ObjectId;
+};
+type DbEvent = Omit<EventType, 'id' | 'organizer' | 'rsvps' | 'organizerId' | 'rsvpIds' | 'communityId'> & {
+  _id: ObjectId;
+  organizerId: ObjectId;
+  rsvpIds: ObjectId[];
+  communityId?: ObjectId;
+};
+type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
+  _id: ObjectId;
+  passwordHash?: string;
+  bookmarkedPostIds?: ObjectId[];
+  communityIds?: ObjectId[];
+};
+
 
 const communityUpdateSchema = z.object({
   userId: z.string().refine(val => ObjectId.isValid(val), { message: "Invalid User ID format." }), // ID of user attempting the update
@@ -136,4 +156,67 @@ export async function PUT(request: NextRequest, { params }: CommunityParams) {
   }
 }
 
-// Future: DELETE for removal
+export async function DELETE(request: NextRequest, { params }: CommunityParams) {
+  const { communityId } = params;
+  if (!communityId || !ObjectId.isValid(communityId)) {
+    return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
+  }
+
+  const { searchParams } = new URL(request.url);
+  const currentUserId = searchParams.get('userId');
+
+  if (!currentUserId || !ObjectId.isValid(currentUserId)) {
+    return NextResponse.json({ message: 'User ID is required for authorization.' }, { status: 401 });
+  }
+
+  try {
+    const db = await getDb();
+    const communitiesCollection = db.collection<DbCommunity>('communities');
+    const postsCollection = db.collection<DbPost>('posts');
+    const eventsCollection = db.collection<DbEvent>('events');
+    const usersCollection = db.collection<DbUser>('users');
+    // Consider comments and notifications collections for deeper cleanup in future.
+
+    const communityObjectId = new ObjectId(communityId);
+    const userObjectId = new ObjectId(currentUserId);
+
+    const communityToDelete = await communitiesCollection.findOne({ _id: communityObjectId });
+    if (!communityToDelete) {
+      return NextResponse.json({ message: 'Community not found.' }, { status: 404 });
+    }
+
+    if (!communityToDelete.creatorId.equals(userObjectId)) {
+      return NextResponse.json({ message: 'Unauthorized: Only the community creator can delete this community.' }, { status: 403 });
+    }
+
+    // Perform deletions
+    // 1. Delete posts associated with the community
+    const postDeletionResult = await postsCollection.deleteMany({ communityId: communityObjectId });
+    console.log(`Deleted ${postDeletionResult.deletedCount} posts from community ${communityId}`);
+
+    // 2. Delete events associated with the community
+    const eventDeletionResult = await eventsCollection.deleteMany({ communityId: communityObjectId });
+    console.log(`Deleted ${eventDeletionResult.deletedCount} events from community ${communityId}`);
+
+    // 3. Remove communityId from all users' communityIds arrays
+    const updateUserResult = await usersCollection.updateMany(
+      { communityIds: communityObjectId },
+      { $pull: { communityIds: communityObjectId } }
+    );
+    console.log(`Removed community ${communityId} from ${updateUserResult.modifiedCount} users' lists.`);
+
+    // 4. Delete the community itself
+    const communityDeleteResult = await communitiesCollection.deleteOne({ _id: communityObjectId });
+    if (communityDeleteResult.deletedCount === 0) {
+      // This shouldn't happen if the findOne check passed, but good for safety
+      return NextResponse.json({ message: 'Community found but failed to delete.' }, { status: 500 });
+    }
+
+    return NextResponse.json({ message: 'Community and associated content deleted successfully.' }, { status: 200 });
+
+  } catch (error) {
+    console.error(`API Error deleting community ${communityId}:`, error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    return NextResponse.json({ message: errorMessage }, { status: 500 });
+  }
+}

@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Loader2, AlertTriangle, UsersRound, UploadCloud, Settings, ArrowLeft } from 'lucide-react';
+import { Loader2, AlertTriangle, UsersRound, UploadCloud, Settings, ArrowLeft, Trash2 } from 'lucide-react'; // Added Trash2
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
@@ -27,6 +27,17 @@ import { useParams, useRouter } from 'next/navigation';
 import type { Community } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"; // Added AlertDialog imports
 
 const communitySettingsSchema = z.object({
   name: z.string().min(3, 'Community name must be at least 3 characters.').max(100),
@@ -62,6 +73,7 @@ const CommunitySettingsSkeleton = () => (
 
 export default function CommunitySettingsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const router = useRouter();
   const params = useParams();
@@ -142,7 +154,7 @@ export default function CommunitySettingsPage() {
     setIsSubmitting(true);
     const updatePayload = {
       ...data,
-      userId: user.id, // Include user ID for backend authorization
+      userId: user.id, 
     };
 
     try {
@@ -157,7 +169,16 @@ export default function CommunitySettingsPage() {
         throw new Error(result.message || 'Failed to update community.');
       }
       toast.success('Community settings updated successfully!');
-      router.push(`/communities/${communityId}`);
+      if (result.community) { // Update local state with returned community data
+        setCommunity(result.community);
+        form.reset({
+          name: result.community.name,
+          description: result.community.description,
+          privacy: result.community.privacy,
+          coverImageUrl: result.community.coverImageUrl || '',
+        });
+      }
+      router.push(`/communities/${communityId}`); // Or just refresh data
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'An unknown error occurred.');
       console.error("Error updating community:", error);
@@ -165,6 +186,31 @@ export default function CommunitySettingsPage() {
       setIsSubmitting(false);
     }
   }
+
+  const handleDeleteCommunity = async () => {
+    if (!user || !user.id || !community || community.creatorId.toString() !== user.id) {
+      toast.error("Unauthorized or community data missing.");
+      return;
+    }
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/communities/${communityId}?userId=${user.id}`, {
+        method: 'DELETE',
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        throw new Error(result.message || 'Failed to delete community.');
+      }
+      toast.success(result.message || 'Community deleted successfully!');
+      router.push('/communities');
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : 'Could not delete community.');
+      console.error("Error deleting community:", error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
 
   if (authLoading || isLoadingCommunity) {
     return <CommunitySettingsSkeleton />;
@@ -294,6 +340,49 @@ export default function CommunitySettingsPage() {
           </Form>
         </CardContent>
       </Card>
+
+      <Card className="w-full max-w-2xl mx-auto shadow-xl mt-8 border-destructive/50">
+        <CardHeader>
+            <CardTitle className="font-headline text-xl flex items-center text-destructive">
+                <AlertTriangle className="mr-3 h-6 w-6" /> Danger Zone
+            </CardTitle>
+            <CardDescription>These actions are permanent and cannot be undone.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <AlertDialog>
+                <AlertDialogTrigger asChild>
+                    <Button variant="destructive" className="w-full md:w-auto">
+                        <Trash2 className="mr-2 h-4 w-4" /> Delete This Community
+                    </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This action cannot be undone. This will permanently delete the community
+                            "<strong>{community?.name}</strong>" and all of its content, including posts and events.
+                            Members will lose access.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                        <AlertDialogAction
+                            onClick={handleDeleteCommunity}
+                            disabled={isDeleting}
+                            className="bg-destructive hover:bg-destructive/90"
+                        >
+                            {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                            Yes, delete community
+                        </AlertDialogAction>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
+            <p className="text-xs text-muted-foreground mt-2">
+                Deleting the community will remove all its data. This action is irreversible.
+            </p>
+        </CardContent>
+      </Card>
+
     </div>
   );
 }
