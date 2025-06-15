@@ -33,13 +33,24 @@ const profileFormSchema = z.object({
 });
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
+const changePasswordSchema = z.object({
+  currentPassword: z.string().min(1, "Current password is required."),
+  newPassword: z.string().min(8, "New password must be at least 8 characters."),
+  confirmNewPassword: z.string().min(8, "Please confirm your new password."),
+}).refine(data => data.newPassword === data.confirmNewPassword, {
+  message: "New passwords do not match.",
+  path: ["confirmNewPassword"],
+});
+type ChangePasswordFormValues = z.infer<typeof changePasswordSchema>;
+
 
 export default function SettingsPage() {
   const { user, loading: authLoading, isAuthenticated, refreshUser } = useAuth();
   const router = useRouter();
   const [isSubmittingSettings, setIsSubmittingSettings] = useState(false);
+  const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
 
-  const form = useForm<ProfileFormValues>({
+  const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
     defaultValues: {
       name: '',
@@ -54,12 +65,21 @@ export default function SettingsPage() {
     }
   });
 
+  const passwordForm = useForm<ChangePasswordFormValues>({
+    resolver: zodResolver(changePasswordSchema),
+    defaultValues: {
+      currentPassword: '',
+      newPassword: '',
+      confirmNewPassword: '',
+    }
+  });
+
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
       router.push('/login?redirect=/settings');
     }
     if (user) {
-        form.reset({
+        profileForm.reset({
             name: user.name || '',
             bio: user.bio || '',
             avatarUrl: user.avatarUrl || '',
@@ -71,24 +91,21 @@ export default function SettingsPage() {
             privacy: user.privacy || 'public',
         });
     }
-  }, [authLoading, isAuthenticated, router, user, form]);
+  }, [authLoading, isAuthenticated, router, user, profileForm]);
 
 
-  const handleSettingsSubmit = async (data: ProfileFormValues) => {
+  const handleProfileSettingsSubmit = async (data: ProfileFormValues) => {
     if (!user || !user.id) {
         toast.error("User not authenticated. Please log in again.");
         return;
     }
     setIsSubmittingSettings(true);
     try {
-      // Ensure payload sends values consistent with how API expects them (e.g., empty strings vs null)
-      // The Zod schema handles .optional().nullable() so `data` can have nulls.
-      // The API should handle converting these to DB-friendly formats if needed.
       const payload = {
         name: data.name,
-        bio: data.bio, // Send null if null, empty string if empty string
-        avatarUrl: data.avatarUrl, // Send null or empty string as is
-        notificationPreferences: { // Ensure full object is sent
+        bio: data.bio,
+        avatarUrl: data.avatarUrl,
+        notificationPreferences: {
             emailNewPosts: data.notificationPreferences?.emailNewPosts ?? true,
             eventReminders: data.notificationPreferences?.eventReminders ?? true,
             mentionNotifications: data.notificationPreferences?.mentionNotifications ?? false,
@@ -106,10 +123,9 @@ export default function SettingsPage() {
         throw new Error(result.message || "Failed to update settings.");
       }
       toast.success("Settings updated successfully!");
-      await refreshUser(); // Refresh user context which might re-trigger useEffect and form.reset
-      // form.reset should ideally be called with the new user data from result if it's fresher
+      await refreshUser();
       if (result.user) {
-         form.reset({
+         profileForm.reset({
             name: result.user.name || '',
             bio: result.user.bio || '',
             avatarUrl: result.user.avatarUrl || '',
@@ -125,6 +141,34 @@ export default function SettingsPage() {
       toast.error(error instanceof Error ? error.message : "An unknown error occurred.");
     } finally {
       setIsSubmittingSettings(false);
+    }
+  };
+
+  const handleChangePasswordSubmit = async (data: ChangePasswordFormValues) => {
+    if (!user || !user.id) {
+        toast.error("User not authenticated. Please log in again.");
+        return;
+    }
+    setIsSubmittingPassword(true);
+    try {
+        const response = await fetch(`/api/users/${user.id}/change-password`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                currentPassword: data.currentPassword,
+                newPassword: data.newPassword,
+            }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.message || "Failed to change password.");
+        }
+        toast.success("Password changed successfully!");
+        passwordForm.reset();
+    } catch (error) {
+        toast.error(error instanceof Error ? error.message : "An unknown error occurred while changing password.");
+    } finally {
+        setIsSubmittingPassword(false);
     }
   };
 
@@ -154,8 +198,8 @@ export default function SettingsPage() {
         <h1 className="text-3xl font-headline font-bold text-primary">Settings</h1>
       </div>
 
-        <Form {...form}>
-            <form onSubmit={form.handleSubmit(handleSettingsSubmit)} className="space-y-8">
+        <Form {...profileForm}>
+            <form onSubmit={profileForm.handleSubmit(handleProfileSettingsSubmit)} className="space-y-8">
                 <Card className="shadow-md">
                 <CardHeader>
                     <CardTitle className="flex items-center font-headline"><UserIcon className="mr-2 h-5 w-5 text-accent" /> Profile Settings</CardTitle>
@@ -164,7 +208,7 @@ export default function SettingsPage() {
                 <CardContent className="space-y-4">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <FormField
-                            control={form.control}
+                            control={profileForm.control}
                             name="name"
                             render={({ field }) => (
                                 <FormItem>
@@ -182,7 +226,7 @@ export default function SettingsPage() {
                         </div>
                     </div>
                     <FormField
-                        control={form.control}
+                        control={profileForm.control}
                         name="bio"
                         render={({ field }) => (
                             <FormItem>
@@ -192,7 +236,7 @@ export default function SettingsPage() {
                                     id="bio"
                                     placeholder="Tell us a little about yourself..."
                                     {...field}
-                                    value={field.value ?? ''} // Ensure value is never undefined for controlled component
+                                    value={field.value ?? ''}
                                 />
                             </FormControl>
                             <FormMessage />
@@ -200,7 +244,7 @@ export default function SettingsPage() {
                         )}
                     />
                     <FormField
-                        control={form.control}
+                        control={profileForm.control}
                         name="avatarUrl"
                         render={({ field }) => (
                             <FormItem>
@@ -210,7 +254,7 @@ export default function SettingsPage() {
                                     id="avatarUrl"
                                     placeholder="https://example.com/avatar.png"
                                     {...field}
-                                    value={field.value ?? ''} // Ensure value is never undefined
+                                    value={field.value ?? ''}
                                 />
                             </FormControl>
                             <FormMessage />
@@ -218,7 +262,7 @@ export default function SettingsPage() {
                         )}
                     />
                      <FormField
-                        control={form.control}
+                        control={profileForm.control}
                         name="privacy"
                         render={({ field }) => (
                           <FormItem className="space-y-3">
@@ -226,7 +270,7 @@ export default function SettingsPage() {
                             <FormControl>
                               <RadioGroup
                                 onValueChange={field.onChange}
-                                value={field.value || 'public'} // Ensure value is not undefined
+                                value={field.value || 'public'}
                                 className="flex flex-col space-y-1 md:flex-row md:space-y-0 md:space-x-4"
                               >
                                 <FormItem className="flex items-center space-x-3 space-y-0">
@@ -242,13 +286,13 @@ export default function SettingsPage() {
                                     <RadioGroupItem value="private" id="privacy-private" />
                                   </FormControl>
                                   <FormLabel htmlFor="privacy-private" className="font-normal cursor-pointer flex items-center">
-                                    <EyeOff className="mr-2 h-4 w-4 text-red-500" /> Private (Visibility limited - feature in development)
+                                    <EyeOff className="mr-2 h-4 w-4 text-red-500" /> Private (Visibility limited)
                                   </FormLabel>
                                 </FormItem>
                               </RadioGroup>
                             </FormControl>
                             <FormDescription>
-                              Public profiles are visible to all users. Private profile visibility will be restricted in a future update.
+                              Public profiles are visible to all users. Private profile visibility is restricted.
                             </FormDescription>
                             <FormMessage />
                           </FormItem>
@@ -264,7 +308,7 @@ export default function SettingsPage() {
                     </CardHeader>
                     <CardContent className="space-y-4">
                         <FormField
-                            control={form.control}
+                            control={profileForm.control}
                             name="notificationPreferences.emailNewPosts"
                             render={({ field }) => (
                                 <FormItem className="flex items-center justify-between">
@@ -272,7 +316,7 @@ export default function SettingsPage() {
                                 <FormControl>
                                     <Switch
                                     id="emailNotificationsNewPosts"
-                                    checked={field.value ?? true} // Default to true if undefined
+                                    checked={field.value ?? true}
                                     onCheckedChange={field.onChange}
                                     />
                                 </FormControl>
@@ -280,7 +324,7 @@ export default function SettingsPage() {
                             )}
                         />
                         <FormField
-                            control={form.control}
+                            control={profileForm.control}
                             name="notificationPreferences.eventReminders"
                             render={({ field }) => (
                                 <FormItem className="flex items-center justify-between">
@@ -288,7 +332,7 @@ export default function SettingsPage() {
                                 <FormControl>
                                     <Switch
                                     id="eventReminders"
-                                    checked={field.value ?? true} // Default to true if undefined
+                                    checked={field.value ?? true}
                                     onCheckedChange={field.onChange}
                                     />
                                 </FormControl>
@@ -296,7 +340,7 @@ export default function SettingsPage() {
                             )}
                         />
                         <FormField
-                            control={form.control}
+                            control={profileForm.control}
                             name="notificationPreferences.mentionNotifications"
                             render={({ field }) => (
                                 <FormItem className="flex items-center justify-between">
@@ -304,7 +348,7 @@ export default function SettingsPage() {
                                 <FormControl>
                                     <Switch
                                     id="mentionNotifications"
-                                    checked={field.value ?? false} // Default to false if undefined
+                                    checked={field.value ?? false}
                                     onCheckedChange={field.onChange}
                                     />
                                 </FormControl>
@@ -316,7 +360,7 @@ export default function SettingsPage() {
 
                 <Button type="submit" disabled={isSubmittingSettings} className="mt-6 w-full md:w-auto btn-gradient">
                   {isSubmittingSettings ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Save All Settings
+                  Save Profile & Notification Settings
                 </Button>
             </form>
         </Form>
@@ -326,11 +370,60 @@ export default function SettingsPage() {
             <AccordionTrigger className="text-lg font-semibold flex items-center hover:no-underline p-4 bg-card rounded-t-lg border shadow-sm data-[state=open]:rounded-b-none data-[state=open]:border-b-0">
               <Lock className="mr-2 h-5 w-5 text-accent" /> Account & Security
             </AccordionTrigger>
-            <AccordionContent className="p-4 bg-card rounded-b-lg border border-t-0 shadow-sm">
-              <div className="space-y-4">
-                <Button variant="outline" type="button" className="w-full md:w-auto" onClick={() => toast.error("Change password feature is not yet implemented.")}>Change Password</Button>
+            <AccordionContent className="p-6 bg-card rounded-b-lg border border-t-0 shadow-sm">
+              <Form {...passwordForm}>
+                <form onSubmit={passwordForm.handleSubmit(handleChangePasswordSubmit)} className="space-y-6">
+                  <FormField
+                    control={passwordForm.control}
+                    name="currentPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Current Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={passwordForm.control}
+                    name="newPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>New Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" {...field} />
+                        </FormControl>
+                        <FormDescription>Must be at least 8 characters long.</FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <FormField
+                    control={passwordForm.control}
+                    name="confirmNewPassword"
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Confirm New Password</FormLabel>
+                        <FormControl>
+                          <Input type="password" {...field} />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                  <Button type="submit" disabled={isSubmittingPassword} className="w-full md:w-auto btn-gradient">
+                    {isSubmittingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                    Change Password
+                  </Button>
+                </form>
+              </Form>
+              <hr className="my-6"/>
+              <div>
+                <h3 className="text-md font-semibold mb-2">Account Deletion</h3>
                 <Button variant="destructive" type="button" className="w-full md:w-auto" onClick={() => toast.error("Delete account feature is not yet implemented.")}>Delete Account</Button>
-                <p className="text-xs text-muted-foreground">Account deletion is permanent and cannot be undone.</p>
+                <p className="text-xs text-muted-foreground mt-2">Account deletion is permanent and cannot be undone.</p>
               </div>
             </AccordionContent>
           </AccordionItem>
