@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import getDb from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
-import type { Post, User, Comment, Community } from '@/lib/types';
+import type { Post, User, Comment, Community, PostMedia } from '@/lib/types';
 import { z } from 'zod';
 import { intelligentContentModeration, IntelligentContentModerationInput } from '@/ai/flows/intelligent-content-moderation';
 import { categorizeContent, CategorizeContentInput } from '@/ai/flows/smart-content-categorization';
@@ -14,6 +14,7 @@ type DbPost = Omit<Post, 'id' | 'author' | 'comments' | 'isLikedByCurrentUser' |
   likedBy: ObjectId[];
   commentIds: ObjectId[];
   communityId?: ObjectId;
+  media?: PostMedia[];
 };
 type DbComment = Omit<Comment, 'id' | 'author' | 'authorId' | 'postId'> & {
     _id: ObjectId;
@@ -32,12 +33,18 @@ const NO_COMMUNITY_VALUE = "__NONE__";
 
 const postUpdateSchema = z.object({
   userId: z.string().refine(val => ObjectId.isValid(val), { message: "Invalid User ID format." }), // For authorization
-  title: z.string().max(150, "Title can't exceed 150 characters.").optional(), // Optional: if not provided, don't change. Empty string will clear.
-  content: z.string().min(1, 'Content is required if provided for update.').max(5000, "Content can't exceed 5000 characters.").optional(),
-  category: z.string().optional().nullable(), // Allow unsetting by passing null
-  tags: z.string().optional().nullable(), // Allow unsetting, string of comma-separated tags
-  communityId: z.string().optional().nullable().refine(val => !val || val === NO_COMMUNITY_VALUE || ObjectId.isValid(val), { message: "Invalid Community ID format." }), // NO_COMMUNITY_VALUE means unlink
-  // Status changes (like publishing a draft) are handled separately for now or could be added here later.
+  title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
+  content: z.string().min(1, 'Content is required if provided for update.').max(50000, "Content can't exceed 50000 characters.").optional(),
+  category: z.string().optional().nullable(),
+  tags: z.string().optional().nullable(),
+  communityId: z.string().optional().nullable().refine(val => !val || val === NO_COMMUNITY_VALUE || ObjectId.isValid(val), { message: "Invalid Community ID format." }),
+  status: z.enum(['published', 'draft', 'scheduled']).optional(),
+  scheduledAt: z.string().datetime({ offset: true }).optional().nullable(),
+  media: z.array(z.object({
+    type: z.enum(['image', 'video', 'document']),
+    url: z.string().url(),
+    name: z.string().optional(),
+  })).optional().nullable(),
 });
 
 
@@ -64,6 +71,15 @@ export async function GET(request: NextRequest, { params }: PostParams) {
     if (!postDoc) {
       return NextResponse.json({ message: 'Post not found.' }, { status: 404 });
     }
+    
+    // Privacy check for non-community posts by private users
+    const postAuthorForPrivacyCheck = await usersCollection.findOne({ _id: new ObjectId(postDoc.authorId) }, { projection: { privacy: 1 } });
+    if (postAuthorForPrivacyCheck?.privacy === 'private' && !postDoc.communityId) {
+        if (!forUserId || new ObjectId(forUserId).toString() !== postDoc.authorId.toString()) {
+            return NextResponse.json({ message: 'This post is private and cannot be viewed.' }, { status: 403 });
+        }
+    }
+
 
     const authorDoc = await usersCollection.findOne({ _id: new ObjectId(postDoc.authorId) }, { projection: { passwordHash: 0 } });
     const authorForClient: User | undefined = authorDoc ? { 
@@ -73,7 +89,7 @@ export async function GET(request: NextRequest, { params }: PostParams) {
      } : undefined;
 
     const commentDocs = await commentsCollection.find({ postId: postDoc._id }).sort({ createdAt: 1 }).toArray();
-    const populatedComments: Comment[] = await Promise.all(
+    const populatedComments: CommentType[] = await Promise.all(
         commentDocs.map(async (commentDoc) => {
             const commentAuthorDoc = await usersCollection.findOne({_id: new ObjectId(commentDoc.authorId)}, {projection: {passwordHash: 0}});
             const commentAuthorForClient: User | undefined = commentAuthorDoc ? {
@@ -88,7 +104,7 @@ export async function GET(request: NextRequest, { params }: PostParams) {
                 postId: commentDoc.postId,
                 authorId: commentDoc.authorId,
                 author: commentAuthorForClient || { _id: commentDoc.authorId, id: commentDoc.authorId.toHexString(), name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [] } as User,
-            } as Comment;
+            } as CommentType;
         })
     );
 
@@ -100,8 +116,8 @@ export async function GET(request: NextRequest, { params }: PostParams) {
     const postLikedBy = Array.isArray(postDoc.likedBy) ? postDoc.likedBy : [];
     const userBookmarkedPostIds = currentUser && Array.isArray(currentUser.bookmarkedPostIds) ? currentUser.bookmarkedPostIds : [];
 
-    const isLikedByCurrentUser = currentUser ? postLikedBy.some(id => id.equals(currentUser!._id!)) : false;
-    const isBookmarkedByCurrentUser = currentUser ? userBookmarkedPostIds.some(id => id.equals(postDoc._id)) : false;
+    const isLikedByCurrentUser = currentUser && currentUser._id ? postLikedBy.some(id => id.equals(currentUser!._id!)) : false;
+    const isBookmarkedByCurrentUser = currentUser && postDoc._id ? userBookmarkedPostIds.some(id => id.equals(postDoc._id)) : false;
     
     let communityName: string | undefined = undefined;
     if (postDoc.communityId) {
@@ -123,6 +139,7 @@ export async function GET(request: NextRequest, { params }: PostParams) {
       authorId: postDoc.authorId,
       communityId: postDoc.communityId,
       communityName: communityName,
+      media: postDoc.media || [],
     };
 
     return NextResponse.json(enrichedPost, { status: 200 });
@@ -162,7 +179,9 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
       return NextResponse.json({ message: 'Unauthorized: Only the post author can update this post.' }, { status: 403 });
     }
 
-    const updatePayload: { $set: Partial<DbPost>, $unset?: Partial<Record<keyof DbPost, string>> } = { $set: { updatedAt: new Date().toISOString() } };
+    const updatePayload: { $set: Partial<DbPost>, $unset?: Partial<Record<keyof DbPost | 'scheduledAt', string>> } = { $set: { updatedAt: new Date().toISOString() } };
+    if (!updatePayload.$unset) updatePayload.$unset = {};
+
     let needsModeration = false;
     let newContentForAI = existingPost.content;
 
@@ -177,7 +196,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
       updatePayload.$set.content = updateData.content;
     }
 
-    if (needsModeration) {
+    if (needsModeration && updateData.status !== 'draft') { // Only moderate if not saving as draft
         const moderationInput: IntelligentContentModerationInput = { content: newContentForAI, sensitivityLevel: 'medium' };
         const moderationResult = await intelligentContentModeration(moderationInput);
         if (moderationResult.isFlagged) {
@@ -193,8 +212,8 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
     let finalTagsArray = existingPost.tags || [];
 
     if (updateData.category !== undefined) {
-        if (updateData.category === null) { // Explicitly unsetting category
-            updatePayload.$unset = { ...updatePayload.$unset, category: "" };
+        if (updateData.category === null) {
+            updatePayload.$unset.category = "";
             finalCategory = undefined;
         } else {
             updatePayload.$set.category = updateData.category;
@@ -202,8 +221,8 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
         }
     }
     if (updateData.tags !== undefined) {
-        if (updateData.tags === null) { // Explicitly unsetting tags
-             updatePayload.$unset = { ...updatePayload.$unset, tags: "" };
+        if (updateData.tags === null) {
+             updatePayload.$unset.tags = "";
              finalTagsArray = [];
         } else {
             finalTagsArray = updateData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
@@ -211,15 +230,14 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
         }
     }
     
-    // If content changed OR category/tags were reset, try to re-categorize
-    if (newContentForAI && (needsModeration || updateData.category === null || updateData.tags === null || (!finalCategory && finalTagsArray.length === 0))) {
+    if (newContentForAI && (needsModeration || updateData.category === null || updateData.tags === null || (!finalCategory && finalTagsArray.length === 0)) && updateData.status !== 'draft') {
         const categorizationInput: CategorizeContentInput = { content: newContentForAI };
         try {
             const categorizationResult = await categorizeContent(categorizationInput);
-            if (!finalCategory && categorizationResult.category) {
+            if (!finalCategory && categorizationResult.category && updatePayload.$set.category === undefined) { // only set if not explicitly cleared
                 updatePayload.$set.category = categorizationResult.category;
             }
-            if (finalTagsArray.length === 0 && categorizationResult.tags && categorizationResult.tags.length > 0) {
+            if (finalTagsArray.length === 0 && categorizationResult.tags && categorizationResult.tags.length > 0 && updatePayload.$set.tags === undefined) {
                 updatePayload.$set.tags = [...new Set([...finalTagsArray, ...categorizationResult.tags])];
             }
         } catch (aiError) {
@@ -230,17 +248,45 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
 
     if (updateData.communityId !== undefined) {
         if (updateData.communityId === NO_COMMUNITY_VALUE || updateData.communityId === null) {
-            updatePayload.$unset = { ...updatePayload.$unset, communityId: "" };
+            updatePayload.$unset.communityId = "";
         } else {
             updatePayload.$set.communityId = new ObjectId(updateData.communityId);
         }
     }
+
+    if (updateData.status) {
+      updatePayload.$set.status = updateData.status;
+      if (updateData.status === 'scheduled' && updateData.scheduledAt) {
+        updatePayload.$set.scheduledAt = new Date(updateData.scheduledAt).toISOString();
+      } else if (updateData.status !== 'scheduled') {
+        updatePayload.$unset.scheduledAt = ""; 
+      }
+    }
+    if (updateData.scheduledAt === null && existingPost.scheduledAt) { // explicitly clearing schedule
+        updatePayload.$unset.scheduledAt = "";
+        if (updateData.status === 'scheduled') { // If schedule cleared but status is still scheduled, make it draft
+            updatePayload.$set.status = 'draft';
+        }
+    }
     
-    // If only updatedAt is in $set and $unset is empty, it means no actual data changed.
-    if (Object.keys(updatePayload.$set).length === 1 && 'updatedAt' in updatePayload.$set && !updatePayload.$unset) {
+    if (updateData.media !== undefined) {
+        if (updateData.media === null || updateData.media.length === 0) {
+            updatePayload.$unset.media = "";
+        } else {
+            updatePayload.$set.media = updateData.media;
+        }
+    }
+
+
+    if (Object.keys(updatePayload.$set).length === 1 && 'updatedAt' in updatePayload.$set && (!updatePayload.$unset || Object.keys(updatePayload.$unset).length === 0)) {
         const populatedCurrentPost = await GET(new NextRequest(request.url, { headers: request.headers }), { params });
         return populatedCurrentPost;
     }
+    
+    if (updatePayload.$unset && Object.keys(updatePayload.$unset).length === 0) {
+        delete updatePayload.$unset;
+    }
+
 
     const result = await postsCollection.findOneAndUpdate(
       { _id: postObjectId },
@@ -258,7 +304,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
     getRequestUrl.search = newSearchParams.toString();
     const getRequest = new NextRequest(getRequestUrl);
 
-    return await GET(getRequest, { params }); // Return the updated, fully populated post
+    return await GET(getRequest, { params });
 
   } catch (error) {
     console.error(`API Error updating post ${postId}:`, error);

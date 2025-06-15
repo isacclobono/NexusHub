@@ -462,7 +462,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 <div className="space-y-0.5">
                 <FormLabel>Schedule Post (Optional)</FormLabel>
                 <FormDescription>
-                    Publish this post at a future date and time.
+                    Publish this post at a future date and time. A backend process (not implemented in this prototype) would be needed for automatic publishing.
                 </FormDescription>
                 </div>
                 <FormControl>
