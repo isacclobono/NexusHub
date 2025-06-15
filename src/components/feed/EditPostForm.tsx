@@ -59,7 +59,6 @@ const postEditSchema = z.object({
   communityId: z.string().optional().nullable(),
   isDraft: z.boolean().optional(),
   scheduledAt: z.date().optional().nullable(),
-  // status: z.enum(['published', 'draft', 'scheduled']).optional(), // Status derived from isDraft and scheduledAt
 });
 
 type PostEditFormValues = z.infer<typeof postEditSchema>;
@@ -189,9 +188,6 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
   
   const handleRemoveExistingMedia = (index: number) => {
     setCurrentMedia(prev => prev.filter((_, i) => i !== index));
-    // Note: This only removes it from the frontend state.
-    // Actual deletion from storage would need a backend call if files were stored in cloud.
-    // For local /public/uploads, they remain until manually cleaned or post is deleted (if that logic is added).
     toast.info("Media marked for removal. Save changes to apply.");
   };
 
@@ -207,9 +203,9 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     }
     setIsSubmitting(true);
 
-    let finalMedia: PostMedia[] = [...currentMedia];
+    let finalMedia: PostMedia[] | null = [...currentMedia];
 
-    if (selectedFile) { // If a new file is selected, upload it
+    if (selectedFile) { 
       setIsUploadingFile(true);
       const formData = new FormData();
       formData.append('file', selectedFile);
@@ -217,7 +213,6 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
         const uploadResponse = await fetch('/api/upload', { method: 'POST', body: formData });
         const uploadResult = await uploadResponse.json();
         if (!uploadResponse.ok || !uploadResult.success) throw new Error(uploadResult.message || 'File upload failed.');
-        // Replace existing media if present, or add new
         finalMedia = [{ type: 'image', url: uploadResult.url, name: selectedFile.name }];
       } catch (uploadError) {
         toast.error(uploadError instanceof Error ? uploadError.message : 'Could not upload image.');
@@ -226,6 +221,12 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
         return;
       }
       setIsUploadingFile(false);
+    } else if (finalMedia.length === 0 && existingPost.media && existingPost.media.length > 0) {
+      // This condition means user explicitly removed all existing media and didn't add new one.
+      finalMedia = null; 
+    } else if (finalMedia.length === 0 && (!existingPost.media || existingPost.media.length === 0)) {
+      // No existing media and no new media uploaded, explicitly set to null to ensure it's cleared if it was empty array
+      finalMedia = null;
     }
 
 
@@ -245,7 +246,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
       communityId: data.communityId === NO_COMMUNITY_VALUE ? NO_COMMUNITY_VALUE : (data.communityId || null),
       status: status,
       scheduledAt: status === 'scheduled' && data.scheduledAt ? new Date(data.scheduledAt).toISOString() : null,
-      media: finalMedia.length > 0 ? finalMedia : null, // Send null to clear media if array is empty
+      media: finalMedia, 
     };
 
     try {
@@ -478,7 +479,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                           onCheckedChange={(checked) => {
                             field.onChange(checked);
                             if (checked) {
-                              setShowSchedule(false); // If saving as draft, uncheck schedule
+                              setShowSchedule(false); 
                               form.setValue("scheduledAt", undefined);
                             }
                           }}
@@ -504,7 +505,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                             if (!checked) {
                                 form.setValue("scheduledAt", undefined);
                             } else {
-                                form.setValue("isDraft", false); // If scheduling, it's not a draft
+                                form.setValue("isDraft", false); 
                             }
                         }}
                         disabled={isSubmitting || form.getValues("isDraft")}
@@ -544,7 +545,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                                     selected={field.value ? new Date(field.value) : undefined}
                                     onSelect={(date) => {
                                         const newDate = date ? new Date(date) : undefined;
-                                        if (newDate && field.value) {
+                                        if (newDate && field.value && isValid(new Date(field.value))) {
                                             newDate.setHours(new Date(field.value).getHours());
                                             newDate.setMinutes(new Date(field.value).getMinutes());
                                         } else if (newDate) {
@@ -561,7 +562,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                                         onChange={(e) => {
                                             const time = e.target.value;
                                             const [hours, minutes] = time.split(':').map(Number);
-                                            const currentDate = field.value ? new Date(field.value) : new Date();
+                                            const currentDate = field.value && isValid(new Date(field.value)) ? new Date(field.value) : new Date();
                                             currentDate.setHours(hours, minutes);
                                             field.onChange(new Date(currentDate));
                                         }}
