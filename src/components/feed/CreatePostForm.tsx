@@ -15,10 +15,10 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { Textarea } from '@/components/ui/textarea'; // Changed from MDXEditor
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, UploadCloud, Sparkles, Lightbulb, Calendar as CalendarIcon, UsersRound } from 'lucide-react';
+import { Loader2, Sparkles, Lightbulb, Calendar as CalendarIcon, UsersRound } from 'lucide-react';
 import React, { useState, useCallback, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
@@ -38,16 +38,15 @@ import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
 import type { Community } from '@/lib/types';
-
+import { Skeleton } from '@/components/ui/skeleton';
 
 const NO_COMMUNITY_VALUE = "__NONE__";
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."),
+  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."), // Max length kept high
   category: z.string().optional(),
   tags: z.string().optional(),
-  media: z.any().optional(),
   isDraft: z.boolean().default(false),
   scheduledAt: z.date().optional(),
   communityId: z.string().optional(),
@@ -259,11 +258,11 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 <FormItem>
                   <FormLabel>Content</FormLabel>
                   <FormControl>
-                     <Textarea
-                        placeholder="Share your thoughts..."
-                        className="min-h-[200px]"
-                        {...field}
-                      />
+                    <Textarea
+                      placeholder="Share your thoughts..."
+                      className="min-h-[200px]"
+                      {...field}
+                    />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -360,23 +359,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 </FormItem>
               )}
             />
-            <FormItem>
-              <FormLabel>Media (Optional)</FormLabel>
-              <FormControl>
-                <div className="flex items-center justify-center w-full">
-                  <label htmlFor="dropzone-file" className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer bg-muted hover:bg-secondary transition-colors">
-                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                      <UploadCloud className="w-8 h-8 mb-2 text-muted-foreground" />
-                      <p className="mb-2 text-sm text-muted-foreground"><span className="font-semibold">Click to upload</span> or drag and drop</p>
-                      <p className="text-xs text-muted-foreground">Images, Videos, Documents (MAX. 10MB)</p>
-                    </div>
-                    <Input id="dropzone-file" type="file" className="hidden" {...form.register("media")} />
-                  </label>
-                </div>
-              </FormControl>
-              <FormDescription>Media upload is a placeholder and not fully implemented with backend storage.</FormDescription>
-              <FormMessage />
-            </FormItem>
+            
             <FormField
               control={form.control}
               name="isDraft"

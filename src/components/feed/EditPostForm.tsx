@@ -15,7 +15,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
+import { Textarea } from '@/components/ui/textarea'; // Changed from MDXEditor
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Sparkles, Lightbulb, UsersRound, Edit } from 'lucide-react';
 import React, { useState, useCallback, useEffect } from 'react';
@@ -34,7 +34,7 @@ import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
 import type { Community, Post } from '@/lib/types';
 import Link from 'next/link';
-
+import { Skeleton } from '@/components/ui/skeleton';
 
 const NO_COMMUNITY_VALUE = "__NONE__";
 const NO_CATEGORY_SELECTED_VALUE = "__NONE__";
@@ -232,11 +232,11 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                 <FormItem>
                   <FormLabel>Content</FormLabel>
                   <FormControl>
-                     <Textarea
-                        placeholder="Edit your thoughts..."
+                    <Textarea
+                        placeholder="Share your thoughts..."
                         className="min-h-[200px]"
                         {...field}
-                      />
+                    />
                   </FormControl>
                    <FormDescription>
                     Your post content.
