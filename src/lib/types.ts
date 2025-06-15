@@ -20,7 +20,7 @@ export interface User {
     mentionNotifications?: boolean;
   };
   privacy?: 'public' | 'private';
-  isPrivatePlaceholder?: boolean; // Flag to indicate this is a minimal object for a private profile
+  isPrivatePlaceholder?: boolean;
 }
 
 export interface Comment {
@@ -37,6 +37,12 @@ export interface Comment {
   replies?: Comment[];
 }
 
+export interface PostMedia {
+  type: 'image' | 'video' | 'document';
+  url: string;
+  name?: string;
+}
+
 export interface Post {
   _id?: ObjectId;
   id?: string;
@@ -44,7 +50,7 @@ export interface Post {
   author: User;
   title?: string;
   content: string;
-  media?: { type: 'image' | 'video' | 'document'; url: string; name?: string }[];
+  media?: PostMedia[];
   category?: string;
   tags?: string[];
   createdAt: string;
@@ -127,17 +133,17 @@ export interface NavItem {
 export interface Notification {
   _id?: ObjectId;
   id?: string;
-  userId: ObjectId; // The user to whom the notification is intended
+  userId: ObjectId;
   type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like' | 'community_join_request' | 'community_post_approved' | 'new_community_post' | 'new_community_event';
   title: string;
   message: string;
   link?: string;
   isRead: boolean;
   createdAt: string;
-  relatedEntityId?: ObjectId; // ID of the post, event, comment, user, etc.
-  actor?: { // The user who performed the action that triggered the notification
+  relatedEntityId?: ObjectId;
+  actor?: {
     _id: ObjectId;
-    id: string; // String version of _id for client-side convenience
+    id: string;
     name: string;
     avatarUrl?: string;
   }

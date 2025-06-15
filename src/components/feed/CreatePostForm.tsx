@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Calendar as CalendarIcon, UsersRound, Sparkles } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, UsersRound, Sparkles, UploadCloud, Image as ImageIcon, Trash2 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
@@ -34,11 +34,11 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
-import type { Community } from '@/lib/types';
+import type { Community, PostMedia } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import dynamic from 'next/dynamic';
-import type Quill from 'quill';
-import { categorizeContent, CategorizeContentInput } from '@/ai/flows/smart-content-categorization';
+import { categorizeContent } from '@/ai/flows/smart-content-categorization';
+import NextImage from 'next/image'; // Renamed to avoid conflict with ImageIcon
 
 const DynamicQuillEditor = dynamic(() => import('@/components/editor/QuillEditor'), {
   ssr: false,
@@ -51,14 +51,11 @@ const NO_COMMUNITY_VALUE = "__NONE__";
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
   content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."),
-  category: z.string().optional(),
-  tags: z.string().optional(),
+  category: z.string().optional().default(''),
+  tags: z.string().optional().default(''),
   isDraft: z.boolean().default(false),
   scheduledAt: z.date().optional(),
   communityId: z.string().optional(),
-}).refine(data => !data.scheduledAt || data.scheduledAt > new Date(), {
-    message: "Scheduled date must be in the future.",
-    path: ["scheduledAt"],
 });
 
 type PostFormValues = z.infer<typeof postFormSchema>;
@@ -74,19 +71,23 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
   const router = useRouter();
   const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
   const [loadingCommunities, setLoadingCommunities] = useState(false);
-  // const editorRef = useRef<Quill | null>(null); // Keep for Quill instance
 
   const [isSuggestingCategories, setIsSuggestingCategories] = useState(false);
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
+
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
 
   const form = useForm<PostFormValues>({
     resolver: zodResolver(postFormSchema),
     defaultValues: {
-      title: '', // Initialize optional text field
+      title: '',
       content: '',
-      category: '', // Initialize optional select/text field
-      tags: '', // Initialize optional text field
+      category: '',
+      tags: '',
       isDraft: false,
       communityId: preselectedCommunityId || NO_COMMUNITY_VALUE,
       scheduledAt: undefined,
@@ -135,10 +136,43 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
     }
   }, [authLoading, isAuthenticated, user, router]);
 
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast.error("File is too large. Maximum 5MB allowed.");
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+        return;
+      }
+      if (!file.type.startsWith('image/')) {
+        toast.error("Invalid file type. Only images are allowed.");
+        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+        return;
+      }
+      setSelectedFile(file);
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setFilePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    } else {
+      setSelectedFile(null);
+      setFilePreview(null);
+    }
+  };
+
+  const handleRemoveFile = () => {
+    setSelectedFile(null);
+    setFilePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = ""; // Reset the file input
+    }
+  };
+
 
   const handleSuggestCategories = async () => {
     const contentValue = form.getValues('content');
-    if (!contentValue || contentValue.trim() === "<p><br></p>" || contentValue.trim().length < 20) { 
+    if (!contentValue || contentValue.trim() === "<p><br></p>" || contentValue.trim().length < 20) {
       toast.error("Please write some content before suggesting categories.");
       return;
     }
@@ -170,12 +204,37 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
       return;
     }
     setIsSubmitting(true);
+    let uploadedMedia: PostMedia[] = [];
+
+    if (selectedFile) {
+      setIsUploadingFile(true);
+      const formData = new FormData();
+      formData.append('file', selectedFile);
+      try {
+        const uploadResponse = await fetch('/api/upload', {
+          method: 'POST',
+          body: formData,
+        });
+        const uploadResult = await uploadResponse.json();
+        if (!uploadResponse.ok || !uploadResult.success) {
+          throw new Error(uploadResult.message || 'File upload failed.');
+        }
+        uploadedMedia.push({ type: 'image', url: uploadResult.url, name: selectedFile.name });
+      } catch (uploadError) {
+        toast.error(uploadError instanceof Error ? uploadError.message : 'Could not upload image.');
+        setIsSubmitting(false);
+        setIsUploadingFile(false);
+        return;
+      }
+      setIsUploadingFile(false);
+    }
 
     const finalData = {
       ...data,
       userId: user.id,
       scheduledAt: (showSchedule && data.scheduledAt) ? data.scheduledAt.toISOString() : undefined,
       communityId: data.communityId === NO_COMMUNITY_VALUE ? undefined : data.communityId,
+      media: uploadedMedia.length > 0 ? uploadedMedia : undefined,
     };
 
     try {
@@ -201,9 +260,9 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
       } else {
         toast.success(`Your post "${result.post?.title || 'Untitled'}" has been successfully created.`);
         form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined });
-        // Programmatically clear Quill editor if possible.
-        // This requires access to the Quill instance, typically via a ref.
-        // If QuillEditor component exposes a clear method or if form.reset clears bound value, this might be enough.
+        setSelectedFile(null);
+        setFilePreview(null);
+        if (fileInputRef.current) fileInputRef.current.value = "";
         setShowSchedule(false);
         if (finalData.communityId) {
           router.push(`/communities/${finalData.communityId}`);
@@ -267,6 +326,44 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 </FormItem>
               )}
             />
+
+            <FormItem>
+              <FormLabel htmlFor="file-upload" className="flex items-center">
+                <UploadCloud className="mr-2 h-4 w-4 text-muted-foreground"/> Add Image (Optional, max 5MB)
+              </FormLabel>
+              <Input
+                id="file-upload"
+                type="file"
+                accept="image/*"
+                onChange={handleFileChange}
+                ref={fileInputRef}
+                className="border-dashed border-input hover:border-primary transition-colors"
+                disabled={isUploadingFile}
+              />
+              {isUploadingFile && (
+                <div className="flex items-center text-sm text-muted-foreground mt-2">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Uploading...
+                </div>
+              )}
+              {filePreview && (
+                <div className="mt-2 relative w-full max-w-xs">
+                  <NextImage src={filePreview} alt="Selected image preview" width={200} height={200} className="rounded-md border object-cover aspect-square" data-ai-hint="user image upload"/>
+                  <Button
+                    type="button"
+                    variant="destructive"
+                    size="icon"
+                    className="absolute top-1 right-1 h-6 w-6"
+                    onClick={handleRemoveFile}
+                    title="Remove image"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              )}
+              <FormDescription>Attach an image to your post.</FormDescription>
+            </FormItem>
+
 
             {memberCommunities.length > 0 && (
                 <FormField
@@ -338,7 +435,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 </Button>
                 {suggestionError && <p className="text-sm text-destructive">{suggestionError}</p>}
             </div>
-            
+
             <FormField
               control={form.control}
               name="isDraft"
@@ -455,14 +552,16 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
             <div className="flex justify-end space-x-2 pt-4">
                <Button type="button" variant="outline" onClick={() => {
                   form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined });
-                  // Quill editor reset might need to be handled if the component is exposed via ref
+                  setSelectedFile(null);
+                  setFilePreview(null);
+                  if (fileInputRef.current) fileInputRef.current.value = "";
                   setShowSchedule(false);
                 }} disabled={isSubmitting}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting || authLoading} className="btn-gradient min-w-[120px]">
-                {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {isSubmitting ? 'Submitting...' : (form.getValues('isDraft') ? 'Save Draft' : (showSchedule && form.getValues('scheduledAt') ? 'Schedule Post' : 'Publish Post'))}
+              <Button type="submit" disabled={isSubmitting || authLoading || isUploadingFile} className="btn-gradient min-w-[120px]">
+                {isSubmitting || isUploadingFile ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isUploadingFile ? 'Uploading...' : (isSubmitting ? 'Submitting...' : (form.getValues('isDraft') ? 'Save Draft' : (showSchedule && form.getValues('scheduledAt') ? 'Schedule Post' : 'Publish Post')))}
               </Button>
             </div>
           </form>
@@ -471,4 +570,3 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
     </Card>
   );
 }
-

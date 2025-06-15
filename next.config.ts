@@ -17,6 +17,22 @@ const nextConfig: NextConfig = {
         port: '',
         pathname: '/**',
       },
+      // Added to allow images from the local /uploads/ directory if needed
+      // For production, you'd replace 'localhost' with your actual domain
+      // or configure for cloud storage provider.
+      // This is mainly for local development.
+      {
+        protocol: 'http',
+        hostname: 'localhost',
+        port: '9002', // Assuming your dev server runs on port 9002
+        pathname: '/uploads/**',
+      },
+      {
+        protocol: 'https',
+        hostname: 'localhost', // If using https locally with a custom domain
+        port: '9002',
+        pathname: '/uploads/**',
+      }
     ],
   },
   devIndicators: {
