@@ -1,12 +1,12 @@
 
-import type { Post, Comment as CommentType, User } from '@/lib/types';
+import type { Post, Comment as CommentType, User, ReportReasonCategory } from '@/lib/types';
 import Image from 'next/image';
 import Link from 'next/link';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2, Send, Share2, Trash2, Edit, SendHorizonal, Star } from 'lucide-react';
+import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2, Send, Share2, Trash2, Edit, SendHorizonal, Star, Flag } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
@@ -28,8 +28,10 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
+  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import DOMPurify from 'dompurify';
+import ReportDialog from '@/components/dialogs/ReportDialog'; // Import the new dialog
 
 interface PostCardProps {
   post: Post;
@@ -81,6 +83,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
   const [isPublishingDraft, setIsPublishingDraft] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false); // State for report dialog
 
 
   useEffect(() => {
@@ -426,6 +429,9 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
                     <DropdownMenuItem onClick={handleShare} disabled={isDeletingPost || isPublishingDraft}>
                         <Share2 className="mr-2 h-4 w-4" /> Share
                     </DropdownMenuItem>
+                     <DropdownMenuItem onClick={() => setShowReportDialog(true)} disabled={isDeletingPost || isPublishingDraft || !isAuthenticated}>
+                        <Flag className="mr-2 h-4 w-4" /> Report Post
+                    </DropdownMenuItem>
                     {canCurrentUserManagePost && (
                       <>
                         <DropdownMenuItem asChild disabled={isDeletingPost || isPublishingDraft}>
@@ -573,6 +579,15 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+       {showReportDialog && user && post.id && (
+        <ReportDialog
+          isOpen={showReportDialog}
+          onClose={() => setShowReportDialog(false)}
+          itemId={post.id}
+          itemType="post"
+          reporterUserId={user.id!}
+        />
+      )}
     </>
   );
 }

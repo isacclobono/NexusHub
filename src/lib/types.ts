@@ -171,3 +171,19 @@ export interface Community {
   joinRequests?: User[]; // For client-side display of pending requests
 }
 
+export type ReportReasonCategory = 'spam' | 'harassment' | 'hate_speech' | 'inappropriate_content' | 'misinformation' | 'intellectual_property' | 'other';
+
+export interface Report {
+  _id?: ObjectId;
+  id?: string;
+  reportedItemId: ObjectId;
+  itemType: 'post' | 'comment' | 'user';
+  reporterUserId: ObjectId;
+  reasonCategory: ReportReasonCategory;
+  reasonText?: string;
+  status: 'pending' | 'reviewed_action_taken' | 'reviewed_no_action';
+  createdAt: string;
+  reviewedAt?: string;
+  reviewerId?: ObjectId; // Admin/Moderator who reviewed
+}
+
