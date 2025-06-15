@@ -8,6 +8,13 @@ interface CommunityMemberParams {
   params: { communityId: string };
 }
 
+// Database document type for Community
+type DbCommunity = Omit<Community, 'id' | 'creator' | 'memberCount' | 'joinRequests'> & {
+  _id: ObjectId;
+  pendingMemberIds?: ObjectId[];
+};
+
+
 type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
   _id: ObjectId;
   passwordHash?: string;
@@ -23,11 +30,11 @@ export async function GET(request: NextRequest, { params }: CommunityMemberParam
 
   try {
     const db = await getDb();
-    const communitiesCollection = db.collection('communities');
+    const communitiesCollection = db.collection<DbCommunity>('communities');
     const usersCollection = db.collection<DbUser>('users');
 
     const communityObjectId = new ObjectId(communityId);
-    const community = await communitiesCollection.findOne({ _id: communityObjectId }) as Community | null;
+    const community = await communitiesCollection.findOne({ _id: communityObjectId });
 
     if (!community) {
       return NextResponse.json({ message: 'Community not found.' }, { status: 404 });
@@ -37,12 +44,11 @@ export async function GET(request: NextRequest, { params }: CommunityMemberParam
       return NextResponse.json([], { status: 200 }); // Return empty array if no members
     }
     
-    // Ensure memberIds are ObjectIds
     const memberObjectIds = community.memberIds.map(id => typeof id === 'string' ? new ObjectId(id) : id);
 
     const memberDocs = await usersCollection.find(
       { _id: { $in: memberObjectIds } },
-      { projection: { passwordHash: 0 } } // Exclude passwordHash
+      { projection: { passwordHash: 0 } } 
     ).toArray();
 
     const membersForClient: User[] = memberDocs.map(doc => ({
@@ -62,7 +68,7 @@ export async function GET(request: NextRequest, { params }: CommunityMemberParam
 }
 
 
-export async function POST(request: NextRequest, { params }: CommunityMemberParams) { // Join a community
+export async function POST(request: NextRequest, { params }: CommunityMemberParams) { // Join or Request to Join
   const { communityId } = params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
@@ -71,32 +77,21 @@ export async function POST(request: NextRequest, { params }: CommunityMemberPara
   try {
     const { userId } = await request.json();
     if (!userId || !ObjectId.isValid(userId)) {
-      return NextResponse.json({ message: 'Valid User ID is required to join.' }, { status: 400 });
+      return NextResponse.json({ message: 'Valid User ID is required.' }, { status: 400 });
     }
 
     const db = await getDb();
-    const communitiesCollection = db.collection('communities');
+    const communitiesCollection = db.collection<DbCommunity>('communities');
     const usersCollection = db.collection('users');
 
     const communityObjectId = new ObjectId(communityId);
     const userObjectId = new ObjectId(userId);
 
-    const community = await communitiesCollection.findOne({ _id: communityObjectId }) as Community | null;
+    const community = await communitiesCollection.findOne({ _id: communityObjectId });
     if (!community) {
       return NextResponse.json({ message: 'Community not found.' }, { status: 404 });
     }
     
-    // For private communities, this is where join request logic would go.
-    // For now, direct join for public, or a message for private (client handles display).
-    if (community.privacy === 'private') {
-        // In a full implementation, you might add to a 'pendingMemberIds' array
-        // and notify admins. For now, we'll let the client decide if it can proceed.
-        // Or, simply block joining private communities here if no request system is in place.
-        // For this iteration, we'll assume client handles the "Join" button visibility/action for private.
-        // The check below will handle existing members.
-    }
-
-
     const user = await usersCollection.findOne({ _id: userObjectId });
     if (!user) {
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
@@ -107,29 +102,41 @@ export async function POST(request: NextRequest, { params }: CommunityMemberPara
       return NextResponse.json({ message: 'User is already a member of this community.' }, { status: 200 });
     }
 
-    const updateCommunityResult = await communitiesCollection.updateOne(
-      { _id: communityObjectId },
-      { $addToSet: { memberIds: userObjectId } }
-    );
-    
-    const updateUserResult = await usersCollection.updateOne(
-      { _id: userObjectId },
-      { $addToSet: { communityIds: communityObjectId } }
-    );
+    if (community.privacy === 'private') {
+      // Check if already pending
+      if (community.pendingMemberIds?.some(id => id.equals(userObjectId))) {
+        return NextResponse.json({ message: 'Your request to join is already pending.' }, { status: 200 });
+      }
+      const updateCommunityResult = await communitiesCollection.updateOne(
+        { _id: communityObjectId },
+        { $addToSet: { pendingMemberIds: userObjectId } }
+      );
+      if (updateCommunityResult.modifiedCount === 0 && updateCommunityResult.matchedCount === 0) {
+        return NextResponse.json({ message: 'Community not found or failed to add join request.' }, { status: 404 });
+      }
+      return NextResponse.json({ message: 'Your request to join has been submitted.' }, { status: 200 });
+    } else { // Public community - direct join
+      const updateCommunityResult = await communitiesCollection.updateOne(
+        { _id: communityObjectId },
+        { $addToSet: { memberIds: userObjectId } }
+      );
+      
+      const updateUserResult = await usersCollection.updateOne(
+        { _id: userObjectId },
+        { $addToSet: { communityIds: communityObjectId } }
+      );
 
-
-    if (updateCommunityResult.modifiedCount === 0 && updateCommunityResult.matchedCount === 0) {
-      return NextResponse.json({ message: 'Community not found or failed to update members.' }, { status: 404 });
+      if (updateCommunityResult.modifiedCount === 0 && updateCommunityResult.matchedCount === 0) {
+        return NextResponse.json({ message: 'Community not found or failed to update members.' }, { status: 404 });
+      }
+      if (updateUserResult.modifiedCount === 0 && updateUserResult.matchedCount === 0) {
+          console.warn(`User ${userId} joined public community ${communityId}, but user's communityIds list was not updated.`);
+      }
+      return NextResponse.json({ message: 'Successfully joined the community!' }, { status: 200 });
     }
-    if (updateUserResult.modifiedCount === 0 && updateUserResult.matchedCount === 0) {
-        console.warn(`User ${userId} joined community ${communityId}, but user's communityIds list was not updated.`);
-    }
-
-
-    return NextResponse.json({ message: 'Successfully joined the community!' }, { status: 200 });
 
   } catch (error) {
-    console.error(`API Error joining community ${communityId}:`, error);
+    console.error(`API Error joining/requesting community ${communityId}:`, error);
     const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
@@ -150,25 +157,31 @@ export async function DELETE(request: NextRequest, { params }: CommunityMemberPa
     }
     
     const db = await getDb();
-    const communitiesCollection = db.collection('communities');
+    const communitiesCollection = db.collection<DbCommunity>('communities');
     const usersCollection = db.collection('users');
 
     const communityObjectId = new ObjectId(communityId);
     const userObjectId = new ObjectId(userId);
 
-    const community = await communitiesCollection.findOne({ _id: communityObjectId }) as Community | null;
+    const community = await communitiesCollection.findOne({ _id: communityObjectId });
     if (!community) {
       return NextResponse.json({ message: 'Community not found.' }, { status: 404 });
     }
     
     if (community.creatorId.equals(userObjectId)) {
-        // For this iteration, creator cannot leave. Future: Transfer ownership or delete community.
         return NextResponse.json({ message: 'Creator cannot leave the community. Consider deleting it or transferring ownership (not implemented).' }, { status: 403 });
     }
 
+    // Remove from members, admins (if they were one), and pending requests (if they had one)
     const updateCommunityResult = await communitiesCollection.updateOne(
       { _id: communityObjectId },
-      { $pull: { memberIds: userObjectId, adminIds: userObjectId } } // Remove from admins too if they were one
+      { 
+        $pull: { 
+          memberIds: userObjectId, 
+          adminIds: userObjectId,
+          pendingMemberIds: userObjectId 
+        }
+      }
     );
 
     const updateUserResult = await usersCollection.updateOne(
@@ -177,18 +190,16 @@ export async function DELETE(request: NextRequest, { params }: CommunityMemberPa
     );
 
     if (updateCommunityResult.modifiedCount === 0 && updateCommunityResult.matchedCount === 0) {
-      return NextResponse.json({ message: 'Community not found or user was not a member.' }, { status: 404 });
+      return NextResponse.json({ message: 'Community not found or user was not a member/pending.' }, { status: 404 });
     }
      if (updateCommunityResult.modifiedCount === 0 && updateCommunityResult.matchedCount > 0) {
-      // This can happen if $pull doesn't find the element (user wasn't a member).
-      return NextResponse.json({ message: 'User was not a member of this community or already left.' }, { status: 200 });
+      return NextResponse.json({ message: 'User was not a member/pending or already left/cancelled request.' }, { status: 200 });
     }
      if (updateUserResult.modifiedCount === 0 && updateUserResult.matchedCount === 0) {
         console.warn(`User ${userId} left community ${communityId}, but user's communityIds list might not have been updated (user not found or ID not in list).`);
     }
 
-
-    return NextResponse.json({ message: 'Successfully left the community.' }, { status: 200 });
+    return NextResponse.json({ message: 'Successfully left the community or cancelled request.' }, { status: 200 });
 
   } catch (error) {
     console.error(`API Error leaving community ${communityId}:`, error);

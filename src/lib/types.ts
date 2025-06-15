@@ -134,7 +134,7 @@ export interface Notification {
   _id?: ObjectId;
   id?: string;
   userId: ObjectId;
-  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like' | 'community_join_request' | 'community_post_approved' | 'new_community_post' | 'new_community_event';
+  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like' | 'community_join_request' | 'community_post_approved' | 'new_community_post' | 'new_community_event' | 'community_join_approved' | 'community_join_denied';
   title: string;
   message: string;
   link?: string;
@@ -157,10 +157,13 @@ export interface Community {
   creatorId: ObjectId;
   creator?: User;
   memberIds: ObjectId[];
+  pendingMemberIds?: ObjectId[]; // Users who requested to join (for private communities)
   adminIds?: ObjectId[];
   coverImageUrl?: string;
   privacy: 'public' | 'private';
   createdAt: string;
   updatedAt?: string;
   memberCount?: number;
+  joinRequests?: User[]; // For client-side display of pending requests
 }
+
