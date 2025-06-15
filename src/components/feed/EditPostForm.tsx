@@ -43,11 +43,11 @@ const DynamicQuillEditor = dynamic(() => import('@/components/editor/QuillEditor
 
 
 const NO_COMMUNITY_VALUE = "__NONE__";
-const NO_CATEGORY_SELECTED_VALUE = "__NONE__";
+const NO_CATEGORY_SELECTED_VALUE = "__NONE__"; // Used to represent unsetting category
 
 const postEditSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."), // Increased for HTML
+  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."),
   category: z.string().optional().nullable(),
   tags: z.string().optional().nullable(),
   communityId: z.string().optional().nullable(),
@@ -65,7 +65,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
   const router = useRouter();
   const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
   const [loadingCommunities, setLoadingCommunities] = useState(false);
-  const editorRef = useRef<Quill | null>(null); // For Quill instance, if needed
+  // const editorRef = useRef<Quill | null>(null); // For Quill instance, if needed
 
   const [isSuggestingCategories, setIsSuggestingCategories] = useState(false);
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
@@ -76,8 +76,8 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     defaultValues: {
       title: existingPost.title || '',
       content: existingPost.content || '',
-      category: existingPost.category || null,
-      tags: Array.isArray(existingPost.tags) ? existingPost.tags.join(', ') : null,
+      category: existingPost.category || '', // Ensure category defaults to empty string if null/undefined for controlled select
+      tags: (Array.isArray(existingPost.tags) ? existingPost.tags.join(', ') : null) || '', // Ensure tags defaults to empty string for Input
       communityId: existingPost.communityId?.toString() || NO_COMMUNITY_VALUE,
     },
   });
@@ -334,3 +334,4 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     </Card>
   );
 }
+

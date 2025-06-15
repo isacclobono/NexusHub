@@ -50,7 +50,7 @@ const NO_COMMUNITY_VALUE = "__NONE__";
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."), // Increased max length for HTML
+  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."),
   category: z.string().optional(),
   tags: z.string().optional(),
   isDraft: z.boolean().default(false),
@@ -74,7 +74,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
   const router = useRouter();
   const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
   const [loadingCommunities, setLoadingCommunities] = useState(false);
-  const editorRef = useRef<Quill | null>(null);
+  // const editorRef = useRef<Quill | null>(null); // Keep for Quill instance
 
   const [isSuggestingCategories, setIsSuggestingCategories] = useState(false);
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
@@ -83,9 +83,13 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
   const form = useForm<PostFormValues>({
     resolver: zodResolver(postFormSchema),
     defaultValues: {
+      title: '', // Initialize optional text field
       content: '',
+      category: '', // Initialize optional select/text field
+      tags: '', // Initialize optional text field
       isDraft: false,
       communityId: preselectedCommunityId || NO_COMMUNITY_VALUE,
+      scheduledAt: undefined,
     },
   });
 
@@ -134,7 +138,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
 
   const handleSuggestCategories = async () => {
     const contentValue = form.getValues('content');
-    if (!contentValue || contentValue.trim() === "<p><br></p>" || contentValue.trim().length < 20) { // Basic check for empty or very short content
+    if (!contentValue || contentValue.trim() === "<p><br></p>" || contentValue.trim().length < 20) { 
       toast.error("Please write some content before suggesting categories.");
       return;
     }
@@ -197,9 +201,9 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
       } else {
         toast.success(`Your post "${result.post?.title || 'Untitled'}" has been successfully created.`);
         form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined });
-        if (editorRef.current) {
-          editorRef.current.setContents([{ insert: '\n' }]); // Clear Quill editor
-        }
+        // Programmatically clear Quill editor if possible.
+        // This requires access to the Quill instance, typically via a ref.
+        // If QuillEditor component exposes a clear method or if form.reset clears bound value, this might be enough.
         setShowSchedule(false);
         if (finalData.communityId) {
           router.push(`/communities/${finalData.communityId}`);
@@ -451,9 +455,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
             <div className="flex justify-end space-x-2 pt-4">
                <Button type="button" variant="outline" onClick={() => {
                   form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined });
-                  if (editorRef.current) {
-                    editorRef.current.setContents([{ insert: '\n' }]); // Clear Quill editor
-                  }
+                  // Quill editor reset might need to be handled if the component is exposed via ref
                   setShowSchedule(false);
                 }} disabled={isSubmitting}>
                 Cancel
@@ -469,3 +471,4 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
     </Card>
   );
 }
+
