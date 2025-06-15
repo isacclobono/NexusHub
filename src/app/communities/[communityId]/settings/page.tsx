@@ -17,14 +17,14 @@ import {
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
-import { Loader2, AlertTriangle, UsersRound, UploadCloud, Settings, ArrowLeft, Trash2 } from 'lucide-react'; // Added Trash2
+import { Loader2, AlertTriangle, UsersRound, UploadCloud, Settings, ArrowLeft, Trash2, Users, UserCog } from 'lucide-react';
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { COMMUNITY_PRIVACY_OPTIONS } from '@/lib/constants';
 import { useAuth } from '@/hooks/use-auth-provider';
 import { useParams, useRouter } from 'next/navigation';
-import type { Community } from '@/lib/types';
+import type { Community, User } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import Link from 'next/link';
 import {
@@ -37,7 +37,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
   AlertDialogTrigger,
-} from "@/components/ui/alert-dialog"; // Added AlertDialog imports
+} from "@/components/ui/alert-dialog";
 
 const communitySettingsSchema = z.object({
   name: z.string().min(3, 'Community name must be at least 3 characters.').max(100),
@@ -47,6 +47,12 @@ const communitySettingsSchema = z.object({
 });
 
 type CommunitySettingsFormValues = z.infer<typeof communitySettingsSchema>;
+
+const transferOwnershipSchema = z.object({
+    newOwnerId: z.string().min(1, { message: "New owner User ID is required." }).refine(val => /^[0-9a-fA-F]{24}$/.test(val), { message: "Invalid User ID format. Must be a 24-character hex string."})
+});
+type TransferOwnershipFormValues = z.infer<typeof transferOwnershipSchema>;
+
 
 const CommunitySettingsSkeleton = () => (
   <div className="container mx-auto py-8">
@@ -73,7 +79,8 @@ const CommunitySettingsSkeleton = () => (
 
 export default function CommunitySettingsPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [isTransferring, setIsTransferring] = useState(false);
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const router = useRouter();
   const params = useParams();
@@ -81,6 +88,8 @@ export default function CommunitySettingsPage() {
   const [community, setCommunity] = useState<Community | null>(null);
   const [isLoadingCommunity, setIsLoadingCommunity] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [communityMembers, setCommunityMembers] = useState<User[]>([]);
+
 
   const form = useForm<CommunitySettingsFormValues>({
     resolver: zodResolver(communitySettingsSchema),
@@ -92,7 +101,15 @@ export default function CommunitySettingsPage() {
     },
   });
 
-  const fetchCommunityDetails = useCallback(async () => {
+  const transferForm = useForm<TransferOwnershipFormValues>({
+    resolver: zodResolver(transferOwnershipSchema),
+    defaultValues: {
+        newOwnerId: '',
+    }
+  });
+
+
+  const fetchCommunityDetailsAndMembers = useCallback(async () => {
     if (!communityId) return;
     setIsLoadingCommunity(true);
     setError(null);
@@ -110,6 +127,16 @@ export default function CommunitySettingsPage() {
         privacy: data.privacy,
         coverImageUrl: data.coverImageUrl || '',
       });
+
+      // Fetch members
+      const membersResponse = await fetch(`/api/communities/${communityId}/members`);
+      if(membersResponse.ok) {
+        const membersData: User[] = await membersResponse.json();
+        setCommunityMembers(membersData);
+      } else {
+        console.warn("Could not fetch community members for owner selection.");
+      }
+
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load community data.');
       console.error(e);
@@ -125,9 +152,9 @@ export default function CommunitySettingsPage() {
       return;
     }
     if (communityId) {
-      fetchCommunityDetails();
+      fetchCommunityDetailsAndMembers();
     }
-  }, [authLoading, isAuthenticated, router, communityId, fetchCommunityDetails]);
+  }, [authLoading, isAuthenticated, router, communityId, fetchCommunityDetailsAndMembers]);
 
   useEffect(() => {
     if (community && user && community.creatorId.toString() !== user.id) {
@@ -154,7 +181,7 @@ export default function CommunitySettingsPage() {
     setIsSubmitting(true);
     const updatePayload = {
       ...data,
-      userId: user.id, 
+      userId: user.id,
     };
 
     try {
@@ -169,7 +196,7 @@ export default function CommunitySettingsPage() {
         throw new Error(result.message || 'Failed to update community.');
       }
       toast.success('Community settings updated successfully!');
-      if (result.community) { // Update local state with returned community data
+      if (result.community) {
         setCommunity(result.community);
         form.reset({
           name: result.community.name,
@@ -178,7 +205,7 @@ export default function CommunitySettingsPage() {
           coverImageUrl: result.community.coverImageUrl || '',
         });
       }
-      router.push(`/communities/${communityId}`); // Or just refresh data
+      // router.push(`/communities/${communityId}`); // No need to push if already on settings page
     } catch (error) {
       toast.error(error instanceof Error ? error.message : 'An unknown error occurred.');
       console.error("Error updating community:", error);
@@ -211,6 +238,38 @@ export default function CommunitySettingsPage() {
     }
   };
 
+  const handleTransferOwnership = async (data: TransferOwnershipFormValues) => {
+    if (!user || !user.id || !community || community.creatorId.toString() !== user.id) {
+        toast.error("Unauthorized or community data missing.");
+        return;
+    }
+    if (user.id === data.newOwnerId) {
+        toast.error("You cannot transfer ownership to yourself.");
+        return;
+    }
+
+    setIsTransferring(true);
+    try {
+        const response = await fetch(`/api/communities/${communityId}/transfer-ownership`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ currentUserId: user.id, newOwnerId: data.newOwnerId }),
+        });
+        const result = await response.json();
+        if (!response.ok) {
+            throw new Error(result.message || "Failed to transfer ownership.");
+        }
+        toast.success(result.message || "Ownership transferred successfully!");
+        // The current user is no longer the owner, so they might lose access to this settings page
+        // or their permissions change. Redirecting them to the community page is safest.
+        router.push(`/communities/${communityId}`);
+    } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not transfer ownership.");
+    } finally {
+        setIsTransferring(false);
+    }
+  };
+
 
   if (authLoading || isLoadingCommunity) {
     return <CommunitySettingsSkeleton />;
@@ -225,7 +284,7 @@ export default function CommunitySettingsPage() {
       </div>
     );
   }
-  
+
   if (!community || (user && community.creatorId.toString() !== user.id && !isLoadingCommunity) ) {
      return (
       <div className="container mx-auto py-8 text-center">
@@ -338,6 +397,81 @@ export default function CommunitySettingsPage() {
               </CardFooter>
             </form>
           </Form>
+        </CardContent>
+      </Card>
+
+      <Card className="w-full max-w-2xl mx-auto shadow-xl mt-8 border-orange-500/50">
+        <CardHeader>
+            <CardTitle className="font-headline text-xl flex items-center text-orange-600">
+                <UserCog className="mr-3 h-6 w-6" /> Transfer Ownership
+            </CardTitle>
+            <CardDescription>Transfer the ownership of this community to another member. This action is irreversible.</CardDescription>
+        </CardHeader>
+        <CardContent>
+            <Form {...transferForm}>
+                <form onSubmit={transferForm.handleSubmit(handleTransferOwnership)} className="space-y-4">
+                     <FormField
+                        control={transferForm.control}
+                        name="newOwnerId"
+                        render={({ field }) => (
+                            <FormItem>
+                                <FormLabel>New Owner User ID</FormLabel>
+                                <FormControl>
+                                    <Input placeholder="Enter User ID of the new owner" {...field} />
+                                </FormControl>
+                                <FormDescription>
+                                  The new owner must be a current member of this community.
+                                  You can find a user's ID on their profile page URL (e.g., /profile/USER_ID).
+                                </FormDescription>
+                                <FormMessage />
+                            </FormItem>
+                        )}
+                    />
+                    {communityMembers.length > 0 && (
+                        <div className="mt-2">
+                            <p className="text-xs text-muted-foreground">
+                                For reference, some member IDs:
+                                <ul className="list-disc list-inside max-h-20 overflow-y-auto text-xs">
+                                {communityMembers.slice(0,5).map(member => {
+                                    if (member.id !== user?.id) { // Don't list current owner
+                                        return (<li key={member.id}><code>{member.name}: {member.id}</code></li>);
+                                    }
+                                    return null;
+                                })}
+                                {communityMembers.length > 5 && <li>...and more</li>}
+                                </ul>
+                            </p>
+                        </div>
+                    )}
+                     <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                            <Button type="button" variant="outline" className="w-full md:w-auto border-orange-500 text-orange-600 hover:bg-orange-50 hover:text-orange-700">
+                                <UserCog className="mr-2 h-4 w-4" /> Initiate Transfer
+                            </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                            <AlertDialogHeader>
+                                <AlertDialogTitle>Confirm Ownership Transfer</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    Are you sure you want to transfer ownership of "<strong>{community?.name}</strong>" to the user with ID: <strong>{transferForm.getValues("newOwnerId")}</strong>?
+                                    This action cannot be undone. You will lose creator privileges.
+                                </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                                <AlertDialogCancel disabled={isTransferring}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={transferForm.handleSubmit(handleTransferOwnership)} // Trigger form submission
+                                    disabled={isTransferring || !transferForm.formState.isValid}
+                                    className="bg-orange-500 hover:bg-orange-600"
+                                >
+                                    {isTransferring ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                                    Yes, transfer ownership
+                                </AlertDialogAction>
+                            </AlertDialogFooter>
+                        </AlertDialogContent>
+                    </AlertDialog>
+                </form>
+            </Form>
         </CardContent>
       </Card>
 

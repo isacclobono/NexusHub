@@ -134,7 +134,7 @@ export interface Notification {
   _id?: ObjectId;
   id?: string;
   userId: ObjectId;
-  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like' | 'community_join_request' | 'community_post_approved' | 'new_community_post' | 'new_community_event' | 'community_join_approved' | 'community_join_denied';
+  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like' | 'community_join_request' | 'community_post_approved' | 'new_community_post' | 'new_community_event' | 'community_join_approved' | 'community_join_denied' | 'community_ownership_transfer';
   title: string;
   message: string;
   link?: string;
