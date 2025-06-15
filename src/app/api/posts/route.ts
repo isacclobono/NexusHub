@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import type { Post, User, Comment, Community } from '@/lib/types';
+import type { Post, User, Comment, Community, Notification } from '@/lib/types';
 import { categorizeContent, CategorizeContentInput } from '@/ai/flows/smart-content-categorization';
 import { intelligentContentModeration, IntelligentContentModerationInput } from '@/ai/flows/intelligent-content-moderation';
 import getDb from '@/lib/mongodb';
@@ -11,7 +11,7 @@ import { ObjectId } from 'mongodb';
 const postFormSchema = z.object({
   userId: z.string().refine(val => ObjectId.isValid(val), { message: "Invalid User ID format." }),
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(5000, "Content can't exceed 5000 characters."),
+  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."),
   category: z.string().optional(),
   tags: z.string().optional(), 
   isDraft: z.boolean().default(false),
@@ -64,10 +64,6 @@ export async function POST(request: NextRequest) {
         if (!community) {
             return NextResponse.json({ message: 'Community not found.' }, { status: 404 });
         }
-        // Optional: Check if user is a member of the community
-        // if (!community.memberIds.some(id => id.equals(currentUser._id!))) {
-        //     return NextResponse.json({ message: 'User is not a member of this community.' }, { status: 403 });
-        // }
     }
 
 
@@ -85,7 +81,10 @@ export async function POST(request: NextRequest) {
     let finalTagsArray = data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
 
     if (!finalCategory || finalTagsArray.length === 0) {
-        const categorizationInput: CategorizeContentInput = { content: data.content };
+        // Extract plain text from HTML content for AI categorization if needed
+        // For now, sending HTML directly.
+        const plainTextContent = data.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        const categorizationInput: CategorizeContentInput = { content: plainTextContent || data.content };
         try {
             const categorizationResult = await categorizeContent(categorizationInput);
             if (!finalCategory && categorizationResult.category) {
@@ -139,6 +138,37 @@ export async function POST(request: NextRequest) {
         communityId: newPostDocument.communityId,
         communityName: community?.name,
     };
+
+    // Create notifications if it's a published community post
+    if (createdPostForClient.status === 'published' && createdPostForClient.communityId && community) {
+        const notificationsCollection = db.collection<Omit<Notification, '_id' | 'id'>>('notifications');
+        const notificationsToInsert: Omit<Notification, '_id' | 'id'>[] = [];
+        
+        community.memberIds.forEach(memberId => {
+            if (!memberId.equals(currentUser._id!)) { // Don't notify the author
+                 notificationsToInsert.push({
+                    userId: memberId,
+                    type: 'new_community_post',
+                    title: `New Post in ${community!.name}`,
+                    message: `${currentUser.name} posted: "${createdPostForClient.title || 'a new post'}"`,
+                    link: `/posts/${createdPostForClient.id}`,
+                    relatedEntityId: createdPostForClient._id,
+                    actor: {
+                        _id: currentUser._id!,
+                        id: currentUser.id!,
+                        name: currentUser.name,
+                        avatarUrl: currentUser.avatarUrl,
+                    },
+                    isRead: false,
+                    createdAt: new Date().toISOString(),
+                });
+            }
+        });
+        if (notificationsToInsert.length > 0) {
+            await notificationsCollection.insertMany(notificationsToInsert);
+        }
+    }
+
 
     return NextResponse.json({ message: 'Post created successfully!', post: createdPostForClient }, { status: 201 });
 
@@ -273,4 +303,3 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: errorMessage, posts: [], comments: [] }, { status: 500 });
   }
 }
-

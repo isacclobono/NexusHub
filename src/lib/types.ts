@@ -127,17 +127,17 @@ export interface NavItem {
 export interface Notification {
   _id?: ObjectId;
   id?: string;
-  userId: ObjectId;
-  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like' | 'community_join_request' | 'community_post_approved';
+  userId: ObjectId; // The user to whom the notification is intended
+  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like' | 'community_join_request' | 'community_post_approved' | 'new_community_post' | 'new_community_event';
   title: string;
   message: string;
   link?: string;
   isRead: boolean;
   createdAt: string;
-  relatedEntityId?: ObjectId;
-  actor?: {
+  relatedEntityId?: ObjectId; // ID of the post, event, comment, user, etc.
+  actor?: { // The user who performed the action that triggered the notification
     _id: ObjectId;
-    id: string;
+    id: string; // String version of _id for client-side convenience
     name: string;
     avatarUrl?: string;
   }

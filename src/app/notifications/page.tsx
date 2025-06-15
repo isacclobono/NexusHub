@@ -4,7 +4,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import type { Notification } from '@/lib/types';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Bell, AlertTriangle, Loader2, Eye, EyeOff, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow } from 'date-fns';
@@ -28,15 +29,27 @@ const NotificationItemSkeleton = () => (
 );
 
 const NotificationItem = ({ notification, onToggleRead, onDelete }: { notification: Notification; onToggleRead: (id: string, currentReadStatus: boolean) => void; onDelete: (id: string) => void; }) => {
+  
+  let iconToShow = <Bell className={`h-6 w-6 ${notification.isRead ? 'text-muted-foreground' : 'text-primary'}`} />;
+  if (notification.actor && notification.actor.avatarUrl) {
+    iconToShow = (
+        <Avatar className="h-8 w-8">
+            <AvatarImage src={notification.actor.avatarUrl} alt={notification.actor.name} data-ai-hint="user avatar small"/>
+            <AvatarFallback>{notification.actor.name.charAt(0)}</AvatarFallback>
+        </Avatar>
+    );
+  }
+
+
   return (
-    <Card className={`mb-4 ${notification.isRead ? 'bg-muted/50 opacity-70' : 'bg-card'} shadow-sm hover:shadow-md transition-shadow`}>
+    <Card className={`mb-4 ${notification.isRead ? 'bg-muted/30 opacity-70' : 'bg-card'} shadow-sm hover:shadow-md transition-shadow`}>
       <CardContent className="p-4 flex items-start space-x-4">
-        <div className={`p-2 rounded-full ${notification.isRead ? 'bg-muted' : 'bg-primary/10'}`}>
-          <Bell className={`h-6 w-6 ${notification.isRead ? 'text-muted-foreground' : 'text-primary'}`} />
+        <div className={`p-1 rounded-full ${notification.isRead && !notification.actor ? 'bg-muted' : (!notification.actor ? 'bg-primary/10' : '')}`}>
+          {iconToShow}
         </div>
         <div className="flex-1">
-          <h3 className="text-base font-semibold mb-1">{notification.title}</h3> {/* Changed from CardTitle */}
-          <p className="text-sm mb-2 text-foreground/80">{notification.message}</p> {/* Changed from CardDescription */}
+          <h3 className="text-base font-semibold mb-0.5">{notification.title}</h3>
+          <p className="text-sm mb-2 text-foreground/80">{notification.message}</p>
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <span>{formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })}</span>
             {notification.link && (
@@ -68,7 +81,7 @@ export default function NotificationsPage() {
 
   const fetchNotifications = useCallback(async () => {
     if (!user || !user.id) {
-        if(!authLoading) { // Only set error if auth has resolved and user is not available
+        if(!authLoading) { 
             setError("Please log in to view notifications.");
             setIsLoading(false);
         }
@@ -77,14 +90,13 @@ export default function NotificationsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      // Fetch from MongoDB via API, passing userId
       const response = await fetch(`/api/notifications?userId=${user.id}`); 
       if (!response.ok) {
         const errorData = await response.json();
         throw new Error(errorData.message || `Failed to fetch notifications: ${response.statusText}`);
       }
       const data: Notification[] = await response.json();
-      setNotifications(data); // API already sorts by createdAt desc
+      setNotifications(data); 
     } catch (e) {
       console.error("Failed to fetch notifications:", e);
       setError(e instanceof Error ? e.message : 'Failed to load notifications.');
@@ -94,7 +106,7 @@ export default function NotificationsPage() {
   }, [user, authLoading]);
 
   useEffect(() => {
-     if (!authLoading) { // Wait for auth to resolve
+     if (!authLoading) { 
         if (isAuthenticated) {
             fetchNotifications();
         } else {

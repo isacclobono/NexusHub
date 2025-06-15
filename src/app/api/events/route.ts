@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import type { Event, User, Community } from '@/lib/types';
+import type { Event, User, Community, Notification } from '@/lib/types';
 import getDb from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 
@@ -47,11 +47,13 @@ export async function POST(request: NextRequest) {
 
     const db = await getDb();
     const usersCollection = db.collection<User>('users');
-    const organizer = await usersCollection.findOne({ _id: new ObjectId(data.organizerId) });
+    const organizerDoc = await usersCollection.findOne({ _id: new ObjectId(data.organizerId) });
 
-    if (!organizer) {
+    if (!organizerDoc) {
         return NextResponse.json({ message: 'Organizer not found.' }, { status: 404 });
     }
+    const organizer: User = {...organizerDoc, id: organizerDoc._id!.toHexString(), bookmarkedPostIds: organizerDoc.bookmarkedPostIds || [] };
+
 
     let community: DbCommunity | null = null;
     if (data.communityId) {
@@ -77,6 +79,7 @@ export async function POST(request: NextRequest) {
       ...(data.communityId && { communityId: new ObjectId(data.communityId) }),
       price: data.price,
       currency: data.price && data.price > 0 ? (data.currency || 'USD') : undefined,
+      updatedAt: new Date().toISOString(), // add updatedAt on creation
     };
 
     const eventsCollection = db.collection('events'); 
@@ -91,23 +94,45 @@ export async function POST(request: NextRequest) {
         _id: result.insertedId,
         id: result.insertedId.toHexString(),
         organizerId: newEventDocument.organizerId.toHexString() as any, // Ensure string for client
-        organizer: { 
-             _id: organizer._id,
-             id: organizer._id!.toHexString(),
-             name: organizer.name,
-             email: organizer.email,
-             avatarUrl: organizer.avatarUrl,
-             bio: organizer.bio,
-             reputation: organizer.reputation,
-             joinedDate: organizer.joinedDate,
-        },
+        organizer,
         rsvpIds: [], 
         rsvps: [],   
         communityId: newEventDocument.communityId ? newEventDocument.communityId.toHexString() as any : undefined, // Ensure string for client
         communityName: community?.name,
         price: newEventDocument.price,
         currency: newEventDocument.currency,
+        updatedAt: newEventDocument.updatedAt,
     };
+
+    // Create notifications if it's a community event
+    if (createdEventForClient.communityId && community) {
+        const notificationsCollection = db.collection<Omit<Notification, '_id' | 'id'>>('notifications');
+        const notificationsToInsert: Omit<Notification, '_id' | 'id'>[] = [];
+        
+        community.memberIds.forEach(memberId => {
+            if (!memberId.equals(organizer._id!)) { // Don't notify the organizer
+                 notificationsToInsert.push({
+                    userId: memberId,
+                    type: 'new_community_event',
+                    title: `New Event in ${community!.name}`,
+                    message: `${organizer.name} created event: "${createdEventForClient.title}"`,
+                    link: `/events/${createdEventForClient.id}`,
+                    relatedEntityId: createdEventForClient._id,
+                    actor: {
+                        _id: organizer._id!,
+                        id: organizer.id!,
+                        name: organizer.name,
+                        avatarUrl: organizer.avatarUrl,
+                    },
+                    isRead: false,
+                    createdAt: new Date().toISOString(),
+                });
+            }
+        });
+        if (notificationsToInsert.length > 0) {
+            await notificationsCollection.insertMany(notificationsToInsert);
+        }
+    }
 
     return NextResponse.json({ message: 'Event created successfully!', event: createdEventForClient }, { status: 201 });
 
@@ -191,7 +216,7 @@ export async function GET(request: NextRequest) {
           ...eventDoc,
           id: eventDoc._id.toHexString(),
           organizerId: eventDoc.organizerId.toHexString(), 
-          organizer: organizerForClient || { id: 'unknown', name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [], communityIds: [] } as User,
+          organizer: organizerForClient || { id: 'unknown', _id: new ObjectId(), name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [], communityIds: [] } as User,
           rsvpIds: (eventDoc.rsvpIds?.map((id: ObjectId | string) => (typeof id === 'string' ? id : id.toHexString())) || []) as any, // Ensure string IDs
           rsvps: rsvpsForClient,
           _id: eventDoc._id, 
@@ -199,6 +224,7 @@ export async function GET(request: NextRequest) {
           communityName: communityName,
           price: eventDoc.price,
           currency: eventDoc.currency,
+          updatedAt: eventDoc.updatedAt,
         } as Event;
       })
     );
