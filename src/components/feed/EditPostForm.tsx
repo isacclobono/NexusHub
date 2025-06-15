@@ -2,7 +2,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm } from 'react-hook-form';
+import { useForm, Controller } from 'react-hook-form';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
@@ -15,10 +15,9 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Changed from MDXEditor to Textarea
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, Sparkles, Lightbulb, UsersRound, Edit } from 'lucide-react';
-import React, { useState, useCallback, useEffect } from 'react';
+import { Loader2, UsersRound, Edit } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
 import {
@@ -28,20 +27,25 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { categorizeContent as callCategorizeContentAI } from '@/ai/flows/smart-content-categorization';
-import { Badge } from '@/components/ui/badge';
 import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
 import type { Community, Post } from '@/lib/types';
 import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
+import dynamic from 'next/dynamic';
+
+const DynamicQuillEditor = dynamic(() => import('@/components/editor/QuillEditor'), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[200px] w-full rounded-md border border-input" />,
+});
+
 
 const NO_COMMUNITY_VALUE = "__NONE__";
 const NO_CATEGORY_SELECTED_VALUE = "__NONE__";
 
 const postEditSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(5000, "Content can't exceed 5000 characters."), // Reduced max length
+  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."),
   category: z.string().optional().nullable(),
   tags: z.string().optional().nullable(),
   communityId: z.string().optional().nullable(),
@@ -53,21 +57,8 @@ interface EditPostFormProps {
   existingPost: Post;
 }
 
-const GenAICallout = ({ icon: Icon, title, children }: { icon: React.ElementType, title: string, children: React.ReactNode }) => (
-  <div className="mt-2 mb-4 p-3 bg-primary/5 border border-primary/20 rounded-lg flex">
-    <Icon className="h-5 w-5 mr-3 text-primary flex-shrink-0 mt-1" />
-    <div>
-      <h4 className="font-semibold text-sm text-primary">{title}</h4>
-      <p className="text-xs text-muted-foreground">{children}</p>
-    </div>
-  </div>
-);
-
 export function EditPostForm({ existingPost }: EditPostFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isCategorizing, setIsCategorizing] = useState(false);
-  const [suggestedCategory, setSuggestedCategory] = useState<string | null>(null);
-  const [suggestedTags, setSuggestedTags] = useState<string[]>([]);
   const { user, loading: authLoading, isAuthenticated } = useAuth();
   const router = useRouter();
   const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
@@ -117,37 +108,6 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
   }, [isAuthenticated, user]);
 
 
-  const handleSuggestCategoryAndTags = useCallback(async () => {
-    const contentValue = form.getValues('content');
-    if (!contentValue || contentValue.trim().length < 20) {
-      toast.error("Content too short. Please write at least 20 characters to get suggestions.");
-      return;
-    }
-    setIsCategorizing(true);
-    try {
-      const result = await callCategorizeContentAI({ content: contentValue });
-      setSuggestedCategory(result.category);
-      setSuggestedTags(result.tags);
-      toast.success("AI has suggested a category and tags for your post.");
-    } catch (error) {
-      console.error("Error suggesting category/tags:", error);
-      toast.error("Could not get AI suggestions. Please try again.");
-    } finally {
-      setIsCategorizing(false);
-    }
-  }, [form]);
-
-  const applySuggestion = (type: 'category' | 'tags') => {
-    if (type === 'category' && suggestedCategory) {
-      form.setValue('category', suggestedCategory, { shouldValidate: true });
-      setSuggestedCategory(null);
-    }
-    if (type === 'tags' && suggestedTags.length > 0) {
-      form.setValue('tags', suggestedTags.join(', '), { shouldValidate: true });
-      setSuggestedTags([]);
-    }
-  };
-
   async function onSubmit(data: PostEditFormValues) {
     if (!user || !user.id) {
       toast.error('Authentication error. Please log in again.');
@@ -161,11 +121,11 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
 
     const updatePayload = {
       userId: user.id,
-      title: data.title || undefined,
+      title: data.title || undefined, // Send undefined if empty to not overwrite with empty string
       content: data.content,
       category: data.category === NO_CATEGORY_SELECTED_VALUE ? null : data.category,
-      tags: data.tags,
-      communityId: data.communityId === NO_COMMUNITY_VALUE ? NO_COMMUNITY_VALUE : (data.communityId || null),
+      tags: data.tags, // Send string as is, API will parse or handle null/empty
+      communityId: data.communityId === NO_COMMUNITY_VALUE ? NO_COMMUNITY_VALUE : (data.communityId || null), // special value to unlink
     };
 
     try {
@@ -199,7 +159,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     }
   }
 
-  if (authLoading) {
+  if (authLoading || loadingCommunities) {
     return <div className="container mx-auto py-8 flex justify-center"><Loader2 className="h-12 w-12 animate-spin text-primary" /></div>;
   }
 
@@ -232,10 +192,10 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                 <FormItem>
                   <FormLabel>Content</FormLabel>
                   <FormControl>
-                    <Textarea
-                      placeholder="Share your thoughts..."
-                      className="min-h-[200px]"
-                      {...field}
+                     <DynamicQuillEditor
+                        value={field.value}
+                        onChange={field.onChange}
+                        placeholder="Share your thoughts..."
                     />
                   </FormControl>
                    <FormDescription>
@@ -275,31 +235,6 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                     </FormItem>
                 )}
                 />
-            )}
-
-            <GenAICallout icon={Lightbulb} title="AI Content Assistant">
-              Update your post with AI! Click to get category & tag suggestions. Content is automatically checked for moderation upon submission.
-            </GenAICallout>
-
-            <div className="flex items-center gap-4">
-              <Button type="button" variant="outline" onClick={handleSuggestCategoryAndTags} disabled={isCategorizing || isSubmitting}>
-                {isCategorizing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
-                Suggest Category & Tags
-              </Button>
-            </div>
-
-            {suggestedCategory && (
-              <div className="p-3 bg-accent/10 border border-accent/30 rounded-md">
-                <p className="text-sm font-medium">Suggested Category: <Badge variant="outline" className="bg-background">{suggestedCategory}</Badge></p>
-                <Button size="sm" variant="link" onClick={() => applySuggestion('category')} className="p-0 h-auto text-accent hover:text-accent/80">Apply suggestion</Button>
-              </div>
-            )}
-
-            {suggestedTags.length > 0 && (
-              <div className="p-3 bg-accent/10 border border-accent/30 rounded-md">
-                <p className="text-sm font-medium">Suggested Tags: {suggestedTags.map(tag => <Badge key={tag} variant="outline" className="mr-1 mb-1 bg-background">{tag}</Badge>)}</p>
-                <Button size="sm" variant="link" onClick={() => applySuggestion('tags')} className="p-0 h-auto text-accent hover:text-accent/80">Apply suggestions</Button>
-              </div>
             )}
 
             <FormField

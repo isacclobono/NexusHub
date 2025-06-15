@@ -1,4 +1,7 @@
 
+@import 'quill/dist/quill.core.css';
+@import 'quill/dist/quill.snow.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -95,6 +98,44 @@ body {
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
+  /* Quill editor specific styles */
+  .ql-editor {
+    min-height: 150px; /* Or your desired height */
+    font-size: 1rem; /* Match body font size */
+    line-height: 1.6;
+  }
+  .ql-toolbar.ql-snow {
+    @apply rounded-t-md border-input bg-card;
+  }
+  .ql-container.ql-snow {
+    @apply rounded-b-md border-input bg-card text-card-foreground;
+  }
+  .dark .ql-toolbar.ql-snow {
+    @apply border-slate-700;
+  }
+  .dark .ql-container.ql-snow {
+    @apply border-slate-700;
+  }
+  .dark .ql-snow .ql-stroke {
+    @apply stroke-slate-400;
+  }
+  .dark .ql-snow .ql-fill,
+  .dark .ql-snow .ql-stroke.ql-fill {
+    @apply fill-slate-400;
+  }
+  .dark .ql-picker-label {
+    @apply text-slate-400;
+  }
+  .dark .ql-picker-options {
+    @apply bg-slate-800 border-slate-700;
+  }
+  .dark .ql-picker-item {
+    @apply text-slate-300;
+  }
+  .dark .ql-picker-item:hover,
+  .dark .ql-picker-item.ql-selected {
+    @apply text-white;
+  }
 }
 
 /* Custom button gradient */
@@ -104,3 +145,4 @@ body {
 .btn-gradient:hover {
   @apply opacity-90;
 }
+
