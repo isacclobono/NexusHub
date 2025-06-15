@@ -44,25 +44,47 @@ export async function GET(request: NextRequest, { params }: UserParams) {
     return NextResponse.json({ message: 'Valid User ID is required.' }, { status: 400 });
   }
 
+  const { searchParams } = new URL(request.url);
+  const requestingUserId = searchParams.get('forUserId'); // ID of the user making the request (if provided)
+
   try {
     const db = await getDb();
     const usersCollection = db.collection<UserWithPasswordHash>('users');
 
     const userDoc = await usersCollection.findOne(
       { _id: new ObjectId(userId) },
-      { projection: { passwordHash: 0 } } // Exclude passwordHash from being sent to client
+      { projection: { passwordHash: 0 } } 
     );
 
     if (!userDoc) {
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
     }
 
+    // Check for privacy
+    const isOwnerViewing = requestingUserId && userDoc._id.toHexString() === requestingUserId;
+
+    if (userDoc.privacy === 'private' && !isOwnerViewing) {
+      // Return limited data for private profiles not viewed by owner
+      const privateUserForClient: User = {
+        id: userDoc._id.toHexString(),
+        _id: userDoc._id,
+        name: userDoc.name,
+        avatarUrl: userDoc.avatarUrl,
+        privacy: 'private',
+        isPrivatePlaceholder: true, // Indicate this is a placeholder
+        reputation: 0, // Or some default/hidden value
+        joinedDate: userDoc.joinedDate, // May or may not want to show this
+      };
+      return NextResponse.json(privateUserForClient, { status: 200 });
+    }
+
+    // Full data for public profiles or owner viewing private profile
     const userForClient: User = {
       ...userDoc,
       id: userDoc._id.toHexString(),
       bookmarkedPostIds: Array.isArray(userDoc.bookmarkedPostIds) ? userDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
-      notificationPreferences: userDoc.notificationPreferences || { emailNewPosts: true, eventReminders: true, mentionNotifications: false }, // Default if not set
-      privacy: userDoc.privacy || 'public', // Default to public if not set
+      notificationPreferences: userDoc.notificationPreferences || { emailNewPosts: true, eventReminders: true, mentionNotifications: false }, 
+      privacy: userDoc.privacy || 'public',
     };
 
     return NextResponse.json(userForClient, { status: 200 });
@@ -150,15 +172,15 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
 
     if (!updatedUserDoc) {
         console.error(`[API User PUT] User ${pathUserId} was matched for update, but could not be re-fetched.`);
-        // Check if any actual data fields (besides updatedAt) were intended to be updated
+        
         const hasMeaningfulUpdates = Object.keys(updatePayloadSet).some(key => 
-          key !== 'updatedAt' && updatePayloadSet[key as keyof typeof updatePayloadSet] !== undefined
+          key !== 'updatedAt' && (updatePayloadSet as any)[key] !== undefined
         );
 
         if (updateResult.modifiedCount > 0 || (updateResult.matchedCount > 0 && hasMeaningfulUpdates) ) {
              return NextResponse.json({ message: 'Profile update successful, but failed to re-fetch latest user details.' }, { status: 200 });
         }
-        // If nothing was modified and no meaningful updates were sent, and we can't refetch, it's an issue.
+        
         return NextResponse.json({ message: 'Profile update operation failed. The document might not have been modified or an unexpected error occurred.' }, { status: 500 });
     }
 

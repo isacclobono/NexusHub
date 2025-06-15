@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarDays, Edit3, Star, Loader2, AlertTriangle, MessageSquare, Activity, Award, Calendar as CalendarIconLucide, DollarSign } from 'lucide-react';
+import { CalendarDays, Edit3, Star, Loader2, AlertTriangle, MessageSquare, Activity, Award, Calendar as CalendarIconLucide, DollarSign, EyeOff } from 'lucide-react';
 import { PostCard } from '@/components/feed/PostCard';
 import { format, formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
@@ -189,7 +189,8 @@ export default function UserProfilePage() {
     setLoadingProfile(true);
     setProfileError(null);
     try {
-      const userResponse = await fetch(`/api/users/${currentProfileId}`);
+      const apiQueryParam = authUser ? `?forUserId=${authUser.id}` : '';
+      const userResponse = await fetch(`/api/users/${currentProfileId}${apiQueryParam}`);
       if (!userResponse.ok) {
         const errorData = await userResponse.json();
         throw new Error(errorData.message || `Failed to fetch user data: ${userResponse.statusText}`);
@@ -197,12 +198,15 @@ export default function UserProfilePage() {
       const foundUser: User = await userResponse.json();
       setProfileUser(foundUser);
 
-      // Badges remain static for now
-      const badgesResponse = await fetch('/api/data/badges.json'); 
-      if (!badgesResponse.ok) console.warn(`Failed to fetch badges: ${badgesResponse.statusText}`);
-      else {
-        const badgesData: BadgeType[] = await badgesResponse.json();
-        setUserBadges(foundUser.id === authUser?.id ? badgesData : badgesData.slice(0, Math.floor(Math.random() * badgesData.length + 1))); 
+      if (foundUser.privacy === 'public' || (authUser && authUser.id === foundUser.id)) {
+        const badgesResponse = await fetch('/api/data/badges.json'); 
+        if (!badgesResponse.ok) console.warn(`Failed to fetch badges: ${badgesResponse.statusText}`);
+        else {
+          const badgesData: BadgeType[] = await badgesResponse.json();
+          setUserBadges(foundUser.id === authUser?.id ? badgesData : badgesData.slice(0, Math.floor(Math.random() * badgesData.length + 1))); 
+        }
+      } else {
+        setUserBadges([]); // No badges for private profiles viewed by others
       }
 
     } catch (e) {
@@ -219,6 +223,8 @@ export default function UserProfilePage() {
     setPostsError(null);
     try {
       const forUserIdParam = authUser ? `&forUserId=${authUser.id}` : "";
+      // Intentionally not checking profileUser.privacy here, API should handle it if this API is used elsewhere.
+      // For profile page, the parent component will hide this tab if profile is private.
       const postsResponse = await fetch(`/api/posts?authorId=${currentProfileId}${forUserIdParam}`); 
       if (!postsResponse.ok) {
           const errorData = await postsResponse.json();
@@ -287,11 +293,21 @@ export default function UserProfilePage() {
 
   useEffect(() => {
     if (!authLoading && userIdToFetch) {
-      fetchProfileData(userIdToFetch);
-      fetchUserPosts(userIdToFetch);
-      fetchUserComments(userIdToFetch);
-      fetchRsvpdEvents(userIdToFetch);
-      fetchOrganizedEvents(userIdToFetch);
+      fetchProfileData(userIdToFetch).then(fetchedProfile => {
+        // Only fetch other data if profile is not private placeholder
+        if (fetchedProfile && !(fetchedProfile as User).isPrivatePlaceholder) {
+            fetchUserPosts(userIdToFetch);
+            fetchUserComments(userIdToFetch);
+            fetchRsvpdEvents(userIdToFetch);
+            fetchOrganizedEvents(userIdToFetch);
+        } else if ((fetchedProfile as User)?.isPrivatePlaceholder) {
+            // For private placeholders, set loading states to false and clear data
+            setLoadingPosts(false); setUserPosts([]);
+            setLoadingComments(false); setUserComments([]);
+            setLoadingRsvpdEvents(false); setRsvpdEvents([]);
+            setLoadingOrganizedEvents(false); setOrganizedEvents([]);
+        }
+      });
     } else if (routeUserId === 'me' && !authUser && !authLoading) {
         toast.error("Please log in to view your profile.");
         router.push(`/login?redirect=/profile/me`);
@@ -335,6 +351,8 @@ export default function UserProfilePage() {
   }
   
   const isOwnProfile = authUser?.id === profileUser.id;
+  const isProfileEffectivelyPrivate = profileUser.isPrivatePlaceholder || (profileUser.privacy === 'private' && !isOwnProfile);
+
 
   return (
     <div className="container mx-auto py-8">
@@ -345,18 +363,26 @@ export default function UserProfilePage() {
         <CardContent className="p-6 pt-0 relative">
           <div className="flex flex-col md:flex-row items-center md:items-start gap-6 -mt-16 md:-mt-20">
             <Avatar className="h-32 w-32 md:h-40 md:w-40 border-4 border-card shadow-lg bg-background">
-              <AvatarImage src={profileUser.avatarUrl || 'https://placehold.co/160x160.png'} alt={profileUser.name} data-ai-hint="profile avatar large" />
+              <AvatarImage src={profileUser.avatarUrl || 'https://placehold.co/160x160.png'} alt={profileUser.name} data-ai-hint="profile avatar large"/>
               <AvatarFallback className="text-5xl">{profileUser.name.charAt(0)}</AvatarFallback>
             </Avatar>
             <div className="flex-1 pt-4 md:pt-20 text-center md:text-left">
               <h1 className="text-3xl lg:text-4xl font-bold font-headline">{profileUser.name}</h1>
-              {profileUser.bio && <p className="text-muted-foreground mt-1 text-sm md:text-base">{profileUser.bio}</p>}
-              <div className="flex items-center justify-center md:justify-start space-x-4 text-sm text-muted-foreground mt-2">
-                <span className="flex items-center"><CalendarDays className="h-4 w-4 mr-1" /> Joined {profileUser.joinedDate ? format(new Date(profileUser.joinedDate), 'MMMM yyyy') : 'N/A'}</span>
-                <span className="flex items-center"><Star className="h-4 w-4 mr-1 text-yellow-400 fill-current" /> {profileUser.reputation} Reputation</span>
-              </div>
+              {isProfileEffectivelyPrivate ? (
+                 <p className="text-muted-foreground mt-1 text-sm md:text-base flex items-center justify-center md:justify-start">
+                   <EyeOff className="mr-2 h-4 w-4" /> This profile is private.
+                 </p>
+              ) : (
+                <>
+                    {profileUser.bio && <p className="text-muted-foreground mt-1 text-sm md:text-base">{profileUser.bio}</p>}
+                    <div className="flex items-center justify-center md:justify-start space-x-4 text-sm text-muted-foreground mt-2">
+                        <span className="flex items-center"><CalendarDays className="h-4 w-4 mr-1" /> Joined {profileUser.joinedDate ? format(new Date(profileUser.joinedDate), 'MMMM yyyy') : 'N/A'}</span>
+                        <span className="flex items-center"><Star className="h-4 w-4 mr-1 text-yellow-400 fill-current" /> {profileUser.reputation} Reputation</span>
+                    </div>
+                </>
+              )}
             </div>
-            {isOwnProfile && (
+            {isOwnProfile && !isProfileEffectivelyPrivate && (
               <div className="pt-4 md:pt-20">
                 <Button variant="outline" asChild><Link href="/settings"><Edit3 className="h-4 w-4 mr-2" /> Edit Profile</Link></Button>
               </div>
@@ -365,90 +391,100 @@ export default function UserProfilePage() {
         </CardContent>
       </Card>
 
-      <Tabs defaultValue="posts" className="w-full">
-        <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6">
-          <TabsTrigger value="posts">Posts ({loadingPosts ? '...' : userPosts.length})</TabsTrigger>
-          <TabsTrigger value="activity">Activity</TabsTrigger>
-          <TabsTrigger value="badges">Badges ({userBadges.length})</TabsTrigger>
-          <TabsTrigger value="events">My Events ({loadingOrganizedEvents ? '...' : organizedEvents.length})</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="posts">
-          {loadingPosts && <div className="space-y-4"><Skeleton className="h-48 w-full" /><Skeleton className="h-48 w-full" /></div>}
-          {postsError && <p className="text-destructive text-center py-10">{postsError}</p>}
-          {!loadingPosts && !postsError && userPosts.length > 0 && (
-            <div className="space-y-6">
-              {userPosts.map(post => (
-                <PostCard key={post.id!} post={post} onToggleBookmark={refreshUser} onToggleLike={refreshUser}/>
-              ))}
-            </div>
-          )}
-          {!loadingPosts && !postsError && userPosts.length === 0 && (
-            <p className="text-muted-foreground text-center py-10">This user hasn't made any posts yet.</p>
-          )}
-        </TabsContent>
+      {isProfileEffectivelyPrivate ? (
+        <Card className="text-center py-20">
+          <CardContent>
+            <EyeOff className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+            <h2 className="text-xl font-semibold">This Profile is Private</h2>
+            <p className="text-muted-foreground">The user has chosen to keep their profile details private.</p>
+          </CardContent>
+        </Card>
+      ) : (
+        <Tabs defaultValue="posts" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6">
+            <TabsTrigger value="posts">Posts ({loadingPosts ? '...' : userPosts.length})</TabsTrigger>
+            <TabsTrigger value="activity">Activity</TabsTrigger>
+            <TabsTrigger value="badges">Badges ({userBadges.length})</TabsTrigger>
+            <TabsTrigger value="events">My Events ({loadingOrganizedEvents ? '...' : organizedEvents.length})</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="posts">
+            {loadingPosts && <div className="space-y-4"><Skeleton className="h-48 w-full" /><Skeleton className="h-48 w-full" /></div>}
+            {postsError && <p className="text-destructive text-center py-10">{postsError}</p>}
+            {!loadingPosts && !postsError && userPosts.length > 0 && (
+              <div className="space-y-6">
+                {userPosts.map(post => (
+                  <PostCard key={post.id!} post={post} onToggleBookmark={refreshUser} onToggleLike={refreshUser}/>
+                ))}
+              </div>
+            )}
+            {!loadingPosts && !postsError && userPosts.length === 0 && (
+              <p className="text-muted-foreground text-center py-10">This user hasn't made any posts yet.</p>
+            )}
+          </TabsContent>
 
-        <TabsContent value="activity">
-            <div className="space-y-6">
-                <section>
-                    <h3 className="text-xl font-semibold mb-3 font-headline flex items-center"><MessageSquare className="mr-2 h-5 w-5 text-primary"/>Recent Comments</h3>
-                    {loadingComments && <div className="space-y-2"><Skeleton className="h-20 w-full"/><Skeleton className="h-20 w-full"/></div>}
-                    {commentsError && <p className="text-destructive text-center py-5">{commentsError}</p>}
-                    {!loadingComments && !commentsError && userComments.length > 0 ? (
-                        userComments.map(comment => <ActivityCommentCard key={comment.id} comment={comment} />)
-                    ) : (
-                       !loadingComments && !commentsError && <p className="text-muted-foreground text-center py-5">No recent comments.</p>
-                    )}
-                </section>
-                <section>
-                    <h3 className="text-xl font-semibold mb-3 font-headline flex items-center"><Activity className="mr-2 h-5 w-5 text-primary"/>Events Attending</h3>
-                    {loadingRsvpdEvents && <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><Skeleton className="h-32 w-full"/><Skeleton className="h-32 w-full"/></div>}
-                    {rsvpdEventsError && <p className="text-destructive text-center py-5">{rsvpdEventsError}</p>}
-                     {!loadingRsvpdEvents && !rsvpdEventsError && rsvpdEvents.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {rsvpdEvents.map(event => <ActivityEventCard key={event.id} event={event} />)}
-                        </div>
-                    ) : (
-                       !loadingRsvpdEvents && !rsvpdEventsError && <p className="text-muted-foreground text-center py-5">Not RSVP'd to any upcoming events.</p>
-                    )}
-                </section>
-            </div>
-        </TabsContent>
+          <TabsContent value="activity">
+              <div className="space-y-6">
+                  <section>
+                      <h3 className="text-xl font-semibold mb-3 font-headline flex items-center"><MessageSquare className="mr-2 h-5 w-5 text-primary"/>Recent Comments</h3>
+                      {loadingComments && <div className="space-y-2"><Skeleton className="h-20 w-full"/><Skeleton className="h-20 w-full"/></div>}
+                      {commentsError && <p className="text-destructive text-center py-5">{commentsError}</p>}
+                      {!loadingComments && !commentsError && userComments.length > 0 ? (
+                          userComments.map(comment => <ActivityCommentCard key={comment.id} comment={comment} />)
+                      ) : (
+                         !loadingComments && !commentsError && <p className="text-muted-foreground text-center py-5">No recent comments.</p>
+                      )}
+                  </section>
+                  <section>
+                      <h3 className="text-xl font-semibold mb-3 font-headline flex items-center"><Activity className="mr-2 h-5 w-5 text-primary"/>Events Attending</h3>
+                      {loadingRsvpdEvents && <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><Skeleton className="h-32 w-full"/><Skeleton className="h-32 w-full"/></div>}
+                      {rsvpdEventsError && <p className="text-destructive text-center py-5">{rsvpdEventsError}</p>}
+                       {!loadingRsvpdEvents && !rsvpdEventsError && rsvpdEvents.length > 0 ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {rsvpdEvents.map(event => <ActivityEventCard key={event.id} event={event} />)}
+                          </div>
+                      ) : (
+                         !loadingRsvpdEvents && !rsvpdEventsError && <p className="text-muted-foreground text-center py-5">Not RSVP'd to any upcoming events.</p>
+                      )}
+                  </section>
+              </div>
+          </TabsContent>
 
-         <TabsContent value="badges">
-          {userBadges.length > 0 ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-              {userBadges.map(badge => (
-                <BadgeDisplayComponent key={badge.id} badge={badge} />
-              ))}
-            </div>
-          ) : (
-             <p className="text-muted-foreground text-center py-10 flex flex-col items-center">
-                <Award className="h-12 w-12 mb-3 text-muted-foreground/50"/>
-                This user has not earned any badges yet.
-             </p>
-          )}
-        </TabsContent>
+           <TabsContent value="badges">
+            {userBadges.length > 0 ? (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
+                {userBadges.map(badge => (
+                  <BadgeDisplayComponent key={badge.id} badge={badge} />
+                ))}
+              </div>
+            ) : (
+               <p className="text-muted-foreground text-center py-10 flex flex-col items-center">
+                  <Award className="h-12 w-12 mb-3 text-muted-foreground/50"/>
+                  This user has not earned any badges yet.
+               </p>
+            )}
+          </TabsContent>
 
-        <TabsContent value="events">
-          <h3 className="text-xl font-semibold mb-4 font-headline flex items-center"><CalendarIconLucide className="mr-2 h-5 w-5 text-primary"/>Events Organized</h3>
-          {loadingOrganizedEvents && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"><Skeleton className="h-64 w-full"/><Skeleton className="h-64 w-full"/></div>}
-          {organizedEventsError && <p className="text-destructive text-center py-10">{organizedEventsError}</p>}
-          {!loadingOrganizedEvents && !organizedEventsError && organizedEvents.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {organizedEvents.map(event => (
-                <OrganizedEventCard key={event.id} event={event} />
-              ))}
-            </div>
-          ) : (
-            !loadingOrganizedEvents && !organizedEventsError && 
-            <p className="text-muted-foreground text-center py-10 flex flex-col items-center">
-                <CalendarIconLucide className="h-12 w-12 mb-3 text-muted-foreground/50"/>
-                This user hasn't organized any events.
-            </p>
-          )}
-        </TabsContent>
-      </Tabs>
+          <TabsContent value="events">
+            <h3 className="text-xl font-semibold mb-4 font-headline flex items-center"><CalendarIconLucide className="mr-2 h-5 w-5 text-primary"/>Events Organized</h3>
+            {loadingOrganizedEvents && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"><Skeleton className="h-64 w-full"/><Skeleton className="h-64 w-full"/></div>}
+            {organizedEventsError && <p className="text-destructive text-center py-10">{organizedEventsError}</p>}
+            {!loadingOrganizedEvents && !organizedEventsError && organizedEvents.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {organizedEvents.map(event => (
+                  <OrganizedEventCard key={event.id} event={event} />
+                ))}
+              </div>
+            ) : (
+              !loadingOrganizedEvents && !organizedEventsError && 
+              <p className="text-muted-foreground text-center py-10 flex flex-col items-center">
+                  <CalendarIconLucide className="h-12 w-12 mb-3 text-muted-foreground/50"/>
+                  This user hasn't organized any events.
+              </p>
+            )}
+          </TabsContent>
+        </Tabs>
+      )}
     </div>
   );
 }

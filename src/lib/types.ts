@@ -19,7 +19,8 @@ export interface User {
     eventReminders?: boolean;
     mentionNotifications?: boolean;
   };
-  privacy?: 'public' | 'private'; // Added profile privacy
+  privacy?: 'public' | 'private';
+  isPrivatePlaceholder?: boolean; // Flag to indicate this is a minimal object for a private profile
 }
 
 export interface Comment {

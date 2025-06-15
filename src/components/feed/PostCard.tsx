@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2, Send, Share2, Trash2, Edit, SendHorizonal } from 'lucide-react';
+import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2, Send, Share2, Trash2, Edit, SendHorizonal, Star } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
@@ -29,6 +29,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import Quill from 'quill'; // Import Quill type
 
 interface PostCardProps {
   post: Post;
@@ -80,6 +81,8 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
   const [isPublishingDraft, setIsPublishingDraft] = useState(false);
+  const [quillContent, setQuillContent] = React.useState<string>('');
+  const quillRef = React.useRef<Quill | null>(null);
 
 
   useEffect(() => {
@@ -89,6 +92,20 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       likedBy: Array.isArray(initialPost.likedBy) ? initialPost.likedBy : [],
       commentIds: Array.isArray(initialPost.commentIds) ? initialPost.commentIds : [],
     }));
+    // Attempt to render HTML content using Quill for display
+    // This part is tricky without a dedicated Quill viewer component or sanitizing HTML
+    if (initialPost.content && typeof document !== 'undefined') {
+        // Create a temporary div to render HTML content if it's complex
+        // For simple display, directly using dangerouslySetInnerHTML might be an option,
+        // but needs careful sanitation (not done here for brevity).
+        // A proper solution would use a read-only Quill instance or an HTML sanitizer.
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = initialPost.content;
+        setQuillContent(tempDiv.innerText || tempDiv.textContent || ''); // Get text content
+    } else {
+        setQuillContent('');
+    }
+
   }, [initialPost]);
 
 
@@ -374,29 +391,41 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
     <>
     <Card className="w-full max-w-2xl mx-auto shadow-subtle hover:shadow-md transition-shadow duration-300">
       <CardHeader className="p-4">
-        <div className="flex items-center space-x-3">
-          <Link href={`/profile/${postAuthor.id}`} className="flex items-center space-x-3 group">
+        <div className="flex items-start space-x-3">
+          <Link href={`/profile/${postAuthor.id}`} className="flex-shrink-0">
             <Avatar className="h-10 w-10">
-              <AvatarImage src={postAuthor.avatarUrl || `https://placehold.co/40x40.png`} alt={postAuthor.name} data-ai-hint="profile avatar" />
+              <AvatarImage src={postAuthor.avatarUrl || `https://placehold.co/40x40.png`} alt={postAuthor.name} data-ai-hint="profile avatar"/>
               <AvatarFallback>{postAuthor.name ? postAuthor.name.charAt(0) : 'U'}</AvatarFallback>
             </Avatar>
-            <div>
-              <p className="font-semibold text-sm font-headline group-hover:underline">{postAuthor.name}</p>
-              <p className="text-xs text-muted-foreground">
-                {createdAt ? formatDistanceToNow(new Date(createdAt), { addSuffix: true }) : 'Recently'}
-                {category && ` · ${category}`}
-                 {post.communityName && (
-                    <>
-                        {' in '}
-                        <Link href={`/communities/${post.communityId}`} className="text-primary hover:underline">
-                            {post.communityName}
-                        </Link>
-                    </>
-                )}
-              </p>
-            </div>
           </Link>
-          <div className="ml-auto">
+          <div className="flex-grow">
+            <Link href={`/profile/${postAuthor.id}`} className="font-semibold text-sm font-headline hover:underline group">
+              {postAuthor.name}
+            </Link>
+            <div className="text-xs text-muted-foreground flex items-center flex-wrap">
+              <span>{createdAt ? formatDistanceToNow(new Date(createdAt), { addSuffix: true }) : 'Recently'}</span>
+              {postAuthor.reputation !== undefined && (
+                <span className="mx-1">·</span>
+              )}
+              {postAuthor.reputation !== undefined && (
+                <span className="flex items-center">
+                  <Star className="h-3 w-3 mr-0.5 text-yellow-400 fill-current" /> {postAuthor.reputation}
+                </span>
+              )}
+              {category && <span className="mx-1">·</span>}
+              {category && <span>{category}</span>}
+              {post.communityName && <span className="mx-1">·</span>}
+              {post.communityName && (
+                  <>
+                      {'in '}
+                      <Link href={`/communities/${post.communityId}`} className="text-primary hover:underline">
+                          {post.communityName}
+                      </Link>
+                  </>
+              )}
+            </div>
+          </div>
+          <div className="ml-auto flex-shrink-0">
              <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" title="More options">
@@ -432,18 +461,27 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       </CardHeader>
       <CardContent className="p-4 pt-0">
         {title && <CardTitle className="text-xl mb-2 font-headline"><Link href={`/posts/${post.id}`}>{title}</Link></CardTitle>}
-        <p className="text-foreground whitespace-pre-wrap break-words mb-3">{content.substring(0, 300)}{content.length > 300 && '...'}</p>
-        {content.length > 300 && post.id && (
+        
+        {/* For displaying HTML content from Quill */}
+        <div
+            className="prose dark:prose-invert max-w-none break-words mb-3"
+            dangerouslySetInnerHTML={{ __html: post.content }}
+        />
+        
+        {/* Fallback for short content or if Read More is needed later for very long non-HTML content */}
+        {/* <p className="text-foreground whitespace-pre-wrap break-words mb-3">{quillContent.substring(0, 300)}{quillContent.length > 300 && '...'}</p>
+        {quillContent.length > 300 && post.id && (
           <Button variant="link" asChild className="p-0 h-auto text-sm">
             <Link href={`/posts/${post.id}`}>Read more</Link>
           </Button>
-        )}
+        )} */}
+
         {media && Array.isArray(media) && media.length > 0 && (
           <div className={`grid gap-2 ${media.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} mb-3`}>
             {media.map((item, index) => (
               <div key={index} className="relative aspect-video rounded-lg overflow-hidden border">
                 {item.type === 'image' && (
-                   <Image src={item.url} alt={item.name || title || `Post media ${index + 1}`} layout="fill" objectFit="cover" data-ai-hint="social media content" />
+                   <Image src={item.url} alt={item.name || title || `Post media ${index + 1}`} layout="fill" objectFit="cover" data-ai-hint="social media content"/>
                 )}
                  {(item.type === 'video' || item.type === 'document') && (
                     <div className="flex flex-col items-center justify-center h-full bg-muted">
@@ -558,5 +596,3 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
     </>
   );
 }
-
-    
