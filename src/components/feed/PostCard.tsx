@@ -28,7 +28,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import DOMPurify from 'dompurify';
 import ReportDialog from '@/components/dialogs/ReportDialog'; // Import the new dialog
