@@ -17,6 +17,11 @@ const postFormSchema = z.object({
   isDraft: z.boolean().default(false),
   scheduledAt: z.string().datetime({ offset: true }).optional(),
   communityId: z.string().optional().refine(val => !val || ObjectId.isValid(val), { message: "Invalid Community ID format." }),
+  media: z.array(z.object({ // Added media validation
+    type: z.enum(['image', 'video', 'document']),
+    url: z.string().url(),
+    name: z.string().optional(),
+  })).optional(),
 });
 
 // Define the structure of post documents in the database
@@ -34,6 +39,12 @@ type DbComment = Omit<Comment, 'id' | 'author' | 'authorId' | 'postId'> & {
 };
 type DbCommunity = Omit<Community, 'id' | 'creator' | 'memberCount'> & {
   _id: ObjectId;
+};
+// User type for subscription queries
+type DbUserWithSubscriptions = Omit<User, 'id'> & {
+  _id: ObjectId;
+  subscribedTags?: string[];
+  subscribedCategories?: string[];
 };
 
 
@@ -69,7 +80,7 @@ export async function POST(request: NextRequest) {
 
     const moderationInput: IntelligentContentModerationInput = { content: data.content, sensitivityLevel: 'medium' };
     const moderationResult = await intelligentContentModeration(moderationInput);
-    if (moderationResult.isFlagged) {
+    if (moderationResult.isFlagged && data.isDraft === false && !data.scheduledAt) { // Only block if not saving as draft or scheduling
       return NextResponse.json({
         message: `Post flagged by content moderation: ${moderationResult.reason}. Please revise.`,
         isFlagged: true,
@@ -81,8 +92,6 @@ export async function POST(request: NextRequest) {
     let finalTagsArray = data.tags ? data.tags.split(',').map(tag => tag.trim()).filter(tag => tag) : [];
 
     if (!finalCategory || finalTagsArray.length === 0) {
-        // Extract plain text from HTML content for AI categorization if needed
-        // For now, sending HTML directly.
         const plainTextContent = data.content.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
         const categorizationInput: CategorizeContentInput = { content: plainTextContent || data.content };
         try {
@@ -102,6 +111,7 @@ export async function POST(request: NextRequest) {
       authorId: new ObjectId(data.userId),
       title: data.title,
       content: data.content,
+      media: data.media,
       category: finalCategory,
       tags: finalTagsArray,
       createdAt: new Date().toISOString(),
@@ -139,31 +149,90 @@ export async function POST(request: NextRequest) {
         communityName: community?.name,
     };
 
-    // Create notifications if it's a published community post
-    if (createdPostForClient.status === 'published' && createdPostForClient.communityId && community) {
+    // Notification Logic
+    if (createdPostForClient.status === 'published') {
         const notificationsCollection = db.collection<Omit<Notification, '_id' | 'id'>>('notifications');
         const notificationsToInsert: Omit<Notification, '_id' | 'id'>[] = [];
-        
-        community.memberIds.forEach(memberId => {
-            if (!memberId.equals(currentUser._id!)) { // Don't notify the author
-                 notificationsToInsert.push({
-                    userId: memberId,
-                    type: 'new_community_post',
-                    title: `New Post in ${community!.name}`,
-                    message: `${currentUser.name} posted: "${createdPostForClient.title || 'a new post'}"`,
-                    link: `/posts/${createdPostForClient.id}`,
-                    relatedEntityId: createdPostForClient._id,
-                    actor: {
-                        _id: currentUser._id!,
-                        id: currentUser.id!,
-                        name: currentUser.name,
-                        avatarUrl: currentUser.avatarUrl,
-                    },
-                    isRead: false,
-                    createdAt: new Date().toISOString(),
-                });
-            }
-        });
+        const notifiedUserIds = new Set<string>(); // To track users already set to be notified for this post
+
+        // 1. Community Notifications
+        if (createdPostForClient.communityId && community) {
+            community.memberIds.forEach(memberId => {
+                if (!memberId.equals(currentUser._id!) && !notifiedUserIds.has(memberId.toHexString())) {
+                     notificationsToInsert.push({
+                        userId: memberId,
+                        type: 'new_community_post',
+                        title: `New Post in ${community!.name}`,
+                        message: `${currentUser.name} posted: "${createdPostForClient.title || 'a new post'}"`,
+                        link: `/posts/${createdPostForClient.id}`,
+                        relatedEntityId: createdPostForClient._id,
+                        actor: {
+                            _id: currentUser._id!,
+                            id: currentUser.id!,
+                            name: currentUser.name,
+                            avatarUrl: currentUser.avatarUrl,
+                        },
+                        isRead: false,
+                        createdAt: new Date().toISOString(),
+                    });
+                    notifiedUserIds.add(memberId.toHexString());
+                }
+            });
+        }
+
+        // 2. Category Subscription Notifications
+        if (createdPostForClient.category) {
+            const usersSubscribedToCategory = await db.collection<DbUserWithSubscriptions>('users').find({
+                subscribedCategories: createdPostForClient.category,
+                _id: { $ne: currentUser._id! } // Exclude post author
+            }).project({ _id: 1 }).toArray();
+
+            usersSubscribedToCategory.forEach(subscribedUser => {
+                if (!notifiedUserIds.has(subscribedUser._id.toHexString())) {
+                    notificationsToInsert.push({
+                        userId: subscribedUser._id,
+                        type: 'new_post_subscribed_category',
+                        title: `New Post in Subscribed Category: ${createdPostForClient.category}`,
+                        message: `${currentUser.name} posted "${createdPostForClient.title || 'a new post'}" in a category you follow.`,
+                        link: `/posts/${createdPostForClient.id}`,
+                        relatedEntityId: createdPostForClient._id,
+                        actor: { _id: currentUser._id!, id: currentUser.id!, name: currentUser.name, avatarUrl: currentUser.avatarUrl },
+                        isRead: false,
+                        createdAt: new Date().toISOString(),
+                    });
+                    notifiedUserIds.add(subscribedUser._id.toHexString());
+                }
+            });
+        }
+
+        // 3. Tag Subscription Notifications
+        if (createdPostForClient.tags && createdPostForClient.tags.length > 0) {
+            const usersSubscribedToTags = await db.collection<DbUserWithSubscriptions>('users').find({
+                subscribedTags: { $in: createdPostForClient.tags },
+                _id: { $ne: currentUser._id! } // Exclude post author
+            }).project({ _id: 1, subscribedTags: 1 }).toArray(); // Fetch subscribedTags to find matched tag
+
+            usersSubscribedToTags.forEach(subscribedUser => {
+                if (!notifiedUserIds.has(subscribedUser._id.toHexString())) {
+                    // Find which of the user's subscribed tags matched the post's tags
+                    const matchedTag = subscribedUser.subscribedTags?.find(subTag => createdPostForClient.tags!.includes(subTag));
+                    
+                    notificationsToInsert.push({
+                        userId: subscribedUser._id,
+                        type: 'new_post_subscribed_tag',
+                        title: `New Post with Tag: ${matchedTag || 'Subscribed Tag'}`,
+                        message: `${currentUser.name} posted "${createdPostForClient.title || 'a new post'}" with a tag you follow${matchedTag ? ` (#${matchedTag})` : ''}.`,
+                        link: `/posts/${createdPostForClient.id}`,
+                        relatedEntityId: createdPostForClient._id,
+                        actor: { _id: currentUser._id!, id: currentUser.id!, name: currentUser.name, avatarUrl: currentUser.avatarUrl },
+                        isRead: false,
+                        createdAt: new Date().toISOString(),
+                    });
+                    notifiedUserIds.add(subscribedUser._id.toHexString());
+                }
+            });
+        }
+
         if (notificationsToInsert.length > 0) {
             await notificationsCollection.insertMany(notificationsToInsert);
         }
@@ -217,14 +286,112 @@ export async function GET(request: NextRequest) {
       if (statusParam && ['draft', 'scheduled', 'published'].includes(statusParam)) {
             query.status = statusParam;
         } else {
-            query.status = 'published'; 
+            // If fetching for a specific author AND the forUserIdParam matches authorId (viewing own profile posts),
+            // include all statuses. Otherwise, default to published.
+            if (forUserIdParam && forUserIdParam === authorIdParam) {
+                 // No status filter, or $in: ['published', 'draft', 'scheduled'] if explicitly needed
+            } else {
+                query.status = 'published';
+            }
         }
     } else if (communityIdParam && ObjectId.isValid(communityIdParam)) {
         query.communityId = new ObjectId(communityIdParam);
         query.status = 'published'; 
     }
-     else {
+     else { // General feed - apply privacy filtering
         query.status = 'published';
+        const aggregationPipeline:any[] = [
+            { $match: query },
+            {
+                $lookup: {
+                    from: 'users',
+                    localField: 'authorId',
+                    foreignField: '_id',
+                    as: 'authorDetails'
+                }
+            },
+            { $unwind: '$authorDetails' },
+            {
+                $match: {
+                    $or: [
+                        { 'authorDetails.privacy': { $ne: 'private' } },
+                        { 'authorDetails.privacy': { $exists: false } },
+                        ...(currentUser ? [{ 'authorDetails._id': currentUser._id }] : []) // Allow viewing own private posts
+                    ]
+                }
+            },
+            { $sort: { createdAt: -1 } },
+             { $project: { authorDetails: 0 } } // Remove the looked-up authorDetails to avoid redundant data
+        ];
+        
+        const postsFromDbViaAgg = await postsCollection.aggregate(aggregationPipeline).toArray();
+
+        // The rest of the enrichment logic will apply to postsFromDbViaAgg
+         const enrichedPostsViaAgg: Post[] = await Promise.all(
+            postsFromDbViaAgg.map(async (postDoc: any) => {
+                // PostDoc here is from aggregation, so authorDetails were used for filtering but not directly for author field.
+                // We still need to fetch author for consistent Post structure.
+                const authorDoc = await usersCollection.findOne({ _id: new ObjectId(postDoc.authorId) }, {projection: {passwordHash: 0}});
+                const authorForClient: User | undefined = authorDoc ? {
+                ...authorDoc,
+                id: authorDoc._id.toHexString(),
+                bookmarkedPostIds: Array.isArray(authorDoc.bookmarkedPostIds) ? authorDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
+                } : undefined;
+                
+                const recentCommentsDocs = await commentsCollection
+                    .find({ postId: postDoc._id })
+                    .sort({ createdAt: -1 })
+                    .limit(2)
+                    .toArray();
+
+                const recentCommentsPopulated: Comment[] = await Promise.all(
+                    recentCommentsDocs.map(async (commentDoc) => {
+                        const commentAuthorDoc = await usersCollection.findOne({_id: commentDoc.authorId}, {projection: {passwordHash: 0}});
+                        const caForClient: User | undefined = commentAuthorDoc ? {
+                            ...commentAuthorDoc,
+                            id: commentAuthorDoc._id.toHexString(),
+                            bookmarkedPostIds: Array.isArray(commentAuthorDoc.bookmarkedPostIds) ? commentAuthorDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
+                        } : undefined;
+                        return {
+                            ...commentDoc,
+                            id: commentDoc._id.toHexString(),
+                            postId: commentDoc.postId,
+                            authorId: commentDoc.authorId,
+                            author: caForClient || { _id: commentDoc.authorId, id: commentDoc.authorId.toHexString(), name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [] } as User,
+                        } as Comment;
+                    })
+                );
+                
+                const postLikedBy = Array.isArray(postDoc.likedBy) ? postDoc.likedBy : [];
+                const isLikedByCurrentUser = currentUser && currentUser._id ? postLikedBy.some(id => id.equals(currentUser!._id!)) : false;
+                
+                const userBookmarkedPostIds = currentUser && Array.isArray(currentUser.bookmarkedPostIds) ? currentUser.bookmarkedPostIds : [];
+                const isBookmarkedByCurrentUser = currentUser && postDoc._id ? userBookmarkedPostIds.some(id => id.equals(postDoc._id)) : false;
+
+                let communityName: string | undefined = undefined;
+                if (postDoc.communityId) {
+                    const community = await communitiesCollection.findOne({ _id: postDoc.communityId });
+                    communityName = community?.name;
+                }
+
+                return {
+                ...postDoc,
+                id: postDoc._id.toHexString(),
+                authorId: postDoc.authorId, 
+                author: authorForClient || { _id: postDoc.authorId, id: postDoc.authorId.toHexString(), name: 'Unknown User', email:'', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds:[] } as User,
+                likedBy: postLikedBy.map(id => new ObjectId(id.toString())),
+                likeCount: postDoc.likeCount || 0,
+                isLikedByCurrentUser,
+                commentIds: Array.isArray(postDoc.commentIds) ? postDoc.commentIds.map((id: ObjectId | string) => typeof id === 'string' ? new ObjectId(id) : id) : [],
+                comments: recentCommentsPopulated.reverse(), 
+                commentCount: postDoc.commentCount || 0,
+                isBookmarkedByCurrentUser,
+                communityId: postDoc.communityId,
+                communityName: communityName,
+                } as Post;
+            })
+        );
+        return NextResponse.json(enrichedPostsViaAgg, { status: 200 });
     }
 
 
@@ -303,3 +470,4 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ message: errorMessage, posts: [], comments: [] }, { status: 500 });
   }
 }
+
