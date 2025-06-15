@@ -5,6 +5,25 @@ import bcrypt from 'bcryptjs';
 import type { User } from '@/lib/types';
 import { ObjectId } from 'mongodb';
 
+// DB model for user creation, ensuring all fields are potentially present for insertion
+interface NewUserDbDocument {
+  name: string;
+  email: string;
+  passwordHash: string;
+  reputation: number;
+  joinedDate: string;
+  avatarUrl?: string;
+  bio?: string;
+  _id?: ObjectId;
+  privacy: 'public' | 'private';
+  updatedAt: string; // Added for consistency
+  bookmarkedPostIds?: ObjectId[];
+  communityIds?: ObjectId[];
+  notificationPreferences?: User['notificationPreferences'];
+  // Explicitly exclude reset token fields on registration
+}
+
+
 export async function POST(request: NextRequest) {
   try {
     const { name, email, password } = await request.json();
@@ -17,7 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     const db = await getDb();
-    const usersCollection = db.collection<{ name: string; email: string; passwordHash: string; reputation: number; joinedDate: string; avatarUrl?: string; bio?: string; _id?: ObjectId; privacy: 'public' | 'private'; }>('users');
+    const usersCollection = db.collection<NewUserDbDocument>('users');
 
     const existingUser = await usersCollection.findOne({ email: email.toLowerCase() });
     if (existingUser) {
@@ -25,16 +44,25 @@ export async function POST(request: NextRequest) {
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
+    const currentDate = new Date().toISOString();
 
-    const newUserDocument = {
+    const newUserDocument: NewUserDbDocument = {
       name,
       email: email.toLowerCase(),
       passwordHash,
       reputation: 0,
-      joinedDate: new Date().toISOString(),
-      avatarUrl: `https://placehold.co/100x100.png?text=${name.charAt(0)}`,
+      joinedDate: currentDate,
+      updatedAt: currentDate,
+      avatarUrl: `https://placehold.co/100x100.png?text=${name.charAt(0).toUpperCase()}`,
       bio: '',
-      privacy: 'public' as 'public' | 'private', // Default to public
+      privacy: 'public',
+      bookmarkedPostIds: [],
+      communityIds: [],
+      notificationPreferences: {
+        emailNewPosts: true,
+        eventReminders: true,
+        mentionNotifications: true,
+      },
     };
 
     const result = await usersCollection.insertOne(newUserDocument);
@@ -43,6 +71,7 @@ export async function POST(request: NextRequest) {
         throw new Error('Failed to insert user into database.');
     }
 
+    // Prepare user object for client, excluding sensitive fields
     const createdUserForClient: User = {
         _id: result.insertedId,
         id: result.insertedId.toHexString(),
@@ -53,6 +82,10 @@ export async function POST(request: NextRequest) {
         avatarUrl: newUserDocument.avatarUrl,
         bio: newUserDocument.bio,
         privacy: newUserDocument.privacy,
+        bookmarkedPostIds: newUserDocument.bookmarkedPostIds,
+        communityIds: newUserDocument.communityIds,
+        notificationPreferences: newUserDocument.notificationPreferences,
+        updatedAt: newUserDocument.updatedAt,
     };
 
     return NextResponse.json({ message: 'User registered successfully!', user: createdUserForClient }, { status: 201 });

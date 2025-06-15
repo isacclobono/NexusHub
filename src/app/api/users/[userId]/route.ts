@@ -6,10 +6,10 @@ import type { User } from '@/lib/types';
 import { z } from 'zod';
 
 // Interface for user document in DB, potentially including passwordHash
-interface UserWithPasswordHash extends Omit<User, 'id' | 'bookmarkedPostIds'> {
+interface UserWithSensitiveFields extends Omit<User, 'id' | 'bookmarkedPostIds'> {
   _id: ObjectId;
-  passwordHash?: string; // Optional, as it's not always present/used
-  bookmarkedPostIds?: ObjectId[]; // Ensure this is an array of ObjectIds
+  passwordHash?: string; 
+  bookmarkedPostIds?: ObjectId[]; 
   notificationPreferences?: {
     emailNewPosts?: boolean;
     eventReminders?: boolean;
@@ -17,6 +17,8 @@ interface UserWithPasswordHash extends Omit<User, 'id' | 'bookmarkedPostIds'> {
   };
   privacy?: 'public' | 'private';
   updatedAt?: string;
+  resetPasswordToken?: string; // Added for completeness of DB model
+  resetPasswordExpires?: Date; // Added for completeness of DB model
 }
 
 interface UserParams {
@@ -45,40 +47,38 @@ export async function GET(request: NextRequest, { params }: UserParams) {
   }
 
   const { searchParams } = new URL(request.url);
-  const requestingUserId = searchParams.get('forUserId'); // ID of the user making the request (if provided)
+  const requestingUserId = searchParams.get('forUserId'); 
 
   try {
     const db = await getDb();
-    const usersCollection = db.collection<UserWithPasswordHash>('users');
+    const usersCollection = db.collection<UserWithSensitiveFields>('users');
 
     const userDoc = await usersCollection.findOne(
       { _id: new ObjectId(userId) },
-      { projection: { passwordHash: 0 } } 
+      // Exclude sensitive fields like passwordHash, reset tokens
+      { projection: { passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0 } } 
     );
 
     if (!userDoc) {
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
     }
 
-    // Check for privacy
     const isOwnerViewing = requestingUserId && userDoc._id.toHexString() === requestingUserId;
 
     if (userDoc.privacy === 'private' && !isOwnerViewing) {
-      // Return limited data for private profiles not viewed by owner
       const privateUserForClient: User = {
         id: userDoc._id.toHexString(),
         _id: userDoc._id,
         name: userDoc.name,
         avatarUrl: userDoc.avatarUrl,
         privacy: 'private',
-        isPrivatePlaceholder: true, // Indicate this is a placeholder
-        reputation: 0, // Or some default/hidden value
-        joinedDate: userDoc.joinedDate, // May or may not want to show this
+        isPrivatePlaceholder: true, 
+        reputation: 0, 
+        joinedDate: userDoc.joinedDate, 
       };
       return NextResponse.json(privateUserForClient, { status: 200 });
     }
 
-    // Full data for public profiles or owner viewing private profile
     const userForClient: User = {
       ...userDoc,
       id: userDoc._id.toHexString(),
@@ -114,7 +114,7 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     const validatedData = validation.data;
 
     const db = await getDb();
-    const usersCollection = db.collection<UserWithPasswordHash>('users');
+    const usersCollection = db.collection<UserWithSensitiveFields>('users');
     const userObjectId = new ObjectId(pathUserId);
 
     const existingUser = await usersCollection.findOne({ _id: userObjectId }, { projection: { name: 1, avatarUrl: 1, notificationPreferences: 1, privacy: 1 } }); 
@@ -122,7 +122,7 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
     }
     
-    const updatePayloadSet: Partial<UserWithPasswordHash> & { updatedAt: string } = {
+    const updatePayloadSet: Partial<Omit<UserWithSensitiveFields, '_id' | 'passwordHash' | 'resetPasswordToken' | 'resetPasswordExpires'>> & { updatedAt: string } = {
         updatedAt: new Date().toISOString()
     };
 
@@ -164,10 +164,9 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
       return NextResponse.json({ message: 'User not found during update operation. No changes made.' }, { status: 404 });
     }
     
-    // After update, fetch the user to return the latest state
     const updatedUserDoc = await usersCollection.findOne(
         { _id: userObjectId },
-        { projection: { passwordHash: 0 } }
+        { projection: { passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0 } }
     );
 
     if (!updatedUserDoc) {

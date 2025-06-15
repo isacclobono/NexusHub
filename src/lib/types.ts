@@ -21,6 +21,8 @@ export interface User {
   };
   privacy?: 'public' | 'private';
   isPrivatePlaceholder?: boolean;
+  resetPasswordToken?: string;
+  resetPasswordExpires?: Date;
 }
 
 export interface Comment {

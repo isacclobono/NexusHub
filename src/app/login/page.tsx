@@ -78,7 +78,7 @@ export default function LoginPage() {
               <div className="flex items-center justify-between">
                 <Label htmlFor="password">Password</Label>
                 <Button variant="link" size="sm" className="p-0 h-auto text-xs text-primary hover:text-accent" disabled={isLoading} asChild>
-                   <Link href="#"><span className="inline-flex items-center justify-center">Forgot password?</span></Link>
+                   <Link href="/forgot-password"><span className="inline-flex items-center justify-center">Forgot password?</span></Link>
                 </Button>
               </div>
               <Input
