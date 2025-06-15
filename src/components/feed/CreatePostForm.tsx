@@ -17,8 +17,8 @@ import {
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Calendar as CalendarIcon, UsersRound } from 'lucide-react';
-import React, { useState, useEffect } from 'react';
+import { Loader2, Calendar as CalendarIcon, UsersRound, Sparkles } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
 import {
@@ -37,6 +37,8 @@ import { useRouter } from 'next/navigation';
 import type { Community } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import dynamic from 'next/dynamic';
+import type Quill from 'quill';
+import { categorizeContent, CategorizeContentInput } from '@/ai/flows/smart-content-categorization';
 
 const DynamicQuillEditor = dynamic(() => import('@/components/editor/QuillEditor'), {
   ssr: false,
@@ -48,7 +50,7 @@ const NO_COMMUNITY_VALUE = "__NONE__";
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."),
+  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."), // Increased max length for HTML
   category: z.string().optional(),
   tags: z.string().optional(),
   isDraft: z.boolean().default(false),
@@ -72,6 +74,11 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
   const router = useRouter();
   const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
   const [loadingCommunities, setLoadingCommunities] = useState(false);
+  const editorRef = useRef<Quill | null>(null);
+
+  const [isSuggestingCategories, setIsSuggestingCategories] = useState(false);
+  const [suggestionError, setSuggestionError] = useState<string | null>(null);
+
 
   const form = useForm<PostFormValues>({
     resolver: zodResolver(postFormSchema),
@@ -125,6 +132,34 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
   }, [authLoading, isAuthenticated, user, router]);
 
 
+  const handleSuggestCategories = async () => {
+    const contentValue = form.getValues('content');
+    if (!contentValue || contentValue.trim() === "<p><br></p>" || contentValue.trim().length < 20) { // Basic check for empty or very short content
+      toast.error("Please write some content before suggesting categories.");
+      return;
+    }
+
+    setIsSuggestingCategories(true);
+    setSuggestionError(null);
+    try {
+      const result = await categorizeContent({ content: contentValue });
+      if (result.category) {
+        form.setValue('category', result.category, { shouldValidate: true });
+      }
+      if (result.tags && result.tags.length > 0) {
+        form.setValue('tags', result.tags.join(', '), { shouldValidate: true });
+      }
+      toast.success("AI suggestions applied!");
+    } catch (error) {
+      console.error("AI suggestion error:", error);
+      const errorMessage = error instanceof Error ? error.message : "Could not get AI suggestions.";
+      setSuggestionError(errorMessage);
+      toast.error(errorMessage);
+    } finally {
+      setIsSuggestingCategories(false);
+    }
+  };
+
   async function onSubmit(data: PostFormValues) {
     if (!user || !user.id) {
       toast.error('Authentication error or user ID is missing. Please log in again.');
@@ -162,6 +197,9 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
       } else {
         toast.success(`Your post "${result.post?.title || 'Untitled'}" has been successfully created.`);
         form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined });
+        if (editorRef.current) {
+          editorRef.current.setContents([{ insert: '\n' }]); // Clear Quill editor
+        }
         setShowSchedule(false);
         if (finalData.communityId) {
           router.push(`/communities/${finalData.communityId}`);
@@ -253,42 +291,49 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 />
             )}
 
-            <FormField
-              control={form.control}
-              name="category"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Category</FormLabel>
-                  <Select onValueChange={field.onChange} value={field.value || ''}>
+            <div className="space-y-4">
+                <FormField
+                control={form.control}
+                name="category"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Category</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value || ''}>
+                        <FormControl>
+                        <SelectTrigger>
+                            <SelectValue placeholder="Select a category" />
+                        </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                        {CATEGORIES.map(cat => (
+                            <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                        ))}
+                        </SelectContent>
+                    </Select>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+                <FormField
+                control={form.control}
+                name="tags"
+                render={({ field }) => (
+                    <FormItem>
+                    <FormLabel>Tags (Optional)</FormLabel>
                     <FormControl>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Select a category" />
-                      </SelectTrigger>
+                        <Input placeholder="e.g., tech, community, discussion" {...field} />
                     </FormControl>
-                    <SelectContent>
-                      {CATEGORIES.map(cat => (
-                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-            <FormField
-              control={form.control}
-              name="tags"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Tags (Optional)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="e.g., tech, community, discussion" {...field} />
-                  </FormControl>
-                  <FormDescription>Comma-separated list of tags.</FormDescription>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+                    <FormDescription>Comma-separated list of tags.</FormDescription>
+                    <FormMessage />
+                    </FormItem>
+                )}
+                />
+                <Button type="button" variant="outline" onClick={handleSuggestCategories} disabled={isSuggestingCategories} className="w-full sm:w-auto">
+                    {isSuggestingCategories ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                    {isSuggestingCategories ? 'Getting Suggestions...' : 'AI Suggest Category & Tags'}
+                </Button>
+                {suggestionError && <p className="text-sm text-destructive">{suggestionError}</p>}
+            </div>
             
             <FormField
               control={form.control}
@@ -404,7 +449,13 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
 
 
             <div className="flex justify-end space-x-2 pt-4">
-               <Button type="button" variant="outline" onClick={() => {form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined }); setShowSchedule(false);}} disabled={isSubmitting}>
+               <Button type="button" variant="outline" onClick={() => {
+                  form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined });
+                  if (editorRef.current) {
+                    editorRef.current.setContents([{ insert: '\n' }]); // Clear Quill editor
+                  }
+                  setShowSchedule(false);
+                }} disabled={isSubmitting}>
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting || authLoading} className="btn-gradient min-w-[120px]">
