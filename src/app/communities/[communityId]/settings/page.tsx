@@ -429,18 +429,22 @@ export default function CommunitySettingsPage() {
                     />
                     {communityMembers.length > 0 && (
                         <div className="mt-2">
-                            <p className="text-xs text-muted-foreground">
+                            <p className="text-xs text-muted-foreground mb-1">
                                 For reference, some member IDs:
-                                <ul className="list-disc list-inside max-h-20 overflow-y-auto text-xs">
-                                {communityMembers.slice(0,5).map(member => {
-                                    if (member.id !== user?.id) { // Don't list current owner
-                                        return (<li key={member.id}><code>{member.name}: {member.id}</code></li>);
-                                    }
-                                    return null;
-                                })}
-                                {communityMembers.length > 5 && <li>...and more</li>}
-                                </ul>
                             </p>
+                             <p className="text-xs text-muted-foreground">
+                                The new owner must be a current member of this community.
+                                You can find a user's ID on their profile page URL (e.g., /profile/USER_ID).
+                            </p>
+                            <ul className="list-disc list-inside max-h-20 overflow-y-auto text-xs text-muted-foreground">
+                            {communityMembers.slice(0,5).map(member => {
+                                if (member.id !== user?.id) { // Don't list current owner
+                                    return (<li key={member.id}><code>{member.name}: {member.id}</code></li>);
+                                }
+                                return null;
+                            })}
+                            {communityMembers.length > 5 && <li className="text-muted-foreground">...and {communityMembers.length - (communityMembers.filter(m => m.id === user?.id).length > 0 ? 6 : 5) > 0 ? communityMembers.length - (communityMembers.filter(m => m.id === user?.id).length > 0 ? 6 : 5) : 'more'} more</li>}
+                            </ul>
                         </div>
                     )}
                      <AlertDialog>
@@ -520,3 +524,4 @@ export default function CommunitySettingsPage() {
     </div>
   );
 }
+
