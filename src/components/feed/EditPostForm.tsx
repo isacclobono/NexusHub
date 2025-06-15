@@ -15,7 +15,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Changed from MDXEditor
+import { Textarea } from '@/components/ui/textarea'; // Changed from MDXEditor to Textarea
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Loader2, Sparkles, Lightbulb, UsersRound, Edit } from 'lucide-react';
 import React, { useState, useCallback, useEffect } from 'react';
@@ -41,7 +41,7 @@ const NO_CATEGORY_SELECTED_VALUE = "__NONE__";
 
 const postEditSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."),
+  content: z.string().min(1, 'Content is required.').max(5000, "Content can't exceed 5000 characters."), // Reduced max length
   category: z.string().optional().nullable(),
   tags: z.string().optional().nullable(),
   communityId: z.string().optional().nullable(),
@@ -233,9 +233,9 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                   <FormLabel>Content</FormLabel>
                   <FormControl>
                     <Textarea
-                        placeholder="Share your thoughts..."
-                        className="min-h-[200px]"
-                        {...field}
+                      placeholder="Share your thoughts..."
+                      className="min-h-[200px]"
+                      {...field}
                     />
                   </FormControl>
                    <FormDescription>

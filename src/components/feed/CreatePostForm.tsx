@@ -15,7 +15,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Changed from MDXEditor
+import { Textarea } from '@/components/ui/textarea'; // Changed from MDXEditor to Textarea
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
 import { Loader2, Sparkles, Lightbulb, Calendar as CalendarIcon, UsersRound } from 'lucide-react';
@@ -44,7 +44,7 @@ const NO_COMMUNITY_VALUE = "__NONE__";
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
-  content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."), // Max length kept high
+  content: z.string().min(1, 'Content is required.').max(5000, "Content can't exceed 5000 characters."), // Reduced max length for Textarea
   category: z.string().optional(),
   tags: z.string().optional(),
   isDraft: z.boolean().default(false),
@@ -70,7 +70,6 @@ const GenAICallout = ({ icon: Icon, title, children }: { icon: React.ElementType
     </div>
   </div>
 );
-
 
 export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -268,7 +267,6 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 </FormItem>
               )}
             />
-
 
             {memberCommunities.length > 0 && (
                 <FormField
