@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { User as UserIcon, Bell, Palette, Lock, Loader2, AlertTriangle, Eye, EyeOff } from 'lucide-react';
+import { User as UserIcon, Bell, Palette, Lock, Loader2, AlertTriangle, Eye, EyeOff, Tag, ListChecks } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/hooks/use-auth-provider";
@@ -18,6 +18,8 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import * as z from "zod";
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Checkbox } from "@/components/ui/checkbox";
+import { CATEGORIES } from '@/lib/constants';
 
 
 const profileFormSchema = z.object({
@@ -30,6 +32,8 @@ const profileFormSchema = z.object({
     mentionNotifications: z.boolean().optional(),
   }).optional(),
   privacy: z.enum(['public', 'private']).default('public').optional(),
+  subscribedTags: z.string().optional(), // Comma-separated string
+  subscribedCategories: z.array(z.string()).optional().default([]),
 });
 type ProfileFormValues = z.infer<typeof profileFormSchema>;
 
@@ -62,6 +66,8 @@ export default function SettingsPage() {
         mentionNotifications: false,
       },
       privacy: 'public',
+      subscribedTags: '',
+      subscribedCategories: [],
     }
   });
 
@@ -89,6 +95,8 @@ export default function SettingsPage() {
                 mentionNotifications: user.notificationPreferences?.mentionNotifications ?? false,
             },
             privacy: user.privacy || 'public',
+            subscribedTags: user.subscribedTags?.join(', ') || '',
+            subscribedCategories: user.subscribedCategories || [],
         });
     }
   }, [authLoading, isAuthenticated, router, user, profileForm]);
@@ -101,6 +109,10 @@ export default function SettingsPage() {
     }
     setIsSubmittingSettings(true);
     try {
+      const parsedTags = data.subscribedTags
+        ? data.subscribedTags.split(',').map(tag => tag.trim()).filter(tag => tag)
+        : [];
+
       const payload = {
         name: data.name,
         bio: data.bio,
@@ -111,6 +123,8 @@ export default function SettingsPage() {
             mentionNotifications: data.notificationPreferences?.mentionNotifications ?? false,
         },
         privacy: data.privacy || 'public',
+        subscribedTags: parsedTags,
+        subscribedCategories: data.subscribedCategories || [],
       };
 
       const response = await fetch(`/api/users/${user.id}`, {
@@ -123,20 +137,8 @@ export default function SettingsPage() {
         throw new Error(result.message || "Failed to update settings.");
       }
       toast.success("Settings updated successfully!");
-      await refreshUser();
-      if (result.user) {
-         profileForm.reset({
-            name: result.user.name || '',
-            bio: result.user.bio || '',
-            avatarUrl: result.user.avatarUrl || '',
-            notificationPreferences: {
-                emailNewPosts: result.user.notificationPreferences?.emailNewPosts ?? true,
-                eventReminders: result.user.notificationPreferences?.eventReminders ?? true,
-                mentionNotifications: result.user.notificationPreferences?.mentionNotifications ?? false,
-            },
-            privacy: result.user.privacy || 'public',
-        });
-      }
+      await refreshUser(); // refreshUser will fetch latest user data including subscriptions
+      // Form reset will be handled by useEffect that watches `user`
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "An unknown error occurred.");
     } finally {
@@ -358,9 +360,84 @@ export default function SettingsPage() {
                     </CardContent>
                 </Card>
 
+                 <Card className="shadow-md">
+                    <CardHeader>
+                        <CardTitle className="flex items-center font-headline"><Tag className="mr-2 h-5 w-5 text-accent" /> Content Subscriptions</CardTitle>
+                        <CardDescription>Get notified about new posts with tags or categories you follow.</CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-6">
+                        <FormField
+                            control={profileForm.control}
+                            name="subscribedTags"
+                            render={({ field }) => (
+                                <FormItem>
+                                <FormLabel htmlFor="subscribedTags">Subscribed Tags</FormLabel>
+                                <FormControl>
+                                    <Input id="subscribedTags" placeholder="e.g., react, nextjs, ai" {...field} />
+                                </FormControl>
+                                <FormDescription>Enter tags you want to follow, separated by commas.</FormDescription>
+                                <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                        <FormField
+                          control={profileForm.control}
+                          name="subscribedCategories"
+                          render={() => (
+                            <FormItem>
+                              <div className="mb-4">
+                                <FormLabel className="text-base flex items-center"><ListChecks className="mr-2 h-5 w-5 text-accent" /> Subscribed Categories</FormLabel>
+                                <FormDescription>
+                                  Select categories to receive notifications for new posts.
+                                </FormDescription>
+                              </div>
+                              <div className="grid grid-cols-2 md:grid-cols-3 gap-x-4 gap-y-2">
+                                {CATEGORIES.map((category) => (
+                                  <FormField
+                                    key={category}
+                                    control={profileForm.control}
+                                    name="subscribedCategories"
+                                    render={({ field }) => {
+                                      return (
+                                        <FormItem
+                                          key={category}
+                                          className="flex flex-row items-center space-x-2 space-y-0"
+                                        >
+                                          <FormControl>
+                                            <Checkbox
+                                              id={`category-${category}`}
+                                              checked={field.value?.includes(category)}
+                                              onCheckedChange={(checked) => {
+                                                return checked
+                                                  ? field.onChange([...(field.value || []), category])
+                                                  : field.onChange(
+                                                      (field.value || []).filter(
+                                                        (value) => value !== category
+                                                      )
+                                                    )
+                                              }}
+                                            />
+                                          </FormControl>
+                                          <FormLabel className="font-normal cursor-pointer" htmlFor={`category-${category}`}>
+                                            {category}
+                                          </FormLabel>
+                                        </FormItem>
+                                      )
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                              <FormMessage />
+                            </FormItem>
+                          )}
+                        />
+                    </CardContent>
+                </Card>
+
+
                 <Button type="submit" disabled={isSubmittingSettings} className="mt-6 w-full md:w-auto btn-gradient">
                   {isSubmittingSettings ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  Save Profile & Notification Settings
+                  Save All Settings
                 </Button>
             </form>
         </Form>
@@ -447,3 +524,4 @@ export default function SettingsPage() {
     </div>
   );
 }
+

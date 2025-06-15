@@ -19,6 +19,8 @@ interface UserWithSensitiveFields extends Omit<User, 'id' | 'bookmarkedPostIds'>
   updatedAt?: string;
   resetPasswordToken?: string; // Added for completeness of DB model
   resetPasswordExpires?: Date; // Added for completeness of DB model
+  subscribedTags?: string[];
+  subscribedCategories?: string[];
 }
 
 interface UserParams {
@@ -36,6 +38,8 @@ const profileUpdateSchema = z.object({
     mentionNotifications: z.boolean().optional(),
   }).optional(),
   privacy: z.enum(['public', 'private']).optional(),
+  subscribedTags: z.array(z.string()).optional(),
+  subscribedCategories: z.array(z.string()).optional(),
 });
 
 
@@ -85,6 +89,8 @@ export async function GET(request: NextRequest, { params }: UserParams) {
       bookmarkedPostIds: Array.isArray(userDoc.bookmarkedPostIds) ? userDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
       notificationPreferences: userDoc.notificationPreferences || { emailNewPosts: true, eventReminders: true, mentionNotifications: false }, 
       privacy: userDoc.privacy || 'public',
+      subscribedTags: userDoc.subscribedTags || [],
+      subscribedCategories: userDoc.subscribedCategories || [],
     };
 
     return NextResponse.json(userForClient, { status: 200 });
@@ -117,7 +123,7 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     const usersCollection = db.collection<UserWithSensitiveFields>('users');
     const userObjectId = new ObjectId(pathUserId);
 
-    const existingUser = await usersCollection.findOne({ _id: userObjectId }, { projection: { name: 1, avatarUrl: 1, notificationPreferences: 1, privacy: 1 } }); 
+    const existingUser = await usersCollection.findOne({ _id: userObjectId }, { projection: { name: 1, avatarUrl: 1, notificationPreferences: 1, privacy: 1, subscribedTags: 1, subscribedCategories: 1 } }); 
     if (!existingUser) {
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
     }
@@ -125,13 +131,19 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     const updatePayloadSet: Partial<Omit<UserWithSensitiveFields, '_id' | 'passwordHash' | 'resetPasswordToken' | 'resetPasswordExpires'>> & { updatedAt: string } = {
         updatedAt: new Date().toISOString()
     };
+     const updatePayloadUnset: Partial<Record<keyof Pick<UserWithSensitiveFields, 'subscribedTags' | 'subscribedCategories' | 'bio' | 'avatarUrl'>, string>> = {};
+
 
     if (validatedData.name !== undefined) {
       updatePayloadSet.name = validatedData.name;
     }
     
     if (validatedData.bio !== undefined) { 
-      updatePayloadSet.bio = validatedData.bio === null ? '' : validatedData.bio; 
+        if (validatedData.bio === null || validatedData.bio === '') {
+            updatePayloadUnset.bio = "";
+        } else {
+            updatePayloadSet.bio = validatedData.bio;
+        }
     }
 
     if (validatedData.avatarUrl !== undefined) { 
@@ -154,10 +166,22 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     if (validatedData.privacy !== undefined) {
       updatePayloadSet.privacy = validatedData.privacy;
     }
+    
+    if (validatedData.subscribedTags !== undefined) {
+      updatePayloadSet.subscribedTags = validatedData.subscribedTags;
+    }
+    if (validatedData.subscribedCategories !== undefined) {
+      updatePayloadSet.subscribedCategories = validatedData.subscribedCategories;
+    }
+    
+    const updateOperation: { $set: any, $unset?: any } = { $set: updatePayloadSet };
+    if (Object.keys(updatePayloadUnset).length > 0) {
+        updateOperation.$unset = updatePayloadUnset;
+    }
         
     const updateResult = await usersCollection.updateOne(
       { _id: userObjectId },
-      { $set: updatePayloadSet }
+      updateOperation
     );
 
     if (updateResult.matchedCount === 0) {
@@ -189,6 +213,8 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
         bookmarkedPostIds: Array.isArray(updatedUserDoc.bookmarkedPostIds) ? updatedUserDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
         notificationPreferences: updatedUserDoc.notificationPreferences || { emailNewPosts: true, eventReminders: true, mentionNotifications: false },
         privacy: updatedUserDoc.privacy || 'public',
+        subscribedTags: updatedUserDoc.subscribedTags || [],
+        subscribedCategories: updatedUserDoc.subscribedCategories || [],
     };
 
     return NextResponse.json({ message: 'Profile updated successfully!', user: updatedUserForClient }, { status: 200 });
@@ -202,3 +228,4 @@ export async function PUT(request: NextRequest, { params }: UserParams) {
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
+
