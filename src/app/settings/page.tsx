@@ -53,6 +53,28 @@ export default function SettingsPage() {
   const router = useRouter();
   const [isSubmittingSettings, setIsSubmittingSettings] = useState(false);
   const [isSubmittingPassword, setIsSubmittingPassword] = useState(false);
+  const [currentTheme, setCurrentTheme] = useState<'light' | 'dark'>('light');
+
+  useEffect(() => {
+    // Set initial theme based on localStorage or system preference
+    const storedTheme = localStorage.getItem('theme');
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (storedTheme === 'dark' || (!storedTheme && systemPrefersDark)) {
+      setCurrentTheme('dark');
+      document.documentElement.classList.add('dark');
+    } else {
+      setCurrentTheme('light');
+      document.documentElement.classList.remove('dark');
+    }
+  }, []);
+
+  const handleThemeChange = (isDark: boolean) => {
+    const newTheme = isDark ? 'dark' : 'light';
+    setCurrentTheme(newTheme);
+    document.documentElement.classList.toggle('dark', isDark);
+    localStorage.setItem('theme', newTheme);
+    toast.success(`Theme changed to ${newTheme} mode.`);
+  };
 
   const profileForm = useForm<ProfileFormValues>({
     resolver: zodResolver(profileFormSchema),
@@ -137,8 +159,7 @@ export default function SettingsPage() {
         throw new Error(result.message || "Failed to update settings.");
       }
       toast.success("Settings updated successfully!");
-      await refreshUser(); // refreshUser will fetch latest user data including subscriptions
-      // Form reset will be handled by useEffect that watches `user`
+      await refreshUser(); 
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "An unknown error occurred.");
     } finally {
@@ -443,11 +464,11 @@ export default function SettingsPage() {
         </Form>
 
         <Accordion type="single" collapsible className="w-full mt-8">
-          <AccordionItem value="item-1">
-            <AccordionTrigger className="text-lg font-semibold flex items-center hover:no-underline p-4 bg-card rounded-t-lg border shadow-sm data-[state=open]:rounded-b-none data-[state=open]:border-b-0">
+          <AccordionItem value="item-1" className="border rounded-lg shadow-md overflow-hidden">
+            <AccordionTrigger className="text-lg font-semibold flex items-center hover:no-underline p-4 bg-card data-[state=open]:rounded-b-none data-[state=open]:border-b">
               <Lock className="mr-2 h-5 w-5 text-accent" /> Account & Security
             </AccordionTrigger>
-            <AccordionContent className="p-6 bg-card rounded-b-lg border border-t-0 shadow-sm">
+            <AccordionContent className="p-6 bg-card rounded-b-lg border-t-0">
               <Form {...passwordForm}>
                 <form onSubmit={passwordForm.handleSubmit(handleChangePasswordSubmit)} className="space-y-6">
                   <FormField
@@ -504,20 +525,20 @@ export default function SettingsPage() {
               </div>
             </AccordionContent>
           </AccordionItem>
-          <AccordionItem value="item-2" className="mt-4">
-             <AccordionTrigger className="text-lg font-semibold flex items-center hover:no-underline p-4 bg-card rounded-t-lg border shadow-sm data-[state=open]:rounded-b-none data-[state=open]:border-b-0">
+          <AccordionItem value="item-2" className="mt-4 border rounded-lg shadow-md overflow-hidden">
+             <AccordionTrigger className="text-lg font-semibold flex items-center hover:no-underline p-4 bg-card data-[state=open]:rounded-b-none data-[state=open]:border-b">
               <Palette className="mr-2 h-5 w-5 text-accent" /> Appearance
             </AccordionTrigger>
-            <AccordionContent className="p-4 bg-card rounded-b-lg border border-t-0 shadow-sm">
+            <AccordionContent className="p-6 bg-card rounded-b-lg border-t-0">
               <div className="flex items-center justify-between">
-                <Label htmlFor="darkMode" className="flex-grow">Dark Mode</Label>
-                <Switch id="darkMode" onCheckedChange={(checked) => {
-                    document.documentElement.classList.toggle('dark', checked);
-                    localStorage.setItem('theme', checked ? 'dark' : 'light');
-                    toast.success(`Dark mode ${checked ? 'enabled' : 'disabled'}.`);
-                }} defaultChecked={typeof window !== 'undefined' && (localStorage.getItem('theme') === 'dark' || (!('theme' in localStorage) && window.matchMedia('(prefers-color-scheme: dark)').matches))} />
+                <Label htmlFor="darkMode" className="flex-grow text-base">Dark Mode</Label>
+                <Switch
+                  id="darkMode"
+                  checked={currentTheme === 'dark'}
+                  onCheckedChange={handleThemeChange}
+                />
               </div>
-              <p className="text-xs text-muted-foreground mt-2">Toggle dark or light theme.</p>
+              <p className="text-sm text-muted-foreground mt-2">Toggle dark or light theme for the application.</p>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
