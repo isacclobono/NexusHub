@@ -46,7 +46,16 @@ const eventUpdateSchema = z.object({
     if (data.startTime && data.endTime) {
         return new Date(data.endTime) > new Date(data.startTime);
     }
-    return true; // Pass if one or both are undefined (not being updated or validated against each other)
+    // If only one is provided, or neither, this specific validation passes
+    if (data.startTime && !data.endTime) { // Needs existing endTime or new one
+        // This case is tricky without existingEvent here.
+        // The API will compare with existingEvent if one is missing.
+        return true;
+    }
+    if (!data.startTime && data.endTime) { // Needs existing startTime or new one
+        return true;
+    }
+    return true;
 }, {
   message: "End date and time must be after start date and time if both are provided.",
   path: ["endTime"],
@@ -144,78 +153,155 @@ export async function PUT(request: NextRequest, { params }: EventParams) {
       return NextResponse.json({ message: 'Unauthorized: Only the event organizer can update this event.' }, { status: 403 });
     }
 
-    const updatePayload: Partial<DbEvent> & { updatedAt: string } = {
-        updatedAt: new Date().toISOString()
-    };
+    const updatePayloadSet: Partial<DbEvent> = {};
+    const updatePayloadUnset: Partial<Record<string, string>> = {};
+    let hasMeaningfulChange = false;
 
-
-    if (updateData.title !== undefined) updatePayload.title = updateData.title;
-    if (updateData.description !== undefined) updatePayload.description = updateData.description;
-    if (updateData.startTime !== undefined) updatePayload.startTime = new Date(updateData.startTime).toISOString();
-    if (updateData.endTime !== undefined) updatePayload.endTime = new Date(updateData.endTime).toISOString();
-
-    updatePayload.location = updateData.location === null ? undefined : updateData.location;
-    updatePayload.category = updateData.category === null ? undefined : updateData.category;
-
+    // Title
+    if (updateData.title !== undefined && updateData.title !== existingEvent.title) {
+        updatePayloadSet.title = updateData.title;
+        hasMeaningfulChange = true;
+    }
+    // Description
+    if (updateData.description !== undefined && updateData.description !== existingEvent.description) {
+        updatePayloadSet.description = updateData.description;
+        hasMeaningfulChange = true;
+    }
+    // StartTime
+    if (updateData.startTime !== undefined) {
+        const newStartTimeISO = new Date(updateData.startTime).toISOString();
+        if (newStartTimeISO !== existingEvent.startTime) {
+            updatePayloadSet.startTime = newStartTimeISO;
+            hasMeaningfulChange = true;
+        }
+    }
+    // EndTime
+    if (updateData.endTime !== undefined) {
+        const newEndTimeISO = new Date(updateData.endTime).toISOString();
+        if (newEndTimeISO !== existingEvent.endTime) {
+            updatePayloadSet.endTime = newEndTimeISO;
+            hasMeaningfulChange = true;
+        }
+    }
+    // Location
+    if (updateData.location !== undefined) {
+        if (updateData.location === null && existingEvent.location) {
+            updatePayloadUnset.location = ""; hasMeaningfulChange = true;
+        } else if (updateData.location !== existingEvent.location) {
+            updatePayloadSet.location = updateData.location; hasMeaningfulChange = true;
+        }
+    }
+    // Category
+    if (updateData.category !== undefined) {
+        if (updateData.category === null && existingEvent.category) {
+            updatePayloadUnset.category = ""; hasMeaningfulChange = true;
+        } else if (updateData.category !== existingEvent.category) {
+            updatePayloadSet.category = updateData.category; hasMeaningfulChange = true;
+        }
+    }
+    // Tags
     if (updateData.tags !== undefined) {
-      updatePayload.tags = updateData.tags === null ? [] : updateData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
+        const newTagsArray = updateData.tags === null ? [] : updateData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
+        const existingTagsArray = existingEvent.tags || [];
+        if (JSON.stringify(newTagsArray) !== JSON.stringify(existingTagsArray)) {
+            if (newTagsArray.length === 0 && existingTagsArray.length > 0) {
+                 updatePayloadUnset.tags = "";
+            } else {
+                updatePayloadSet.tags = newTagsArray;
+            }
+            hasMeaningfulChange = true;
+        }
     }
-
-    updatePayload.maxAttendees = updateData.maxAttendees === null ? undefined : updateData.maxAttendees;
-
+    // MaxAttendees
+    if (updateData.maxAttendees !== undefined) {
+        if (updateData.maxAttendees === null && existingEvent.maxAttendees !== undefined) { // Check if existing had a value
+            updatePayloadUnset.maxAttendees = ""; hasMeaningfulChange = true;
+        } else if (updateData.maxAttendees !== existingEvent.maxAttendees) {
+            updatePayloadSet.maxAttendees = updateData.maxAttendees; hasMeaningfulChange = true;
+        }
+    }
+    // ImageUrl
     if (updateData.imageUrl !== undefined) {
-      if (updateData.imageUrl === '' || updateData.imageUrl === null) {
-        updatePayload.imageUrl = `https://placehold.co/1200x400.png?text=${encodeURIComponent(updateData.title || existingEvent.title)}`;
-      } else {
-        updatePayload.imageUrl = updateData.imageUrl;
-      }
+        let newImageUrlToSet: string | undefined;
+        if (updateData.imageUrl === '' || updateData.imageUrl === null) {
+            newImageUrlToSet = `https://placehold.co/1200x400.png?text=${encodeURIComponent(updateData.title || existingEvent.title)}`;
+        } else {
+            newImageUrlToSet = updateData.imageUrl;
+        }
+        if (newImageUrlToSet !== existingEvent.imageUrl) {
+            updatePayloadSet.imageUrl = newImageUrlToSet;
+            hasMeaningfulChange = true;
+        }
     }
-
+    // CommunityId
     if (updateData.communityId !== undefined) {
-        updatePayload.communityId = updateData.communityId === null || updateData.communityId === "__NONE__" ? undefined : new ObjectId(updateData.communityId);
+        const newCommunityId = updateData.communityId === null || updateData.communityId === "__NONE__" ? undefined : new ObjectId(updateData.communityId);
+        if (newCommunityId?.toString() !== existingEvent.communityId?.toString()) {
+            if (newCommunityId) {
+                updatePayloadSet.communityId = newCommunityId;
+            } else { // Explicitly removing community association
+                updatePayloadUnset.communityId = "";
+            }
+            hasMeaningfulChange = true;
+        }
     }
-
+    // Price
     if (updateData.price !== undefined) {
-        updatePayload.price = updateData.price === null ? undefined : updateData.price;
-    }
-    if (updateData.currency !== undefined) {
-        // Only set currency if there's a price greater than 0
-        updatePayload.currency = (updatePayload.price !== undefined && updatePayload.price > 0) ? (updateData.currency === null ? undefined : (updateData.currency || 'USD')) : undefined;
-    } else if (updatePayload.price !== undefined && updatePayload.price <= 0) {
-        // If price is being set to 0 or less, ensure currency is cleared
-        updatePayload.currency = undefined;
+        const newPrice = updateData.price === null ? undefined : Number(updateData.price);
+        if (newPrice !== existingEvent.price) {
+            if (newPrice === undefined) updatePayloadUnset.price = "";
+            else updatePayloadSet.price = newPrice;
+            hasMeaningfulChange = true;
+        }
+        // Currency handling based on new price
+        if (newPrice !== undefined && newPrice > 0) {
+            const newCurrency = updateData.currency === null ? undefined : (updateData.currency || 'USD');
+            if (newCurrency !== existingEvent.currency || (newPrice !== existingEvent.price && !existingEvent.currency)) { // Also update currency if price changed from 0/null and no currency was set
+                if(newCurrency) updatePayloadSet.currency = newCurrency;
+                else if(existingEvent.currency) updatePayloadUnset.currency = "";
+                hasMeaningfulChange = true;
+            }
+        } else { // Price is 0 or undefined
+            if (existingEvent.currency) {
+                updatePayloadUnset.currency = "";
+                hasMeaningfulChange = true;
+            }
+        }
+    } else if (updateData.currency !== undefined && existingEvent.price && existingEvent.price > 0) {
+        // Price not explicitly changed, but currency might have, and price is > 0
+        const newCurrency = updateData.currency === null ? undefined : (updateData.currency || 'USD');
+        if (newCurrency !== existingEvent.currency) {
+             if(newCurrency) updatePayloadSet.currency = newCurrency;
+             else if(existingEvent.currency) updatePayloadUnset.currency = "";
+            hasMeaningfulChange = true;
+        }
     }
 
-
-    const updateKeys = Object.keys(updatePayload);
-    if (updateKeys.length === 1 && updateKeys[0] === 'updatedAt' &&
-        updateData.title === undefined &&
-        updateData.description === undefined &&
-        updateData.startTime === undefined &&
-        updateData.endTime === undefined &&
-        updateData.location === undefined &&
-        updateData.category === undefined &&
-        updateData.tags === undefined &&
-        updateData.maxAttendees === undefined &&
-        updateData.imageUrl === undefined &&
-        updateData.communityId === undefined &&
-        updateData.price === undefined &&
-        updateData.currency === undefined
-    ) {
-        // No actual fields to update, so we can just re-fetch the event and return it.
-        const currentEventResponse = await GET(request, { params });
-        return currentEventResponse;
+    if (!hasMeaningfulChange) {
+        console.log(`[API Event PUT ${eventId}] No meaningful changes detected. Returning current event.`);
+        const getRequest = new NextRequest(request.url);
+        return await GET(getRequest, { params });
     }
 
+    updatePayloadSet.updatedAt = new Date().toISOString();
+
+    const finalUpdateOperation: any = {};
+    if (Object.keys(updatePayloadSet).length > 0) {
+        finalUpdateOperation.$set = updatePayloadSet;
+    }
+    if (Object.keys(updatePayloadUnset).length > 0) {
+        finalUpdateOperation.$unset = updatePayloadUnset;
+    }
 
     const result = await eventsCollection.findOneAndUpdate(
       { _id: eventObjectId },
-      { $set: updatePayload },
+      finalUpdateOperation,
       { returnDocument: 'after' }
     );
 
     if (!result.value) {
-      return NextResponse.json({ message: 'Event update failed.' }, { status: 500 });
+      console.error(`[API Event PUT ${eventId}] Event update failed. MongoDB did not return an updated document. Operation:`, JSON.stringify(finalUpdateOperation), "Existing Event:", JSON.stringify(existingEvent));
+      return NextResponse.json({ message: 'Event update failed. The document may not have been found or effectively modified.' }, { status: 500 });
     }
 
     // To return the fully populated event, re-use the GET logic
