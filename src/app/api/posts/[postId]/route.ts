@@ -42,7 +42,7 @@ const postUpdateSchema = z.object({
   scheduledAt: z.string().datetime({ offset: true }).optional().nullable(),
   media: z.array(z.object({
     type: z.enum(['image', 'video', 'document']),
-    url: z.string().url(),
+    url: z.string().min(1, { message: "Media URL cannot be empty." }), // Changed from .url()
     name: z.string().optional(),
   })).optional().nullable(),
 });
@@ -71,7 +71,7 @@ export async function GET(request: NextRequest, { params }: PostParams) {
     if (!postDoc) {
       return NextResponse.json({ message: 'Post not found.' }, { status: 404 });
     }
-    
+
     const postAuthorForPrivacyCheck = await usersCollection.findOne({ _id: new ObjectId(postDoc.authorId) }, { projection: { privacy: 1 } });
     if (postAuthorForPrivacyCheck?.privacy === 'private' && !postDoc.communityId) {
         if (!forUserId || new ObjectId(forUserId).toString() !== postDoc.authorId.toString()) {
@@ -81,8 +81,8 @@ export async function GET(request: NextRequest, { params }: PostParams) {
 
 
     const authorDoc = await usersCollection.findOne({ _id: new ObjectId(postDoc.authorId) }, { projection: { passwordHash: 0 } });
-    const authorForClient: User | undefined = authorDoc ? { 
-        ...authorDoc, 
+    const authorForClient: User | undefined = authorDoc ? {
+        ...authorDoc,
         id: authorDoc._id.toHexString(),
         bookmarkedPostIds: Array.isArray(authorDoc.bookmarkedPostIds) ? authorDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
      } : undefined;
@@ -92,7 +92,7 @@ export async function GET(request: NextRequest, { params }: PostParams) {
         commentDocs.map(async (commentDoc) => {
             const commentAuthorDoc = await usersCollection.findOne({_id: new ObjectId(commentDoc.authorId)}, {projection: {passwordHash: 0}});
             const commentAuthorForClient: User | undefined = commentAuthorDoc ? {
-                 ...commentAuthorDoc, 
+                 ...commentAuthorDoc,
                  id: commentAuthorDoc._id.toHexString(),
                  bookmarkedPostIds: Array.isArray(commentAuthorDoc.bookmarkedPostIds) ? commentAuthorDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
             } : undefined;
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest, { params }: PostParams) {
 
     const isLikedByCurrentUser = currentUser && currentUser._id ? postLikedBy.some(id => id.equals(currentUser!._id!)) : false;
     const isBookmarkedByCurrentUser = currentUser && postDoc._id ? userBookmarkedPostIds.some(id => id.equals(postDoc._id)) : false;
-    
+
     let communityName: string | undefined = undefined;
     if (postDoc.communityId) {
         const community = await communitiesCollection.findOne({ _id: postDoc.communityId });
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest, { params }: PostParams) {
       ...postDoc,
       id: postDoc._id.toHexString(),
       author: authorForClient || { _id: postDoc.authorId, id: postDoc.authorId.toHexString(), name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [] } as User,
-      likedBy: postLikedBy, 
+      likedBy: postLikedBy,
       likeCount: postDoc.likeCount || 0,
       isLikedByCurrentUser,
       commentIds: Array.isArray(postDoc.commentIds) ? postDoc.commentIds : [],
@@ -178,7 +178,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
       return NextResponse.json({ message: 'Unauthorized: Only the post author can update this post.' }, { status: 403 });
     }
 
-    const updatePayload: { $set: Partial<DbPost>, $unset?: Partial<Record<keyof DbPost | 'scheduledAt' | 'category' | 'tags' | 'media', string>> } = { $set: { updatedAt: new Date().toISOString() } };
+    const updatePayload: { $set: Partial<DbPost>, $unset?: Partial<Record<keyof DbPost | 'scheduledAt' | 'category' | 'tags' | 'media' | 'communityId', string>> } = { $set: { updatedAt: new Date().toISOString() } };
     if (!updatePayload.$unset) updatePayload.$unset = {};
 
     let needsModeration = false;
@@ -195,7 +195,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
       updatePayload.$set.content = updateData.content;
     }
 
-    if (needsModeration && updateData.status !== 'draft') { 
+    if (needsModeration && updateData.status !== 'draft') {
         const moderationInput: IntelligentContentModerationInput = { content: newContentForAI, sensitivityLevel: 'medium' };
         const moderationResult = await intelligentContentModeration(moderationInput);
         if (moderationResult.isFlagged) {
@@ -206,7 +206,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
           }, { status: 400 });
         }
     }
-    
+
     let finalCategory = existingPost.category;
     let finalTagsArray = existingPost.tags || [];
 
@@ -228,12 +228,12 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
             updatePayload.$set.tags = finalTagsArray;
         }
     }
-    
+
     if (newContentForAI && (needsModeration || updateData.category === null || (updateData.tags === null && (existingPost.tags && existingPost.tags.length > 0) ) || (!finalCategory && finalTagsArray.length === 0)) && updateData.status !== 'draft') {
         const categorizationInput: CategorizeContentInput = { content: newContentForAI };
         try {
             const categorizationResult = await categorizeContent(categorizationInput);
-            if (!finalCategory && categorizationResult.category && updatePayload.$set.category === undefined && updateData.category !== null) { 
+            if (!finalCategory && categorizationResult.category && updatePayload.$set.category === undefined && updateData.category !== null) {
                 updatePayload.$set.category = categorizationResult.category;
             }
             if (finalTagsArray.length === 0 && categorizationResult.tags && categorizationResult.tags.length > 0 && updatePayload.$set.tags === undefined && updateData.tags !== null) {
@@ -258,16 +258,16 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
       if (updateData.status === 'scheduled' && updateData.scheduledAt) {
         updatePayload.$set.scheduledAt = new Date(updateData.scheduledAt).toISOString();
       } else if (updateData.status !== 'scheduled') {
-        updatePayload.$unset.scheduledAt = ""; 
+        updatePayload.$unset.scheduledAt = "";
       }
     }
-    if (updateData.scheduledAt === null && existingPost.scheduledAt) { 
+    if (updateData.scheduledAt === null && existingPost.scheduledAt) {
         updatePayload.$unset.scheduledAt = "";
-        if (updatePayload.$set.status === 'scheduled') { 
+        if (updatePayload.$set.status === 'scheduled') {
             updatePayload.$set.status = 'draft';
         }
     }
-    
+
     if (updateData.media !== undefined) {
         if (updateData.media === null || updateData.media.length === 0) {
             updatePayload.$unset.media = "";
@@ -281,7 +281,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
         const populatedCurrentPost = await GET(new NextRequest(request.url, { headers: request.headers }), { params });
         return populatedCurrentPost;
     }
-    
+
     if (updatePayload.$unset && Object.keys(updatePayload.$unset).length === 0) {
         delete updatePayload.$unset;
     }
@@ -296,7 +296,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
     if (!result.value) {
       return NextResponse.json({ message: 'Post update failed.' }, { status: 500 });
     }
-    
+
     const newSearchParams = new URLSearchParams();
     newSearchParams.set('forUserId', userId);
     const getRequestUrl = new URL(request.url);
@@ -320,7 +320,7 @@ export async function DELETE(request: NextRequest, { params }: PostParams) {
   }
 
    const { searchParams } = new URL(request.url);
-   const currentUserId = searchParams.get('userId'); 
+   const currentUserId = searchParams.get('userId');
 
   if (!currentUserId || !ObjectId.isValid(currentUserId)) {
     return NextResponse.json({ message: 'User ID is required for authorization.' }, { status: 401 });
@@ -332,14 +332,14 @@ export async function DELETE(request: NextRequest, { params }: PostParams) {
     const postsCollection = db.collection<DbPost>('posts');
     const commentsCollection = db.collection<DbComment>('comments');
     const usersCollection = db.collection<User>('users');
-    
+
     const postObjectId = new ObjectId(postId);
 
     const postToDelete = await postsCollection.findOne({ _id: postObjectId });
     if (!postToDelete) {
       return NextResponse.json({ message: 'Post not found.' }, { status: 404 });
     }
-    if (postToDelete.authorId.toHexString() !== currentUserId) { 
+    if (postToDelete.authorId.toHexString() !== currentUserId) {
       return NextResponse.json({ message: 'Unauthorized to delete this post.' }, { status: 403 });
     }
 
@@ -349,7 +349,7 @@ export async function DELETE(request: NextRequest, { params }: PostParams) {
     if (deleteResult.deletedCount === 0) {
       return NextResponse.json({ message: 'Post not found or already deleted.' }, { status: 404 });
     }
-    
+
     await usersCollection.updateMany(
         { bookmarkedPostIds: postObjectId },
         { $pull: { bookmarkedPostIds: postObjectId } }
@@ -363,5 +363,4 @@ export async function DELETE(request: NextRequest, { params }: PostParams) {
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
-
     

@@ -13,13 +13,13 @@ const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
   content: z.string().min(1, 'Content is required.').max(50000, "Content can't exceed 50000 characters."),
   category: z.string().optional(),
-  tags: z.string().optional(), 
+  tags: z.string().optional(),
   isDraft: z.boolean().default(false),
   scheduledAt: z.string().datetime({ offset: true }).optional(),
   communityId: z.string().optional().refine(val => !val || ObjectId.isValid(val), { message: "Invalid Community ID format." }),
-  media: z.array(z.object({ 
+  media: z.array(z.object({
     type: z.enum(['image', 'video', 'document']),
-    url: z.string().url(),
+    url: z.string().min(1, { message: "Media URL cannot be empty." }), // Changed from .url()
     name: z.string().optional(),
   })).optional(),
 });
@@ -52,7 +52,7 @@ type DbUserWithSubscriptions = Omit<User, 'id'> & {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    
+
     const validation = postFormSchema.safeParse(body);
     if (!validation.success) {
       return NextResponse.json({ message: 'Invalid post data.', errors: validation.error.flatten().fieldErrors }, { status: 400 });
@@ -117,30 +117,30 @@ export async function POST(request: NextRequest) {
       tags: finalTagsArray,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      likedBy: [] as ObjectId[], 
+      likedBy: [] as ObjectId[],
       likeCount: 0,
-      commentIds: [] as ObjectId[], 
+      commentIds: [] as ObjectId[],
       commentCount: 0,
       status: data.isDraft ? 'draft' : (data.scheduledAt ? 'scheduled' : 'published'),
       scheduledAt: data.scheduledAt ? new Date(data.scheduledAt).toISOString() : undefined,
       ...(data.communityId && { communityId: new ObjectId(data.communityId) }),
     };
 
-    const postsCollection = db.collection<Omit<DbPost, '_id'>>('posts'); 
+    const postsCollection = db.collection<Omit<DbPost, '_id'>>('posts');
     const result = await postsCollection.insertOne(newPostDocument);
 
     if (!result.insertedId) {
         throw new Error('Failed to insert post into database.');
     }
-    
+
     const createdPostForClient: Post = {
         ...newPostDocument,
         _id: result.insertedId,
         id: result.insertedId.toHexString(),
-        authorId: newPostDocument.authorId, 
-        author: currentUser, 
-        comments: [], 
-        likedBy: [], 
+        authorId: newPostDocument.authorId,
+        author: currentUser,
+        comments: [],
+        likedBy: [],
         likeCount: 0,
         commentIds: [],
         commentCount: 0,
@@ -218,7 +218,7 @@ export async function POST(request: NextRequest) {
                 if (!notifiedUserIds.has(subscribedUser._id.toHexString())) {
                     // Find which of the user's subscribed tags matched the post's tags
                     const matchedTag = subscribedUser.subscribedTags?.find(subTag => createdPostForClient.tags!.includes(subTag));
-                    
+
                     notificationsToInsert.push({
                         userId: subscribedUser._id,
                         type: 'new_post_subscribed_tag',
@@ -258,16 +258,16 @@ export async function GET(request: NextRequest) {
     const usersCollection = db.collection<User>('users');
     const commentsCollection = db.collection<DbComment>('comments');
     const communitiesCollection = db.collection<DbCommunity>('communities');
-    
+
     const { searchParams } = new URL(request.url);
     const authorIdParam = searchParams.get('authorId');
     const bookmarkedByIdParam = searchParams.get('bookmarkedById');
-    const forUserIdParam = searchParams.get('forUserId'); 
-    const statusParam = searchParams.get('status'); 
+    const forUserIdParam = searchParams.get('forUserId');
+    const statusParam = searchParams.get('status');
     const communityIdParam = searchParams.get('communityId');
 
 
-    let query: any = {}; 
+    let query: any = {};
     let currentUser: User | null = null;
 
     if (forUserIdParam && ObjectId.isValid(forUserIdParam)) {
@@ -280,9 +280,9 @@ export async function GET(request: NextRequest) {
         if (userWithBookmarks && userWithBookmarks.bookmarkedPostIds && userWithBookmarks.bookmarkedPostIds.length > 0) {
             query._id = { $in: userWithBookmarks.bookmarkedPostIds.map(id => new ObjectId(id)) };
         } else {
-            return NextResponse.json([], { status: 200 }); 
+            return NextResponse.json([], { status: 200 });
         }
-        query.status = 'published'; 
+        query.status = 'published';
     } else if (authorIdParam && ObjectId.isValid(authorIdParam)) {
       query.authorId = new ObjectId(authorIdParam);
       if (statusParam && ['draft', 'scheduled', 'published'].includes(statusParam)) {
@@ -298,7 +298,7 @@ export async function GET(request: NextRequest) {
         }
     } else if (communityIdParam && ObjectId.isValid(communityIdParam)) {
         query.communityId = new ObjectId(communityIdParam);
-        query.status = 'published'; 
+        query.status = 'published';
     }
      else { // General feed - apply privacy filtering
         query.status = 'published';
@@ -325,7 +325,7 @@ export async function GET(request: NextRequest) {
             { $sort: { createdAt: -1 } },
              { $project: { authorDetails: 0 } } // Remove the looked-up authorDetails to avoid redundant data
         ];
-        
+
         const postsFromDbViaAgg = await postsCollection.aggregate(aggregationPipeline).toArray();
 
         // The rest of the enrichment logic will apply to postsFromDbViaAgg
@@ -339,7 +339,7 @@ export async function GET(request: NextRequest) {
                 id: authorDoc._id.toHexString(),
                 bookmarkedPostIds: Array.isArray(authorDoc.bookmarkedPostIds) ? authorDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
                 } : undefined;
-                
+
                 const recentCommentsDocs = await commentsCollection
                     .find({ postId: postDoc._id })
                     .sort({ createdAt: -1 })
@@ -363,10 +363,10 @@ export async function GET(request: NextRequest) {
                         } as Comment;
                     })
                 );
-                
+
                 const postLikedBy = Array.isArray(postDoc.likedBy) ? postDoc.likedBy : [];
                 const isLikedByCurrentUser = currentUser && currentUser._id ? postLikedBy.some(id => id.equals(currentUser!._id!)) : false;
-                
+
                 const userBookmarkedPostIds = currentUser && Array.isArray(currentUser.bookmarkedPostIds) ? currentUser.bookmarkedPostIds : [];
                 const isBookmarkedByCurrentUser = currentUser && postDoc._id ? userBookmarkedPostIds.some(id => id.equals(postDoc._id)) : false;
 
@@ -379,13 +379,13 @@ export async function GET(request: NextRequest) {
                 return {
                 ...postDoc,
                 id: postDoc._id.toHexString(),
-                authorId: postDoc.authorId, 
+                authorId: postDoc.authorId,
                 author: authorForClient || { _id: postDoc.authorId, id: postDoc.authorId.toHexString(), name: 'Unknown User', email:'', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds:[] } as User,
                 likedBy: postLikedBy.map(id => new ObjectId(id.toString())),
                 likeCount: postDoc.likeCount || 0,
                 isLikedByCurrentUser,
                 commentIds: Array.isArray(postDoc.commentIds) ? postDoc.commentIds.map((id: ObjectId | string) => typeof id === 'string' ? new ObjectId(id) : id) : [],
-                comments: recentCommentsPopulated.reverse(), 
+                comments: recentCommentsPopulated.reverse(),
                 commentCount: postDoc.commentCount || 0,
                 isBookmarkedByCurrentUser,
                 communityId: postDoc.communityId,
@@ -403,14 +403,14 @@ export async function GET(request: NextRequest) {
     const enrichedPosts: Post[] = await Promise.all(
       postsFromDb.map(async (postDoc) => {
         const authorDoc = await usersCollection.findOne({ _id: new ObjectId(postDoc.authorId) }, {projection: {passwordHash: 0}});
-        
+
         const authorForClient: User | undefined = authorDoc ? {
           ...authorDoc,
           id: authorDoc._id.toHexString(),
           bookmarkedPostIds: Array.isArray(authorDoc.bookmarkedPostIds) ? authorDoc.bookmarkedPostIds.map(id => new ObjectId(id.toString())) : [],
         } : undefined;
-        
-        
+
+
         const recentCommentsDocs = await commentsCollection
             .find({ postId: postDoc._id })
             .sort({ createdAt: -1 })
@@ -434,10 +434,10 @@ export async function GET(request: NextRequest) {
                 } as Comment;
             })
         );
-        
+
         const postLikedBy = Array.isArray(postDoc.likedBy) ? postDoc.likedBy : [];
         const isLikedByCurrentUser = currentUser && currentUser._id ? postLikedBy.some(id => id.equals(currentUser!._id!)) : false;
-        
+
         const userBookmarkedPostIds = currentUser && Array.isArray(currentUser.bookmarkedPostIds) ? currentUser.bookmarkedPostIds : [];
         const isBookmarkedByCurrentUser = currentUser && postDoc._id ? userBookmarkedPostIds.some(id => id.equals(postDoc._id)) : false;
 
@@ -451,13 +451,13 @@ export async function GET(request: NextRequest) {
         return {
           ...postDoc,
           id: postDoc._id.toHexString(),
-          authorId: postDoc.authorId, 
+          authorId: postDoc.authorId,
           author: authorForClient || { _id: postDoc.authorId, id: postDoc.authorId.toHexString(), name: 'Unknown User', email:'', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds:[] } as User,
           likedBy: postLikedBy.map(id => new ObjectId(id.toString())),
           likeCount: postDoc.likeCount || 0,
           isLikedByCurrentUser,
           commentIds: Array.isArray(postDoc.commentIds) ? postDoc.commentIds.map((id: ObjectId | string) => typeof id === 'string' ? new ObjectId(id) : id) : [],
-          comments: recentCommentsPopulated.reverse(), 
+          comments: recentCommentsPopulated.reverse(),
           commentCount: postDoc.commentCount || 0,
           isBookmarkedByCurrentUser,
           communityId: postDoc.communityId,
@@ -475,3 +475,4 @@ export async function GET(request: NextRequest) {
   }
 }
 
+    
