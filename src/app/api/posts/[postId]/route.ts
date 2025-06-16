@@ -42,7 +42,7 @@ const postUpdateSchema = z.object({
   scheduledAt: z.string().datetime({ offset: true }).optional().nullable(),
   media: z.array(z.object({
     type: z.enum(['image', 'video', 'document']),
-    url: z.string().min(1, { message: "Media URL cannot be empty." }), // Changed from .url()
+    url: z.string().min(1, { message: "Media URL cannot be empty." }),
     name: z.string().optional(),
   })).optional().nullable(),
 });
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest, { params }: PostParams) {
     }
 
 
-    const authorDoc = await usersCollection.findOne({ _id: new ObjectId(postDoc.authorId) }, { projection: { passwordHash: 0 } });
+    const authorDoc = await usersCollection.findOne({ _id: new ObjectId(postDoc.authorId) }, { projection: { passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0 } });
     const authorForClient: User | undefined = authorDoc ? {
         ...authorDoc,
         id: authorDoc._id.toHexString(),
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest, { params }: PostParams) {
     const commentDocs = await commentsCollection.find({ postId: postDoc._id }).sort({ createdAt: 1 }).toArray();
     const populatedComments: CommentType[] = await Promise.all(
         commentDocs.map(async (commentDoc) => {
-            const commentAuthorDoc = await usersCollection.findOne({_id: new ObjectId(commentDoc.authorId)}, {projection: {passwordHash: 0}});
+            const commentAuthorDoc = await usersCollection.findOne({_id: new ObjectId(commentDoc.authorId)}, {projection: {passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0 }});
             const commentAuthorForClient: User | undefined = commentAuthorDoc ? {
                  ...commentAuthorDoc,
                  id: commentAuthorDoc._id.toHexString(),
@@ -109,7 +109,11 @@ export async function GET(request: NextRequest, { params }: PostParams) {
 
     let currentUser: User | null = null;
     if (forUserId && ObjectId.isValid(forUserId)) {
-        currentUser = await usersCollection.findOne({ _id: new ObjectId(forUserId) }, { projection: { passwordHash: 0, bookmarkedPostIds: 1 }});
+        // Fetch currentUser excluding sensitive fields. bookmarkedPostIds will be included by default.
+        currentUser = await usersCollection.findOne(
+            { _id: new ObjectId(forUserId) },
+            { projection: { passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0 } }
+        );
     }
 
     const postLikedBy = Array.isArray(postDoc.likedBy) ? postDoc.likedBy : [];
@@ -230,7 +234,8 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
     }
 
     if (newContentForAI && (needsModeration || updateData.category === null || (updateData.tags === null && (existingPost.tags && existingPost.tags.length > 0) ) || (!finalCategory && finalTagsArray.length === 0)) && updateData.status !== 'draft') {
-        const categorizationInput: CategorizeContentInput = { content: newContentForAI };
+        const plainTextContent = newContentForAI.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        const categorizationInput: CategorizeContentInput = { content: plainTextContent || newContentForAI };
         try {
             const categorizationResult = await categorizeContent(categorizationInput);
             if (!finalCategory && categorizationResult.category && updatePayload.$set.category === undefined && updateData.category !== null) {
