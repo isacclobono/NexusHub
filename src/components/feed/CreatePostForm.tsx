@@ -682,7 +682,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                             />
                             <div className="p-2 border-t">
                                 <Input type="time"
-                                    defaultValue={field.value ? format(field.value, "HH:mm") : "09:00"}
+                                    value={field.value ? format(field.value, "HH:mm") : "09:00"}
                                     onChange={(e) => {
                                         const time = e.target.value;
                                         const [hours, minutes] = time.split(':').map(Number);

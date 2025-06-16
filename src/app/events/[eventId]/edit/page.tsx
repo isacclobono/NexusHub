@@ -20,7 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/componen
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar as CalendarIcon, UploadCloud, Loader2, MapPin, AlertTriangle, UsersRound, DollarSign, Edit, ArrowLeft } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
-import { format } from 'date-fns';
+import { format, isValid as isValidDate } from 'date-fns'; // Renamed isValid to avoid conflict
 import { cn } from '@/lib/utils';
 import React, { useState, useEffect, useCallback } from 'react';
 import toast from 'react-hot-toast';
@@ -391,7 +391,7 @@ export default function EditEventPage() {
                           />
                            <div className="p-2 border-t">
                                 <Input type="time" 
-                                    defaultValue={field.value ? format(new Date(field.value), "HH:mm") : "09:00"}
+                                    value={field.value ? format(new Date(field.value), "HH:mm") : "09:00"}
                                     onChange={(e) => {
                                         const time = e.target.value;
                                         const [hours, minutes] = time.split(':').map(Number);
@@ -453,7 +453,7 @@ export default function EditEventPage() {
                           />
                            <div className="p-2 border-t">
                                 <Input type="time" 
-                                    defaultValue={field.value ? format(new Date(field.value), "HH:mm") : "17:00"}
+                                    value={field.value ? format(new Date(field.value), "HH:mm") : "17:00"}
                                      onChange={(e) => {
                                         const time = e.target.value;
                                         const [hours, minutes] = time.split(':').map(Number);

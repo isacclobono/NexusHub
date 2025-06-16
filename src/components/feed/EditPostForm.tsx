@@ -655,7 +655,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                                 />
                                 <div className="p-2 border-t">
                                     <Input type="time"
-                                        defaultValue={field.value && isValid(new Date(field.value)) ? format(new Date(field.value), "HH:mm") : "09:00"}
+                                        value={field.value && isValid(new Date(field.value)) ? format(new Date(field.value), "HH:mm") : "09:00"}
                                         onChange={(e) => {
                                             const time = e.target.value;
                                             const [hours, minutes] = time.split(':').map(Number);
