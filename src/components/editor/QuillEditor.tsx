@@ -1,7 +1,6 @@
-
 'use client';
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef } from 'react';
 import Quill from 'quill';
 
 interface QuillEditorProps {
@@ -14,87 +13,77 @@ interface QuillEditorProps {
 const QuillEditor: React.FC<QuillEditorProps> = ({ value, onChange, readOnly = false, placeholder }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const quillInstanceRef = useRef<Quill | null>(null);
-  const isQuillInitialized = useRef(false); // To track if Quill instance is created
-  const currentContentRef = useRef<string>(value); // To track content passed via props
+  // To prevent feedback loop: setContents -> text-change -> onChange -> prop update -> setContents
+  const isUpdatingInternally = useRef(false);
 
-  const debouncedOnChange = useCallback(
-    (html: string) => {
-      onChange(html);
-    },
-    [onChange]
-  );
-
-  // Effect for initializing Quill
   useEffect(() => {
-    if (editorRef.current && !isQuillInitialized.current && typeof window !== 'undefined') {
-      const quill = new Quill(editorRef.current, {
-        theme: 'snow',
-        modules: {
-          toolbar: [
-            [{ 'header': [1, 2, 3, false] }],
-            ['bold', 'italic', 'underline', 'strike'],
-            [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-            ['link'],
-            ['clean']
-          ],
-        },
-        placeholder: placeholder || 'Start writing...',
-        readOnly: readOnly,
-      });
+    if (editorRef.current) {
+      if (!quillInstanceRef.current) { // Initialize Quill only once
+        const quill = new Quill(editorRef.current, {
+          theme: 'snow',
+          modules: {
+            toolbar: [
+              [{ 'header': [1, 2, 3, false] }],
+              ['bold', 'italic', 'underline', 'strike'],
+              [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+              ['link'],
+              ['clean']
+            ],
+          },
+          placeholder: placeholder || 'Start writing...',
+          readOnly: readOnly,
+        });
+        quillInstanceRef.current = quill;
 
-      quillInstanceRef.current = quill;
-      isQuillInitialized.current = true; // Mark as initialized
-
-      // Set initial content if `value` (from props) is available
-      // Ensure `value` is treated as a string.
-      const initialHtmlToSet = typeof value === 'string' ? value : '';
-      try {
-        const delta = quill.clipboard.convert(initialHtmlToSet);
-        quill.setContents(delta, 'silent');
-        currentContentRef.current = initialHtmlToSet; // Sync ref
-      } catch (e) {
-        console.error("Error converting HTML to Delta for Quill (initialization):", e, "HTML:", initialHtmlToSet);
-        quill.setText(initialHtmlToSet.replace(/<[^>]*>?/gm, '') || ''); // Fallback
-        currentContentRef.current = quill.root.innerHTML; // Sync ref with fallback
-      }
-
-      quill.on('text-change', (delta, oldDelta, source) => {
-        if (source === 'user') {
-          const newHtml = quill.root.innerHTML;
-          currentContentRef.current = newHtml; // Update ref on user change
-          debouncedOnChange(newHtml);
-        }
-      });
-    }
-  }, [readOnly, placeholder, debouncedOnChange, value]); // Added value to initial effect dependencies for initial setup only.
-
-  // Effect for handling updates to the `value` prop from outside (e.g., form reset)
-  useEffect(() => {
-    const quill = quillInstanceRef.current;
-    // Ensure Quill is initialized and the external value has actually changed from what Quill knows
-    if (quill && typeof value === 'string' && value !== currentContentRef.current) {
-      const selection = quill.getSelection();
-      try {
-        const delta = quill.clipboard.convert(value);
-        quill.setContents(delta, 'silent');
-        currentContentRef.current = value; // Update ref after setting content
-      } catch (e) {
-        console.error("Error converting HTML to Delta on update:", e, "HTML:", value);
-        quill.setText(value.replace(/<[^>]*>?/gm, '') || ''); // Fallback
-        currentContentRef.current = quill.root.innerHTML; // Sync ref with fallback
-      }
-      
-      if (selection && quill.hasFocus()) {
-        // Try to restore selection if editor had focus
-        // Use timeout to allow Quill to process setContents fully
-        setTimeout(() => {
-          if (quillInstanceRef.current && quillInstanceRef.current.hasFocus()) {
-            quillInstanceRef.current.setSelection(selection.index, selection.length, 'silent');
+        // Listener for text changes by the user
+        quill.on('text-change', (delta, oldDelta, source) => {
+          if (source === 'user') {
+            if (isUpdatingInternally.current) return;
+            onChange(quill.root.innerHTML);
           }
-        }, 0);
+        });
+      }
+
+      const quill = quillInstanceRef.current;
+
+      // Handle external value changes (from props)
+      // Ensure value is a string and different from current editor content
+      // And also make sure we are not in the middle of an internal update (which might be caused by an earlier onChange call)
+      if (typeof value === 'string' && value !== quill.root.innerHTML && !isUpdatingInternally.current) {
+        isUpdatingInternally.current = true; // Signal that the upcoming change is programmatic
+        try {
+          const delta = quill.clipboard.convert(value); // Convert HTML string to Delta
+          quill.setContents(delta, 'silent'); // Set content without triggering 'text-change' from 'api' source
+        } catch (e) {
+          console.error("Quill: Error converting HTML for content update", e, "HTML:", value);
+          // Fallback: try to set as plain text, stripping HTML tags
+          const plainText = value.replace(/<[^>]*>?/gm, '');
+          quill.setText(plainText, 'silent');
+        }
+        // Schedule the flag reset to allow Quill to process setContents and prevent immediate re-triggering.
+        // A microtask (Promise.resolve) or setTimeout(0) can work.
+        Promise.resolve().then(() => {
+            isUpdatingInternally.current = false;
+        });
+      }
+
+      // Update readOnly state if it changes
+      if (quill.options.readOnly !== readOnly) {
+        quill.enable(!readOnly);
       }
     }
-  }, [value]); // This effect specifically listens to changes in the `value` prop
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, readOnly, placeholder]); // onChange is stable, editorRef and quillInstanceRef are refs
+
+  // Cleanup Quill instance on component unmount
+  useEffect(() => {
+    return () => {
+      if (quillInstanceRef.current) {
+        // Basic cleanup, specific listeners should be unmounted if added manually
+        quillInstanceRef.current = null;
+      }
+    };
+  }, []);
 
   return <div ref={editorRef} style={{ minHeight: '200px' }} />;
 };
