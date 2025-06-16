@@ -3,7 +3,7 @@
 
 import *  as React from 'react';
 import Link from 'next/link';
-import { Search, Bell, Settings, UserCircle, LogOut } from 'lucide-react';
+import { Search, Bell, Settings, UserCircle, LogOut, Sun, Moon } from 'lucide-react'; // Added Sun, Moon
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
@@ -24,6 +24,27 @@ export function Header() {
   const { user, loading, logout } = useAuth();
   const router = useRouter();
   const [searchQuery, setSearchQuery] = React.useState('');
+  const [currentTheme, setCurrentTheme] = React.useState<'light' | 'dark'>('light');
+
+  React.useEffect(() => {
+    // Set initial theme based on localStorage or system preference
+    const storedTheme = localStorage.getItem('theme');
+    const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    if (storedTheme === 'dark' || (!storedTheme && systemPrefersDark)) {
+      setCurrentTheme('dark');
+      // document.documentElement.classList.add('dark'); // Layout.tsx handles initial class
+    } else {
+      setCurrentTheme('light');
+      // document.documentElement.classList.remove('dark'); // Layout.tsx handles initial class
+    }
+  }, []);
+
+  const toggleTheme = () => {
+    const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+    setCurrentTheme(newTheme);
+    document.documentElement.classList.toggle('dark', newTheme === 'dark');
+    localStorage.setItem('theme', newTheme);
+  };
 
   const handleSearchSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -46,7 +67,7 @@ export function Header() {
       </div>
       <div className="hidden md:block">
       </div>
-      <div className="flex w-full items-center gap-4 md:ml-auto md:gap-2 lg:gap-4">
+      <div className="flex w-full items-center gap-2 md:ml-auto">
         <form onSubmit={handleSearchSubmit} className="ml-auto flex-1 sm:flex-initial">
           <div className="relative">
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -60,6 +81,9 @@ export function Header() {
             />
           </div>
         </form>
+        <Button variant="ghost" size="icon" className="rounded-full" aria-label="Toggle Theme" onClick={toggleTheme}>
+          {currentTheme === 'light' ? <Sun className="h-5 w-5" /> : <Moon className="h-5 w-5" />}
+        </Button>
         <Button variant="ghost" size="icon" className="rounded-full" aria-label="Notifications" asChild>
           <Link href="/notifications">
             <Bell className="h-5 w-5" />
