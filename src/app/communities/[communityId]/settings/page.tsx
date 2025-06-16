@@ -420,33 +420,12 @@ export default function CommunitySettingsPage() {
                                     <Input placeholder="Enter User ID of the new owner" {...field} />
                                 </FormControl>
                                 <FormDescription>
-                                  The new owner must be a current member of this community.
-                                  You can find a user's ID on their profile page URL (e.g., /profile/USER_ID).
+                                  Enter the User ID of the member you want to transfer ownership to.
                                 </FormDescription>
                                 <FormMessage />
                             </FormItem>
                         )}
                     />
-                    {communityMembers.length > 0 && (
-                        <div className="mt-2">
-                            <p className="text-xs text-muted-foreground mb-1">
-                                For reference, some member IDs:
-                            </p>
-                             <p className="text-xs text-muted-foreground">
-                                The new owner must be a current member of this community.
-                                You can find a user's ID on their profile page URL (e.g., /profile/USER_ID).
-                            </p>
-                            <ul className="list-disc list-inside max-h-20 overflow-y-auto text-xs text-muted-foreground">
-                            {communityMembers.slice(0,5).map(member => {
-                                if (member.id !== user?.id) { // Don't list current owner
-                                    return (<li key={member.id}><code>{member.name}: {member.id}</code></li>);
-                                }
-                                return null;
-                            })}
-                            {communityMembers.length > 5 && <li className="text-muted-foreground">...and {communityMembers.length - (communityMembers.filter(m => m.id === user?.id).length > 0 ? 6 : 5) > 0 ? communityMembers.length - (communityMembers.filter(m => m.id === user?.id).length > 0 ? 6 : 5) : 'more'} more</li>}
-                            </ul>
-                        </div>
-                    )}
                      <AlertDialog>
                         <AlertDialogTrigger asChild>
                             <Button type="button" variant="outline" className="w-full md:w-auto border-orange-500 text-orange-600 hover:bg-orange-50 hover:text-orange-700">
