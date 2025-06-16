@@ -51,7 +51,7 @@ const DynamicQuillEditor = dynamic(() => import('@/components/editor/QuillEditor
 const NO_COMMUNITY_VALUE = "__NONE__";
 const NO_CATEGORY_SELECTED_VALUE = "__NONE__";
 const MAX_FILES_EDIT = 5;
-const MAX_FILE_SIZE_MB_EDIT = 10; // Increased for potential small videos/docs
+const MAX_FILE_SIZE_MB_EDIT = 10;
 
 const ACCEPTED_IMAGE_TYPES_EDIT = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const ACCEPTED_VIDEO_TYPES_EDIT = ['video/mp4', 'video/webm', 'video/ogg'];
@@ -86,7 +86,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
   const [isSuggestingCategories, setIsSuggestingCategories] = useState(false);
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
   
-  const [currentMedia, setCurrentMedia] = useState<PostMedia[]>([]);
+  const [currentMedia, setCurrentMedia] = useState<PostMedia[]>(existingPost.media || []);
   const [newlySelectedFiles, setNewlySelectedFiles] = useState<File[]>([]);
   const [newFilePreviews, setNewFilePreviews] = useState<{ url: string; type: 'image' | 'video' | 'document'; name: string }[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
@@ -95,14 +95,15 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
 
   const form = useForm<PostEditFormValues>({
     resolver: zodResolver(postEditSchema),
+    // Default values are set in useEffect once existingPost is available
   });
 
   useEffect(() => {
     if (existingPost) {
         form.reset({
             title: existingPost.title || '',
-            content: existingPost.content || '',
-            category: existingPost.category || '',
+            content: existingPost.content || '', // This should provide the initial value to Quill
+            category: existingPost.category || NO_CATEGORY_SELECTED_VALUE,
             tags: (Array.isArray(existingPost.tags) ? existingPost.tags.join(', ') : null) || '',
             communityId: existingPost.communityId?.toString() || NO_COMMUNITY_VALUE,
             isDraft: existingPost.status === 'draft',
@@ -271,12 +272,13 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     const finalMediaPayload = [...currentMedia, ...uploadedNewMediaItems];
     
     let statusToSet = existingPost.status || 'published';
-    if (existingPost.status !== 'published') {
+    if (existingPost.status !== 'published') { // Only allow status change if not already published
         if (data.isDraft) {
             statusToSet = 'draft';
         } else if (showSchedule && data.scheduledAt && isValid(new Date(data.scheduledAt))) {
             statusToSet = 'scheduled';
         } else if (existingPost.status === 'draft' && !data.isDraft && !(showSchedule && data.scheduledAt)) {
+            // Explicitly publishing a draft by unchecking "Save as Draft" and not scheduling
             statusToSet = 'published';
         }
     }
@@ -322,9 +324,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
       toast.error(`An unexpected error occurred: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
-      setNewlySelectedFiles([]);
-      setNewFilePreviews([]);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+      // Do not reset newlySelectedFiles and newFilePreviews here if submit fails, so user doesn't lose them
     }
   }
 
@@ -357,24 +357,24 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                 </FormItem>
               )}
             />
-            <FormField
-              control={form.control}
+            <Controller
               name="content"
+              control={form.control}
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Content</FormLabel>
-                  <FormControl>
-                     <DynamicQuillEditor
-                        key={existingPost.id} 
-                        value={field.value}
-                        onChange={field.onChange}
-                        placeholder="Share your thoughts..."
-                    />
-                  </FormControl>
-                   <FormDescription>
-                    Your post content.
-                  </FormDescription>
-                  <FormMessage />
+                    <FormLabel>Content</FormLabel>
+                    <FormControl>
+                        <DynamicQuillEditor
+                            key={existingPost.id} // Key to help re-render if post changes, though unlikely here
+                            value={field.value}
+                            onChange={field.onChange}
+                            placeholder="Share your thoughts..."
+                        />
+                    </FormControl>
+                    <FormDescription>
+                        Your post content.
+                    </FormDescription>
+                    <FormMessage />
                 </FormItem>
               )}
             />
@@ -541,7 +541,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                 {suggestionError && <p className="text-sm text-destructive">{suggestionError}</p>}
             </div>
 
-            {!isPublished && (
+            {!isPublished && ( // Options to change status only if not already published
               <>
                 <FormField
                   control={form.control}
@@ -559,9 +559,9 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                           checked={field.value}
                           onCheckedChange={(checked) => {
                             field.onChange(checked);
-                            if (checked) {
+                            if (checked) { // If saving as draft
                               setShowSchedule(false); 
-                              form.setValue("scheduledAt", undefined);
+                              form.setValue("scheduledAt", undefined, { shouldValidate: true });
                             }
                           }}
                           disabled={(showSchedule && !!form.getValues("scheduledAt")) || isSubmitting}
@@ -575,7 +575,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                     <div className="space-y-0.5">
                     <FormLabel>Schedule Post (Optional)</FormLabel>
                     <FormDescription>
-                        Set a future date and time for this post to be published. A backend process (not implemented in this prototype) would be needed for automatic publishing.
+                        Set a future date and time for this post to be published.
                     </FormDescription>
                     </div>
                     <FormControl>
@@ -583,10 +583,10 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                         checked={showSchedule}
                         onCheckedChange={(checked) => {
                             setShowSchedule(checked);
-                            if (!checked) {
-                                form.setValue("scheduledAt", undefined);
-                            } else {
-                                form.setValue("isDraft", false); 
+                            if (!checked) { // If turning off schedule
+                                form.setValue("scheduledAt", undefined, { shouldValidate: true });
+                            } else { // If turning on schedule, ensure it's not a draft
+                                form.setValue("isDraft", false, { shouldValidate: true }); 
                             }
                         }}
                         disabled={isSubmitting || form.getValues("isDraft")}
@@ -660,7 +660,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
             )}
             {isPublished && (
                 <div className="p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-700">
-                    This post is already published. Status and scheduling cannot be changed here. To unpublish or reschedule, a different workflow (e.g., specific admin actions or saving as a new draft) would be needed.
+                    This post is already published. To unpublish or change its schedule, you would typically need a different action (not available in this basic edit form).
                 </div>
             )}
 
@@ -670,7 +670,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                 Cancel
               </Button>
               <Button type="submit" disabled={isSubmitting || authLoading || isUploadingFiles} className="btn-gradient min-w-[120px]">
-                {isSubmitting || isUploadingFiles ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isUploadingFiles || isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 {isUploadingFiles? 'Uploading...' : (isSubmitting ? 'Saving...' : 'Save Changes')}
               </Button>
             </div>
@@ -680,4 +680,5 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     </Card>
   );
 }
+    
     

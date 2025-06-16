@@ -5,7 +5,7 @@ import React, { useEffect, useRef } from 'react';
 import Quill from 'quill';
 
 interface QuillEditorProps {
-  value: string;
+  value: string | null | undefined; // Allow null/undefined initial value
   onChange: (value: string) => void;
   readOnly?: boolean;
   placeholder?: string;
@@ -14,14 +14,10 @@ interface QuillEditorProps {
 const QuillEditor: React.FC<QuillEditorProps> = ({ value, onChange, readOnly = false, placeholder }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const quillInstanceRef = useRef<Quill | null>(null);
-  const isQuillInitializedRef = useRef(false);
-  // currentHtmlRef will store the HTML content that the Quill editor is currently displaying
-  // or the last HTML value passed as a prop that was successfully set.
-  const currentHtmlRef = useRef<string>(value);
+  const contentJustSetProgrammaticallyRef = useRef(false);
 
-  // Initialize Quill instance
   useEffect(() => {
-    if (editorRef.current && !isQuillInitializedRef.current) {
+    if (editorRef.current && !quillInstanceRef.current) {
       const quill = new Quill(editorRef.current, {
         theme: 'snow',
         modules: {
@@ -29,7 +25,7 @@ const QuillEditor: React.FC<QuillEditorProps> = ({ value, onChange, readOnly = f
             [{ 'header': [1, 2, 3, false] }],
             ['bold', 'italic', 'underline', 'strike'],
             [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-            ['link'],
+            ['link', 'image'],
             ['clean']
           ],
         },
@@ -37,70 +33,64 @@ const QuillEditor: React.FC<QuillEditorProps> = ({ value, onChange, readOnly = f
         readOnly: readOnly,
       });
       quillInstanceRef.current = quill;
-      isQuillInitializedRef.current = true;
 
-      // Set initial content
-      // Ensure value is treated as a string, even if it's null/undefined from parent initially
-      const initialContent = typeof value === 'string' ? value : '';
-      if (initialContent !== quill.root.innerHTML) { // Avoid redundant update
+      // Set initial content if value is provided
+      if (typeof value === 'string') {
+        contentJustSetProgrammaticallyRef.current = true;
         try {
-          quill.root.innerHTML = initialContent;
-          currentHtmlRef.current = initialContent;
+            const delta = quill.clipboard.convert(value);
+            quill.setContents(delta, 'silent');
         } catch (e) {
-            console.error("Quill: Error setting initial HTML content", e, "HTML:", initialContent);
-            // Fallback to setting as plain text if HTML setting fails
-            quill.setText(initialContent.replace(/<[^>]*>?/gm, ''));
-            currentHtmlRef.current = quill.root.innerHTML;
+            console.error("Quill: Error setting initial HTML content", e);
+            quill.setText(String(value).replace(/<[^>]*>?/gm, ''), 'silent'); // Fallback
         }
+        contentJustSetProgrammaticallyRef.current = false;
+      } else {
+        // Ensure editor is empty if no initial value
+        quill.setText('', 'silent');
       }
 
       quill.on('text-change', (delta, oldDelta, source) => {
-        if (source === 'user') {
-          const newHtml = quill.root.innerHTML;
-          currentHtmlRef.current = newHtml; // Update ref on user change
-          onChange(newHtml);
+        if (source === 'user' && !contentJustSetProgrammaticallyRef.current) {
+          onChange(quill.root.innerHTML);
         }
       });
     }
-  }, [readOnly, placeholder]); // Dependencies for initialization. 'value' is handled by its own effect.
+  }, []); // Initialize Quill only once
 
-  // Handle external value changes (from props)
+  // Handle updates to the 'value' prop from parent
   useEffect(() => {
     const quill = quillInstanceRef.current;
-    // Check if Quill is initialized and if the incoming 'value' prop is different from what we last set/know
-    if (quill && typeof value === 'string' && value !== currentHtmlRef.current) {
-      try {
-        const selection = quill.getSelection(); // Preserve selection
-        quill.root.innerHTML = value; // Set HTML content
-        currentHtmlRef.current = value; // Sync ref after programmatic change
-
-        if (selection) { // Try to restore selection
-            // Check if the previous range is still valid within the new content length
-            if (selection.index + selection.length <= quill.getLength()) {
-                 quill.setSelection(selection.index, selection.length, 'silent');
-            } else {
-                // If old selection is out of bounds, move cursor to the end
-                quill.setSelection(quill.getLength(), 0, 'silent');
-            }
+    if (quill) {
+      if (typeof value === 'string') {
+        if (value !== quill.root.innerHTML) {
+          contentJustSetProgrammaticallyRef.current = true;
+          const selection = quill.getSelection();
+          try {
+            const delta = quill.clipboard.convert(value);
+            quill.setContents(delta, 'silent');
+          } catch (e) {
+            console.error("Quill: Error updating HTML content", e);
+            quill.setText(String(value).replace(/<[^>]*>?/gm, ''), 'silent'); // Fallback
+          }
+          if (selection && quill.hasFocus()) {
+            try { quill.setSelection(selection.index, selection.length, 'silent'); }
+            catch (e) { quill.setSelection(quill.getLength(), 0, 'silent');}
+          }
+          contentJustSetProgrammaticallyRef.current = false;
         }
-      } catch (e) {
-        console.error("Quill: Prop update content setting error", e, "HTML:", value);
-        // Fallback if setting HTML fails
-        const selection = quill.getSelection();
-        quill.setText(String(value).replace(/<[^>]*>?/gm, ''), 'silent');
-        currentHtmlRef.current = quill.root.innerHTML;
-         if (selection) {
-            if (selection.index + selection.length <= quill.getLength()) {
-                 quill.setSelection(selection.index, selection.length, 'silent');
-            } else {
-                quill.setSelection(quill.getLength(), 0, 'silent');
-            }
+      } else if (value === null || value === undefined) {
+        // If prop value becomes null/undefined, clear the editor
+        if (quill.root.innerHTML !== '<p><br></p>' && quill.root.innerHTML !== '') {
+            contentJustSetProgrammaticallyRef.current = true;
+            quill.setText('', 'silent');
+            contentJustSetProgrammaticallyRef.current = false;
         }
       }
     }
-  }, [value]); // This effect runs ONLY when 'value' prop changes
+  }, [value]); // React to changes in the 'value' prop
 
-  // Handle readOnly prop changes separately
+  // Handle readOnly prop changes
   useEffect(() => {
     const quill = quillInstanceRef.current;
     if (quill) {
