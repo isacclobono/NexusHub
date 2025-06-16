@@ -109,10 +109,9 @@ export async function GET(request: NextRequest, { params }: PostParams) {
 
     let currentUser: User | null = null;
     if (forUserId && ObjectId.isValid(forUserId)) {
-        // Fetch currentUser excluding sensitive fields. bookmarkedPostIds will be included by default.
         currentUser = await usersCollection.findOne(
             { _id: new ObjectId(forUserId) },
-            { projection: { passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0 } }
+            { projection: { passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0 } } // Only exclude, bookmarkedPostIds will be included.
         );
     }
 
@@ -182,21 +181,22 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
       return NextResponse.json({ message: 'Unauthorized: Only the post author can update this post.' }, { status: 403 });
     }
 
-    const updatePayload: { $set: Partial<DbPost>, $unset?: Partial<Record<keyof DbPost | 'scheduledAt' | 'category' | 'tags' | 'media' | 'communityId', string>> } = { $set: { updatedAt: new Date().toISOString() } };
-    if (!updatePayload.$unset) updatePayload.$unset = {};
+    const updatePayloadSet: Partial<DbPost> = { updatedAt: new Date().toISOString() };
+    const updatePayloadUnset: Partial<Record<keyof DbPost | 'scheduledAt' | 'category' | 'tags' | 'media' | 'communityId', string>> = {};
+
 
     let needsModeration = false;
     let newContentForAI = existingPost.content;
 
     if (updateData.title !== undefined) {
-      updatePayload.$set.title = updateData.title;
+      updatePayloadSet.title = updateData.title;
     }
     if (updateData.content !== undefined) {
       if (updateData.content !== existingPost.content) {
         needsModeration = true;
         newContentForAI = updateData.content;
       }
-      updatePayload.$set.content = updateData.content;
+      updatePayloadSet.content = updateData.content;
     }
 
     if (needsModeration && updateData.status !== 'draft') {
@@ -216,103 +216,115 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
 
     if (updateData.category !== undefined) {
         if (updateData.category === null) {
-            updatePayload.$unset.category = "";
+            updatePayloadUnset.category = "";
             finalCategory = undefined;
         } else {
-            updatePayload.$set.category = updateData.category;
+            updatePayloadSet.category = updateData.category;
             finalCategory = updateData.category;
         }
     }
     if (updateData.tags !== undefined) { // tags from form is a string
         if (updateData.tags === null || updateData.tags.trim() === "") {
-             updatePayload.$unset.tags = "";
+             updatePayloadUnset.tags = "";
              finalTagsArray = [];
         } else {
             finalTagsArray = updateData.tags.split(',').map(tag => tag.trim()).filter(tag => tag);
-            updatePayload.$set.tags = finalTagsArray;
+            updatePayloadSet.tags = finalTagsArray;
         }
     }
 
     if (newContentForAI && (needsModeration || updateData.category === null || (updateData.tags === null && (existingPost.tags && existingPost.tags.length > 0) ) || (!finalCategory && finalTagsArray.length === 0)) && updateData.status !== 'draft') {
         const plainTextContent = newContentForAI.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        const categorizationInput: CategorizeContentInput = { content: plainTextContent || newContentForAI };
-        try {
-            const categorizationResult = await categorizeContent(categorizationInput);
-            if (!finalCategory && categorizationResult.category && updatePayload.$set.category === undefined && updateData.category !== null) {
-                updatePayload.$set.category = categorizationResult.category;
+        if (plainTextContent) { // Only run categorization if there's actual text content
+            const categorizationInput: CategorizeContentInput = { content: plainTextContent };
+            try {
+                const categorizationResult = await categorizeContent(categorizationInput);
+                if (!finalCategory && categorizationResult.category && updatePayloadSet.category === undefined && updateData.category !== null) {
+                    updatePayloadSet.category = categorizationResult.category;
+                }
+                if (finalTagsArray.length === 0 && categorizationResult.tags && categorizationResult.tags.length > 0 && updatePayloadSet.tags === undefined && updateData.tags !== null) {
+                    updatePayloadSet.tags = [...new Set([...finalTagsArray, ...categorizationResult.tags])];
+                }
+            } catch (aiError) {
+                console.warn("AI categorization failed during post update:", aiError);
             }
-            if (finalTagsArray.length === 0 && categorizationResult.tags && categorizationResult.tags.length > 0 && updatePayload.$set.tags === undefined && updateData.tags !== null) {
-                updatePayload.$set.tags = [...new Set([...finalTagsArray, ...categorizationResult.tags])];
-            }
-        } catch (aiError) {
-            console.warn("AI categorization failed during post update:", aiError);
         }
     }
 
 
     if (updateData.communityId !== undefined) {
         if (updateData.communityId === NO_COMMUNITY_VALUE || updateData.communityId === null) {
-            updatePayload.$unset.communityId = "";
+            updatePayloadUnset.communityId = "";
         } else {
-            updatePayload.$set.communityId = new ObjectId(updateData.communityId);
+            updatePayloadSet.communityId = new ObjectId(updateData.communityId);
         }
     }
 
     if (updateData.status) {
-      updatePayload.$set.status = updateData.status;
+      updatePayloadSet.status = updateData.status;
       if (updateData.status === 'scheduled' && updateData.scheduledAt) {
-        updatePayload.$set.scheduledAt = new Date(updateData.scheduledAt).toISOString();
+        updatePayloadSet.scheduledAt = new Date(updateData.scheduledAt).toISOString();
       } else if (updateData.status !== 'scheduled') {
-        updatePayload.$unset.scheduledAt = "";
+        if (updatePayloadUnset.scheduledAt === undefined) updatePayloadUnset.scheduledAt = ""; // Ensure it's always in $unset if not scheduled
       }
     }
-    if (updateData.scheduledAt === null && existingPost.scheduledAt) {
-        updatePayload.$unset.scheduledAt = "";
-        if (updatePayload.$set.status === 'scheduled') {
-            updatePayload.$set.status = 'draft';
+    if (updateData.scheduledAt === null && existingPost.scheduledAt) { // Explicitly clearing schedule
+        if (updatePayloadUnset.scheduledAt === undefined) updatePayloadUnset.scheduledAt = "";
+        if (updatePayloadSet.status === 'scheduled') { // If was being set to scheduled but date removed, revert to draft
+            updatePayloadSet.status = 'draft';
         }
     }
+
 
     if (updateData.media !== undefined) {
         if (updateData.media === null || updateData.media.length === 0) {
-            updatePayload.$unset.media = "";
+            updatePayloadUnset.media = "";
         } else {
-            updatePayload.$set.media = updateData.media;
+            updatePayloadSet.media = updateData.media;
         }
     }
 
-
-    if (Object.keys(updatePayload.$set).length === 1 && 'updatedAt' in updatePayload.$set && (!updatePayload.$unset || Object.keys(updatePayload.$unset).length === 0)) {
-        const populatedCurrentPost = await GET(new NextRequest(request.url, { headers: request.headers }), { params });
-        return populatedCurrentPost;
+    const finalUpdateOperation: { $set: Partial<DbPost>, $unset?: Partial<Record<string, string>> } = { $set: updatePayloadSet };
+    if (Object.keys(updatePayloadUnset).length > 0) {
+        finalUpdateOperation.$unset = updatePayloadUnset;
     }
+    
+    // Check if there are any actual changes beyond 'updatedAt' in $set or any $unset operations
+    const hasMeaningfulSetChanges = Object.keys(updatePayloadSet).some(key => key !== 'updatedAt');
+    const hasUnsetChanges = Object.keys(updatePayloadUnset).length > 0;
 
-    if (updatePayload.$unset && Object.keys(updatePayload.$unset).length === 0) {
-        delete updatePayload.$unset;
+    if (!hasMeaningfulSetChanges && !hasUnsetChanges) {
+        // No actual fields to update, so we can just re-fetch the post and return it.
+        const getRequestUrl = new URL(request.url);
+        const newSearchParams = new URLSearchParams(getRequestUrl.search);
+        newSearchParams.set('forUserId', userId);
+        getRequestUrl.search = newSearchParams.toString();
+        const getRequest = new NextRequest(getRequestUrl);
+        return await GET(getRequest, { params });
     }
 
 
     const result = await postsCollection.findOneAndUpdate(
       { _id: postObjectId },
-      updatePayload,
+      finalUpdateOperation,
       { returnDocument: 'after' }
     );
 
-    if (!result.value) {
-      return NextResponse.json({ message: 'Post update failed.' }, { status: 500 });
+    if (!result.value) { // Changed from !result to !result.value as findOneAndUpdate returns an object with a 'value' property
+      return NextResponse.json({ message: 'Post update failed. The document may not have been found or not modified.' }, { status: 500 });
     }
 
-    const newSearchParams = new URLSearchParams();
-    newSearchParams.set('forUserId', userId);
-    const getRequestUrl = new URL(request.url);
-    getRequestUrl.search = newSearchParams.toString();
-    const getRequest = new NextRequest(getRequestUrl);
+    const newSearchParamsForResult = new URLSearchParams();
+    newSearchParamsForResult.set('forUserId', userId);
+    const getRequestUrlForResult = new URL(request.url);
+    getRequestUrlForResult.search = newSearchParamsForResult.toString();
+    const getRequestForResult = new NextRequest(getRequestUrlForResult);
 
-    return await GET(getRequest, { params });
+    return await GET(getRequestForResult, { params });
 
   } catch (error) {
     console.error(`API Error updating post ${postId}:`, error);
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected server error occurred.';
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
