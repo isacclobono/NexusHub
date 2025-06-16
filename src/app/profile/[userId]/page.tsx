@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarDays, Edit3, Star, Loader2, AlertTriangle, MessageSquare, Activity, Award, Calendar as CalendarIconLucide, DollarSign, EyeOff, Users, UsersRound as CommunitiesIcon } from 'lucide-react';
+import { CalendarDays, Edit3, Star, Loader2, AlertTriangle, MessageSquare, Activity, Award, Calendar as CalendarIconLucide, DollarSign, EyeOff, Users, UsersRound as CommunitiesIcon, Fingerprint } from 'lucide-react';
 import { PostCard } from '@/components/feed/PostCard';
 import { format, formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
@@ -455,6 +455,9 @@ export default function UserProfilePage() {
                     <div className="flex items-center justify-center md:justify-start space-x-4 text-sm text-muted-foreground pt-2">
                         <span className="flex items-center"><CalendarDays className="h-4 w-4 mr-1.5 text-primary/80" /> Joined {profileUser.joinedDate ? format(new Date(profileUser.joinedDate), 'MMMM yyyy') : 'N/A'}</span>
                         <span className="flex items-center font-medium"><Star className="h-4 w-4 mr-1.5 text-yellow-400 fill-yellow-400" /> {profileUser.reputation || 0} Reputation</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1 text-center md:text-left flex items-center justify-center md:justify-start">
+                       <Fingerprint className="h-3.5 w-3.5 mr-1 text-primary/70" /> User ID: <span className="font-mono ml-1">{profileUser.id}</span>
                     </div>
                 </>
               )}
