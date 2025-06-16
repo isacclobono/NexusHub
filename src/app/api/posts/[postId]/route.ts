@@ -111,7 +111,7 @@ export async function GET(request: NextRequest, { params }: PostParams) {
     if (forUserId && ObjectId.isValid(forUserId)) {
         currentUser = await usersCollection.findOne(
             { _id: new ObjectId(forUserId) },
-            { projection: { passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0 } }
+            { projection: { passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0, bookmarkedPostIds: 1 /* Ensure this is included if not default */ } }
         );
     }
 
@@ -214,8 +214,8 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
     let finalCategory = existingPost.category;
     let finalTagsArray = existingPost.tags || [];
 
-    if (updateData.category !== undefined) {
-        if (updateData.category === null) {
+    if (updateData.category !== undefined) { // Can be null to clear, or a string to set/update
+        if (updateData.category === null) { // Explicitly clearing category
             updatePayloadUnset.category = "";
             finalCategory = undefined;
         } else {
@@ -223,8 +223,8 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
             finalCategory = updateData.category;
         }
     }
-    if (updateData.tags !== undefined) {
-        if (updateData.tags === null || updateData.tags.trim() === "") {
+    if (updateData.tags !== undefined) { // Can be null/empty string to clear, or a string of tags
+        if (updateData.tags === null || updateData.tags.trim() === "") { // Explicitly clearing tags
              updatePayloadUnset.tags = "";
              finalTagsArray = [];
         } else {
@@ -235,7 +235,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
 
     if (newContentForAI && (needsModeration || updateData.category === null || (updateData.tags === null && (existingPost.tags && existingPost.tags.length > 0) ) || (!finalCategory && finalTagsArray.length === 0)) && updateData.status !== 'draft') {
         const plainTextContent = newContentForAI.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        if (plainTextContent) {
+        if (plainTextContent) { // Only run AI if there's actual text content
             const categorizationInput: CategorizeContentInput = { content: plainTextContent };
             try {
                 const categorizationResult = await categorizeContent(categorizationInput);
@@ -265,12 +265,12 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
       if (updateData.status === 'scheduled' && updateData.scheduledAt) {
         updatePayloadSet.scheduledAt = new Date(updateData.scheduledAt).toISOString();
       } else if (updateData.status !== 'scheduled') {
-         updatePayloadUnset.scheduledAt = ""; // Ensure it's always in $unset if not scheduled
+         updatePayloadUnset.scheduledAt = ""; 
       }
-    } else if (updateData.scheduledAt === null && existingPost.scheduledAt) { // Explicitly clearing schedule
+    } else if (updateData.scheduledAt === null && existingPost.scheduledAt) { 
         updatePayloadUnset.scheduledAt = "";
-        if (updatePayloadSet.status === 'scheduled') {
-            updatePayloadSet.status = 'draft';
+        if (updatePayloadSet.status === 'scheduled') { // If status wasn't changed but scheduledAt was cleared
+            updatePayloadSet.status = 'draft'; // Revert to draft if schedule is removed
         }
     }
 
@@ -283,12 +283,15 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
         }
     }
 
-    const finalUpdateOperation: { $set: Partial<DbPost>, $unset?: Partial<Record<string, string>> } = { $set: updatePayloadSet };
+    const finalUpdateOperation: { $set?: Partial<DbPost>, $unset?: Partial<Record<string, string>> } = {};
+    if (Object.keys(updatePayloadSet).length > 0) {
+      finalUpdateOperation.$set = updatePayloadSet;
+    }
     if (Object.keys(updatePayloadUnset).length > 0) {
         finalUpdateOperation.$unset = updatePayloadUnset;
     }
     
-    const hasMeaningfulSetChanges = Object.keys(updatePayloadSet).some(key => key !== 'updatedAt');
+    const hasMeaningfulSetChanges = finalUpdateOperation.$set && Object.keys(finalUpdateOperation.$set).some(key => key !== 'updatedAt');
     const hasUnsetOperations = Object.keys(updatePayloadUnset).length > 0;
 
     if (!hasMeaningfulSetChanges && !hasUnsetOperations) {
@@ -379,3 +382,4 @@ export async function DELETE(request: NextRequest, { params }: PostParams) {
   }
 }
     
+

@@ -90,16 +90,25 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
 
   const form = useForm<PostEditFormValues>({
     resolver: zodResolver(postEditSchema),
-    defaultValues: {
-      title: existingPost.title || '',
-      content: existingPost.content || '',
-      category: existingPost.category || '',
-      tags: (Array.isArray(existingPost.tags) ? existingPost.tags.join(', ') : null) || '',
-      communityId: existingPost.communityId?.toString() || NO_COMMUNITY_VALUE,
-      isDraft: existingPost.status === 'draft',
-      scheduledAt: existingPost.scheduledAt && isValid(new Date(existingPost.scheduledAt)) ? new Date(existingPost.scheduledAt) : undefined,
-    },
+    // Default values are set in useEffect below once existingPost is confirmed
   });
+
+  useEffect(() => {
+    if (existingPost) {
+        form.reset({
+            title: existingPost.title || '',
+            content: existingPost.content || '',
+            category: existingPost.category || '',
+            tags: (Array.isArray(existingPost.tags) ? existingPost.tags.join(', ') : null) || '',
+            communityId: existingPost.communityId?.toString() || NO_COMMUNITY_VALUE,
+            isDraft: existingPost.status === 'draft',
+            scheduledAt: existingPost.scheduledAt && isValid(new Date(existingPost.scheduledAt)) ? new Date(existingPost.scheduledAt) : undefined,
+        });
+        setCurrentMedia(existingPost.media || []);
+        setShowSchedule(!!existingPost.scheduledAt && existingPost.status === 'scheduled');
+    }
+  }, [existingPost, form]);
+
 
   useEffect(() => {
     if (isAuthenticated && user?.id) {
@@ -246,14 +255,13 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
 
     const finalMediaPayload = [...currentMedia, ...uploadedNewMediaItems];
     
-    let statusToSet = existingPost.status || 'published'; // Default to existing or published
-    if (existingPost.status !== 'published') { // Only allow changing status if not already published
+    let statusToSet = existingPost.status || 'published'; 
+    if (existingPost.status !== 'published') { 
         if (data.isDraft) {
             statusToSet = 'draft';
         } else if (showSchedule && data.scheduledAt && isValid(new Date(data.scheduledAt))) {
             statusToSet = 'scheduled';
         } else if (existingPost.status === 'draft' && !data.isDraft && !(showSchedule && data.scheduledAt)) {
-            // If it was a draft, and isDraft is now false, and not being scheduled, publish it.
             statusToSet = 'published';
         }
     }
@@ -342,6 +350,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                   <FormLabel>Content</FormLabel>
                   <FormControl>
                      <DynamicQuillEditor
+                        key={existingPost.id} // Added key here
                         value={field.value}
                         onChange={field.onChange}
                         placeholder="Share your thoughts..."
@@ -628,3 +637,4 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     </Card>
   );
 }
+
