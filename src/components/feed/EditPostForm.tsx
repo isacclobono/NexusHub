@@ -76,12 +76,12 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
   const router = useRouter();
   const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
   const [loadingCommunities, setLoadingCommunities] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(!!existingPost.scheduledAt && existingPost.status === 'scheduled');
+  const [showSchedule, setShowSchedule] = useState(false); // Initialized by useEffect
 
   const [isSuggestingCategories, setIsSuggestingCategories] = useState(false);
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
   
-  const [currentMedia, setCurrentMedia] = useState<PostMedia[]>(existingPost.media || []);
+  const [currentMedia, setCurrentMedia] = useState<PostMedia[]>([]);
   const [newlySelectedFiles, setNewlySelectedFiles] = useState<File[]>([]);
   const [newFilePreviews, setNewFilePreviews] = useState<string[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
@@ -90,14 +90,14 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
 
   const form = useForm<PostEditFormValues>({
     resolver: zodResolver(postEditSchema),
-    // Default values are set in useEffect below once existingPost is confirmed
+    // Default values are set in useEffect below
   });
 
   useEffect(() => {
     if (existingPost) {
         form.reset({
             title: existingPost.title || '',
-            content: existingPost.content || '',
+            content: existingPost.content || '', // This is the key for Quill content
             category: existingPost.category || '',
             tags: (Array.isArray(existingPost.tags) ? existingPost.tags.join(', ') : null) || '',
             communityId: existingPost.communityId?.toString() || NO_COMMUNITY_VALUE,
@@ -255,13 +255,15 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
 
     const finalMediaPayload = [...currentMedia, ...uploadedNewMediaItems];
     
-    let statusToSet = existingPost.status || 'published'; 
-    if (existingPost.status !== 'published') { 
+    // Determine status based on draft and schedule settings
+    let statusToSet = existingPost.status || 'published'; // Default to current status or published if undefined
+    if (existingPost.status !== 'published') { // Only allow status change if not already published
         if (data.isDraft) {
             statusToSet = 'draft';
         } else if (showSchedule && data.scheduledAt && isValid(new Date(data.scheduledAt))) {
             statusToSet = 'scheduled';
         } else if (existingPost.status === 'draft' && !data.isDraft && !(showSchedule && data.scheduledAt)) {
+            // If it was a draft, and now isDraft is false, and not scheduled, publish it
             statusToSet = 'published';
         }
     }
@@ -273,10 +275,10 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
       content: data.content,
       category: data.category === NO_CATEGORY_SELECTED_VALUE ? null : data.category,
       tags: data.tags, 
-      communityId: data.communityId === NO_COMMUNITY_VALUE ? NO_COMMUNITY_VALUE : (data.communityId || null),
+      communityId: data.communityId === NO_COMMUNITY_VALUE ? NO_COMMUNITY_VALUE : (data.communityId || null), // API handles __NONE__ to unset
       status: statusToSet,
       scheduledAt: statusToSet === 'scheduled' && data.scheduledAt ? new Date(data.scheduledAt).toISOString() : null,
-      media: finalMediaPayload.length > 0 ? finalMediaPayload : null,
+      media: finalMediaPayload.length > 0 ? finalMediaPayload : null, // Send null if no media
     };
 
     try {
@@ -350,7 +352,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                   <FormLabel>Content</FormLabel>
                   <FormControl>
                      <DynamicQuillEditor
-                        key={existingPost.id} // Added key here
+                        key={existingPost.id} 
                         value={field.value}
                         onChange={field.onChange}
                         placeholder="Share your thoughts..."
@@ -637,4 +639,4 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     </Card>
   );
 }
-
+    

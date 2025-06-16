@@ -42,7 +42,7 @@ const postUpdateSchema = z.object({
   scheduledAt: z.string().datetime({ offset: true }).optional().nullable(),
   media: z.array(z.object({
     type: z.enum(['image', 'video', 'document']),
-    url: z.string().min(1, { message: "Media URL cannot be empty." }),
+    url: z.string().min(1, { message: "Media URL cannot be empty." }), // Accepts relative paths
     name: z.string().optional(),
   })).optional().nullable(),
 });
@@ -111,7 +111,7 @@ export async function GET(request: NextRequest, { params }: PostParams) {
     if (forUserId && ObjectId.isValid(forUserId)) {
         currentUser = await usersCollection.findOne(
             { _id: new ObjectId(forUserId) },
-            { projection: { passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0 } } // Corrected: removed bookmarkedPostIds: 1
+            { projection: { passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0 } } 
         );
     }
 
@@ -215,8 +215,8 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
     let finalTagsArray = existingPost.tags || [];
 
     if (updateData.category !== undefined) {
-        if (updateData.category === null) {
-            updatePayloadUnset.category = ""; // Signal to $unset
+        if (updateData.category === null) { // Explicitly clearing category
+            if (existingPost.category) updatePayloadUnset.category = ""; 
             finalCategory = undefined;
         } else if (updateData.category !== existingPost.category) {
             updatePayloadSet.category = updateData.category;
@@ -224,11 +224,11 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
         }
     }
     if (updateData.tags !== undefined) {
-        const newTagsString = updateData.tags === null ? "" : updateData.tags.trim();
+        const newTagsString = updateData.tags === null ? "" : (updateData.tags || "").trim();
         const existingTagsString = (existingPost.tags || []).join(', ');
         if (newTagsString !== existingTagsString) {
             if (newTagsString === "") {
-                 updatePayloadUnset.tags = ""; // Signal to $unset (empty array)
+                 if (existingPost.tags && existingPost.tags.length > 0) updatePayloadUnset.tags = "";
                  finalTagsArray = [];
             } else {
                 finalTagsArray = newTagsString.split(',').map(tag => tag.trim()).filter(tag => tag);
@@ -237,18 +237,17 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
         }
     }
 
+    // Only run AI categorization if content changed OR category/tags were explicitly cleared AND post is not a draft
     if (newContentForAI && (needsModeration || (updateData.category === null && existingPost.category) || (updateData.tags === null && (existingPost.tags && existingPost.tags.length > 0) ) || (!finalCategory && finalTagsArray.length === 0)) && updateData.status !== 'draft') {
         const plainTextContent = newContentForAI.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        if (plainTextContent) { // Only run AI if there's actual text content
+        if (plainTextContent) { 
             const categorizationInput: CategorizeContentInput = { content: plainTextContent };
             try {
                 const categorizationResult = await categorizeContent(categorizationInput);
-                // Only set if category wasn't explicitly cleared and no new category was provided
-                if (updateData.category !== null && !updatePayloadSet.category && categorizationResult.category) {
+                if (updateData.category === undefined && categorizationResult.category) { // Only if category wasn't part of the explicit update
                     updatePayloadSet.category = categorizationResult.category;
                 }
-                 // Only set if tags weren't explicitly cleared and no new tags were provided
-                if (updateData.tags !== null && !updatePayloadSet.tags && categorizationResult.tags && categorizationResult.tags.length > 0) {
+                if (updateData.tags === undefined && categorizationResult.tags && categorizationResult.tags.length > 0) { // Only if tags weren't part of the explicit update
                     updatePayloadSet.tags = [...new Set([...finalTagsArray, ...categorizationResult.tags])];
                 }
             } catch (aiError) {
@@ -276,40 +275,39 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
         updatePayloadSet.scheduledAt = newScheduledAtISO;
       }
     } else if (updateData.status !== 'scheduled' || updateData.scheduledAt === null) {
-      // If status is not 'scheduled' OR scheduledAt is explicitly cleared, unset it
       if (existingPost.scheduledAt) {
         updatePayloadUnset.scheduledAt = ""; 
       }
     }
 
 
-    if (updateData.media !== undefined) { // media can be null to clear, or an array to set
+    if (updateData.media !== undefined) { 
         if (updateData.media === null || (Array.isArray(updateData.media) && updateData.media.length === 0)) {
             if (existingPost.media && existingPost.media.length > 0) updatePayloadUnset.media = "";
-        } else if (JSON.stringify(updateData.media) !== JSON.stringify(existingPost.media || [])) { // Basic check for array difference
+        } else if (JSON.stringify(updateData.media) !== JSON.stringify(existingPost.media || [])) { 
             updatePayloadSet.media = updateData.media;
         }
     }
 
     const finalUpdateOperation: { $set?: Partial<DbPost>, $unset?: Partial<Record<string, string>> } = {};
-    if (Object.keys(updatePayloadSet).length > 1) { // More than just updatedAt
+    
+    // Only add $set if there are actual fields to set beyond updatedAt
+    const meaningfulSetKeys = Object.keys(updatePayloadSet).filter(key => key !== 'updatedAt');
+    if (meaningfulSetKeys.length > 0) {
       finalUpdateOperation.$set = updatePayloadSet;
-    } else if (Object.keys(updatePayloadSet).length === 1 && !Object.keys(updatePayloadUnset).length) {
-      // Only updatedAt, no actual change
-    } else if (Object.keys(updatePayloadSet).length >=1 ) { // handles case where only updatedAt and $unset exists
-        finalUpdateOperation.$set = updatePayloadSet;
+    } else {
+      // If only updatedAt is in updatePayloadSet, still include it if there are $unset operations
+      if (Object.keys(updatePayloadUnset).length > 0) {
+        finalUpdateOperation.$set = { updatedAt: updatePayloadSet.updatedAt };
+      }
     }
-
 
     if (Object.keys(updatePayloadUnset).length > 0) {
         finalUpdateOperation.$unset = updatePayloadUnset;
     }
     
-    const hasMeaningfulSetChanges = finalUpdateOperation.$set && Object.keys(finalUpdateOperation.$set).some(key => key !== 'updatedAt');
-    const hasUnsetOperations = Object.keys(updatePayloadUnset).length > 0;
-
-    if (!hasMeaningfulSetChanges && !hasUnsetOperations) {
-        // No actual changes other than potentially updatedAt
+    if (!finalUpdateOperation.$set && !finalUpdateOperation.$unset) {
+        // No actual changes detected, return current post
         const getRequestUrl = new URL(request.url);
         const newSearchParams = new URLSearchParams(getRequestUrl.search);
         newSearchParams.set('forUserId', userId);
@@ -318,13 +316,14 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
         return await GET(getRequest, { params });
     }
 
+
     const result = await postsCollection.findOneAndUpdate(
       { _id: postObjectId },
       finalUpdateOperation,
       { returnDocument: 'after' }
     );
 
-    if (!result.value) {
+    if (!result.value) { // Changed from !result to !result.value
       console.error(`Post update failed for post ${postId}. Final update operation:`, JSON.stringify(finalUpdateOperation));
       return NextResponse.json({ message: 'Post update failed. The document may not have been found or effectively modified.' }, { status: 500 });
     }
@@ -395,4 +394,5 @@ export async function DELETE(request: NextRequest, { params }: PostParams) {
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
+    
     

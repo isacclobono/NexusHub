@@ -14,10 +14,12 @@ interface QuillEditorProps {
 const QuillEditor: React.FC<QuillEditorProps> = ({ value, onChange, readOnly = false, placeholder }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const quillInstanceRef = useRef<Quill | null>(null);
-  const isQuillInitializedRef = useRef(false); // To prevent re-initialization
-  const currentContentRef = useRef<string>(value); // Track current editor content
+  const isQuillInitializedRef = useRef(false);
+  // currentHtmlRef will store the HTML content that the Quill editor is currently displaying
+  // or the last HTML value passed as a prop that was successfully set.
+  const currentHtmlRef = useRef<string>(value);
 
-  // Initialize Quill
+  // Initialize Quill instance
   useEffect(() => {
     if (editorRef.current && !isQuillInitializedRef.current) {
       const quill = new Quill(editorRef.current, {
@@ -35,79 +37,79 @@ const QuillEditor: React.FC<QuillEditorProps> = ({ value, onChange, readOnly = f
         readOnly: readOnly,
       });
       quillInstanceRef.current = quill;
-      isQuillInitializedRef.current = true; // Mark as initialized
+      isQuillInitializedRef.current = true;
 
       // Set initial content
-      if (typeof value === 'string') {
+      // Ensure value is treated as a string, even if it's null/undefined from parent initially
+      const initialContent = typeof value === 'string' ? value : '';
+      if (initialContent !== quill.root.innerHTML) { // Avoid redundant update
         try {
-          const delta = quill.clipboard.convert(value);
-          quill.setContents(delta, 'silent');
-          currentContentRef.current = value;
+          quill.root.innerHTML = initialContent;
+          currentHtmlRef.current = initialContent;
         } catch (e) {
-          console.error("Quill: Initial content conversion error", e, "HTML:", value);
-          quill.setText(value.replace(/<[^>]*>?/gm, ''), 'silent');
-          currentContentRef.current = quill.root.innerHTML;
+            console.error("Quill: Error setting initial HTML content", e, "HTML:", initialContent);
+            // Fallback to setting as plain text if HTML setting fails
+            quill.setText(initialContent.replace(/<[^>]*>?/gm, ''));
+            currentHtmlRef.current = quill.root.innerHTML;
         }
       }
 
       quill.on('text-change', (delta, oldDelta, source) => {
         if (source === 'user') {
           const newHtml = quill.root.innerHTML;
-          currentContentRef.current = newHtml;
+          currentHtmlRef.current = newHtml; // Update ref on user change
           onChange(newHtml);
         }
       });
     }
-  }, [readOnly, placeholder]); // Removed 'value' to ensure init runs only once based on structure props
+  }, [readOnly, placeholder]); // Dependencies for initialization. 'value' is handled by its own effect.
 
-  // Handle updates to 'value' prop from parent
+  // Handle external value changes (from props)
   useEffect(() => {
     const quill = quillInstanceRef.current;
-    if (quill && typeof value === 'string' && value !== currentContentRef.current) {
+    // Check if Quill is initialized and if the incoming 'value' prop is different from what we last set/know
+    if (quill && typeof value === 'string' && value !== currentHtmlRef.current) {
       try {
-        // Store cursor position
-        const range = quill.getSelection();
-        
-        const delta = quill.clipboard.convert(value);
-        quill.setContents(delta, 'silent');
-        currentContentRef.current = value; // Update internal tracker
+        const selection = quill.getSelection(); // Preserve selection
+        quill.root.innerHTML = value; // Set HTML content
+        currentHtmlRef.current = value; // Sync ref after programmatic change
 
-        // Restore cursor position if it existed
-        if (range) {
-            // Check if the previous range is still valid.
-            // If text length changed significantly, setting the old range might be problematic.
-            // For simplicity, try to set it. More complex logic might be needed for perfect cursor restoration.
-            quill.setSelection(range.index, range.length, 'silent');
+        if (selection) { // Try to restore selection
+            // Check if the previous range is still valid within the new content length
+            if (selection.index + selection.length <= quill.getLength()) {
+                 quill.setSelection(selection.index, selection.length, 'silent');
+            } else {
+                // If old selection is out of bounds, move cursor to the end
+                quill.setSelection(quill.getLength(), 0, 'silent');
+            }
         }
-
       } catch (e) {
-        console.error("Quill: Prop update content conversion error", e, "HTML:", value);
-        // Fallback to setting text if HTML conversion fails
-        quill.setText(value.replace(/<[^>]*>?/gm, ''), 'silent');
-        currentContentRef.current = quill.root.innerHTML; // Update internal tracker
+        console.error("Quill: Prop update content setting error", e, "HTML:", value);
+        // Fallback if setting HTML fails
+        const selection = quill.getSelection();
+        quill.setText(String(value).replace(/<[^>]*>?/gm, ''), 'silent');
+        currentHtmlRef.current = quill.root.innerHTML;
+         if (selection) {
+            if (selection.index + selection.length <= quill.getLength()) {
+                 quill.setSelection(selection.index, selection.length, 'silent');
+            } else {
+                quill.setSelection(quill.getLength(), 0, 'silent');
+            }
+        }
       }
     }
-  }, [value]); // Only react to 'value' prop changes here
+  }, [value]); // This effect runs ONLY when 'value' prop changes
 
-  // Update readOnly state if it changes
+  // Handle readOnly prop changes separately
   useEffect(() => {
     const quill = quillInstanceRef.current;
-    if (quill && quill.options.readOnly !== readOnly) {
+    if (quill) {
       quill.enable(!readOnly);
     }
   }, [readOnly]);
-
-  // Cleanup Quill instance on component unmount
-  useEffect(() => {
-    return () => {
-      // No direct cleanup of quillInstanceRef.current = null here as it can cause issues with HMR
-      // The instance is tied to the component's lifecycle; if it unmounts, the ref is gone.
-      // isQuillInitializedRef should ensure it's not re-init on fast-refresh if component itself isn't fully unmounted.
-    };
-  }, []);
 
   return <div ref={editorRef} style={{ minHeight: '200px' }} />;
 };
 
 export default QuillEditor;
-
+    
