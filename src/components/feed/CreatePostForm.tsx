@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Calendar as CalendarIcon, UsersRound, Sparkles, UploadCloud, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, UsersRound, Sparkles, UploadCloud, Image as ImageIcon, Trash2, X } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
@@ -47,6 +47,8 @@ const DynamicQuillEditor = dynamic(() => import('@/components/editor/QuillEditor
 
 
 const NO_COMMUNITY_VALUE = "__NONE__";
+const MAX_FILES = 5;
+const MAX_FILE_SIZE_MB = 5;
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
@@ -75,9 +77,9 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
   const [isSuggestingCategories, setIsSuggestingCategories] = useState(false);
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [filePreview, setFilePreview] = useState<string | null>(null);
-  const [isUploadingFile, setIsUploadingFile] = useState(false);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [filePreviews, setFilePreviews] = useState<string[]>([]);
+  const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
 
@@ -137,36 +139,42 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
   }, [authLoading, isAuthenticated, user, router]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
-        toast.error("File is too large. Maximum 5MB allowed.");
-        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
+    const files = event.target.files;
+    if (files) {
+      const newFiles = Array.from(files);
+      const currentFileCount = selectedFiles.length;
+      if (currentFileCount + newFiles.length > MAX_FILES) {
+        toast.error(`You can upload a maximum of ${MAX_FILES} images.`);
+        if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
-      if (!file.type.startsWith('image/')) {
-        toast.error("Invalid file type. Only images are allowed.");
-        if (fileInputRef.current) fileInputRef.current.value = ""; // Reset file input
-        return;
+
+      const validFiles: File[] = [];
+      const newPreviews: string[] = [];
+
+      for (const file of newFiles) {
+        if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
+          toast.error(`File "${file.name}" is too large. Max ${MAX_FILE_SIZE_MB}MB allowed.`);
+          continue;
+        }
+        if (!file.type.startsWith('image/')) {
+          toast.error(`File "${file.name}" is not a valid image type.`);
+          continue;
+        }
+        validFiles.push(file);
+        newPreviews.push(URL.createObjectURL(file));
       }
-      setSelectedFile(file);
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setFilePreview(reader.result as string);
-      };
-      reader.readAsDataURL(file);
-    } else {
-      setSelectedFile(null);
-      setFilePreview(null);
+
+      setSelectedFiles(prev => [...prev, ...validFiles]);
+      setFilePreviews(prev => [...prev, ...newPreviews]);
     }
+    if (fileInputRef.current) fileInputRef.current.value = ""; // Reset input to allow re-selecting same file if removed
   };
 
-  const handleRemoveFile = () => {
-    setSelectedFile(null);
-    setFilePreview(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = ""; // Reset the file input
-    }
+  const handleRemoveFile = (index: number) => {
+    URL.revokeObjectURL(filePreviews[index]); // Clean up object URL
+    setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+    setFilePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
 
@@ -206,27 +214,34 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
     setIsSubmitting(true);
     let uploadedMedia: PostMedia[] = [];
 
-    if (selectedFile) {
-      setIsUploadingFile(true);
-      const formData = new FormData();
-      formData.append('file', selectedFile);
-      try {
-        const uploadResponse = await fetch('/api/upload', {
-          method: 'POST',
-          body: formData,
-        });
-        const uploadResult = await uploadResponse.json();
-        if (!uploadResponse.ok || !uploadResult.success) {
-          throw new Error(uploadResult.message || 'File upload failed.');
+    if (selectedFiles.length > 0) {
+      setIsUploadingFiles(true);
+      toast.loading(`Uploading ${selectedFiles.length} image(s)...`, { id: 'upload-toast' });
+      
+      for (const file of selectedFiles) {
+        const formData = new FormData();
+        formData.append('file', file);
+        try {
+          const uploadResponse = await fetch('/api/upload', {
+            method: 'POST',
+            body: formData,
+          });
+          const uploadResult = await uploadResponse.json();
+          if (!uploadResponse.ok || !uploadResult.success) {
+            throw new Error(uploadResult.message || `Failed to upload ${file.name}.`);
+          }
+          uploadedMedia.push({ type: 'image', url: uploadResult.url, name: file.name });
+        } catch (uploadError) {
+          toast.dismiss('upload-toast');
+          toast.error(uploadError instanceof Error ? uploadError.message : `Could not upload ${file.name}.`);
+          setIsSubmitting(false);
+          setIsUploadingFiles(false);
+          return;
         }
-        uploadedMedia.push({ type: 'image', url: uploadResult.url, name: selectedFile.name });
-      } catch (uploadError) {
-        toast.error(uploadError instanceof Error ? uploadError.message : 'Could not upload image.');
-        setIsSubmitting(false);
-        setIsUploadingFile(false);
-        return;
       }
-      setIsUploadingFile(false);
+      toast.dismiss('upload-toast');
+      toast.success(`${uploadedMedia.length} image(s) uploaded successfully!`);
+      setIsUploadingFiles(false);
     }
 
     const finalData = {
@@ -260,8 +275,8 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
       } else {
         toast.success(`Your post "${result.post?.title || 'Untitled'}" has been successfully created.`);
         form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined });
-        setSelectedFile(null);
-        setFilePreview(null);
+        setSelectedFiles([]);
+        setFilePreviews([]);
         if (fileInputRef.current) fileInputRef.current.value = "";
         setShowSchedule(false);
         if (finalData.communityId) {
@@ -329,39 +344,44 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
 
             <FormItem>
               <FormLabel htmlFor="file-upload" className="flex items-center">
-                <UploadCloud className="mr-2 h-4 w-4 text-muted-foreground"/> Add Image (Optional, max 5MB)
+                <UploadCloud className="mr-2 h-4 w-4 text-muted-foreground"/> Add Images (Optional, max {MAX_FILES}, {MAX_FILE_SIZE_MB}MB each)
               </FormLabel>
               <Input
                 id="file-upload"
                 type="file"
                 accept="image/*"
+                multiple 
                 onChange={handleFileChange}
                 ref={fileInputRef}
                 className="border-dashed border-input hover:border-primary transition-colors"
-                disabled={isUploadingFile}
+                disabled={isUploadingFiles || selectedFiles.length >= MAX_FILES}
               />
-              {isUploadingFile && (
+              {isUploadingFiles && (
                 <div className="flex items-center text-sm text-muted-foreground mt-2">
                   <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Uploading...
+                  Uploading files...
                 </div>
               )}
-              {filePreview && (
-                <div className="mt-2 relative w-full max-w-xs">
-                  <NextImage src={filePreview} alt="Selected image preview" width={200} height={200} className="rounded-md border object-cover aspect-square" data-ai-hint="user image upload"/>
-                  <Button
-                    type="button"
-                    variant="destructive"
-                    size="icon"
-                    className="absolute top-1 right-1 h-6 w-6"
-                    onClick={handleRemoveFile}
-                    title="Remove image"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </Button>
+              {filePreviews.length > 0 && (
+                <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                  {filePreviews.map((previewUrl, index) => (
+                    <div key={index} className="relative group aspect-square">
+                      <NextImage src={previewUrl} alt={`Selected image ${index + 1} preview`} layout="fill" className="rounded-md border object-cover" data-ai-hint="user image upload small"/>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="icon"
+                        className="absolute top-1 right-1 h-6 w-6 opacity-70 group-hover:opacity-100 transition-opacity"
+                        onClick={() => handleRemoveFile(index)}
+                        title="Remove image"
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  ))}
                 </div>
               )}
-              <FormDescription>Attach an image to your post.</FormDescription>
+              <FormDescription>Attach up to {MAX_FILES} images to your post.</FormDescription>
             </FormItem>
 
 
@@ -552,16 +572,16 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
             <div className="flex justify-end space-x-2 pt-4">
                <Button type="button" variant="outline" onClick={() => {
                   form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined });
-                  setSelectedFile(null);
-                  setFilePreview(null);
+                  setSelectedFiles([]);
+                  setFilePreviews([]);
                   if (fileInputRef.current) fileInputRef.current.value = "";
                   setShowSchedule(false);
                 }} disabled={isSubmitting}>
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting || authLoading || isUploadingFile} className="btn-gradient min-w-[120px]">
-                {isSubmitting || isUploadingFile ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                {isUploadingFile ? 'Uploading...' : (isSubmitting ? 'Submitting...' : (form.getValues('isDraft') ? 'Save Draft' : (showSchedule && form.getValues('scheduledAt') ? 'Schedule Post' : 'Publish Post')))}
+              <Button type="submit" disabled={isSubmitting || authLoading || isUploadingFiles} className="btn-gradient min-w-[120px]">
+                {isUploadingFiles || isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                {isUploadingFiles ? 'Uploading...' : (isSubmitting ? 'Submitting...' : (form.getValues('isDraft') ? 'Save Draft' : (showSchedule && form.getValues('scheduledAt') ? 'Schedule Post' : 'Publish Post')))}
               </Button>
             </div>
           </form>
@@ -570,3 +590,4 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
     </Card>
   );
 }
+

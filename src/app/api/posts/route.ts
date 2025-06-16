@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import type { Post, User, Comment, Community, Notification } from '@/lib/types';
+import type { Post, User, Comment, Community, Notification, PostMedia } from '@/lib/types';
 import { categorizeContent, CategorizeContentInput } from '@/ai/flows/smart-content-categorization';
 import { intelligentContentModeration, IntelligentContentModerationInput } from '@/ai/flows/intelligent-content-moderation';
 import getDb from '@/lib/mongodb';
@@ -17,7 +17,7 @@ const postFormSchema = z.object({
   isDraft: z.boolean().default(false),
   scheduledAt: z.string().datetime({ offset: true }).optional(),
   communityId: z.string().optional().refine(val => !val || ObjectId.isValid(val), { message: "Invalid Community ID format." }),
-  media: z.array(z.object({ // Added media validation
+  media: z.array(z.object({ 
     type: z.enum(['image', 'video', 'document']),
     url: z.string().url(),
     name: z.string().optional(),
@@ -31,6 +31,7 @@ type DbPost = Omit<Post, 'id' | 'author' | 'comments' | 'isLikedByCurrentUser' |
   likedBy: ObjectId[];
   commentIds: ObjectId[];
   communityId?: ObjectId;
+  media?: PostMedia[]; // Ensure DbPost includes PostMedia array
 };
 type DbComment = Omit<Comment, 'id' | 'author' | 'authorId' | 'postId'> & {
   _id: ObjectId;
@@ -111,7 +112,7 @@ export async function POST(request: NextRequest) {
       authorId: new ObjectId(data.userId),
       title: data.title,
       content: data.content,
-      media: data.media,
+      media: data.media || [], // Use provided media or an empty array
       category: finalCategory,
       tags: finalTagsArray,
       createdAt: new Date().toISOString(),
@@ -147,6 +148,7 @@ export async function POST(request: NextRequest) {
         isBookmarkedByCurrentUser: false,
         communityId: newPostDocument.communityId,
         communityName: community?.name,
+        media: newPostDocument.media, // Ensure media is passed to client
     };
 
     // Notification Logic
@@ -388,6 +390,7 @@ export async function GET(request: NextRequest) {
                 isBookmarkedByCurrentUser,
                 communityId: postDoc.communityId,
                 communityName: communityName,
+                media: postDoc.media || [], // Ensure media is passed
                 } as Post;
             })
         );
@@ -459,6 +462,7 @@ export async function GET(request: NextRequest) {
           isBookmarkedByCurrentUser,
           communityId: postDoc.communityId,
           communityName: communityName,
+          media: postDoc.media || [], // Ensure media is passed
         } as Post;
       })
     );
