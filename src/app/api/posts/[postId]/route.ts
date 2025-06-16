@@ -111,7 +111,7 @@ export async function GET(request: NextRequest, { params }: PostParams) {
     if (forUserId && ObjectId.isValid(forUserId)) {
         currentUser = await usersCollection.findOne(
             { _id: new ObjectId(forUserId) },
-            { projection: { passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0 } } // Only exclude, bookmarkedPostIds will be included.
+            { projection: { passwordHash: 0, resetPasswordToken: 0, resetPasswordExpires: 0 } }
         );
     }
 
@@ -223,7 +223,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
             finalCategory = updateData.category;
         }
     }
-    if (updateData.tags !== undefined) { // tags from form is a string
+    if (updateData.tags !== undefined) {
         if (updateData.tags === null || updateData.tags.trim() === "") {
              updatePayloadUnset.tags = "";
              finalTagsArray = [];
@@ -235,7 +235,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
 
     if (newContentForAI && (needsModeration || updateData.category === null || (updateData.tags === null && (existingPost.tags && existingPost.tags.length > 0) ) || (!finalCategory && finalTagsArray.length === 0)) && updateData.status !== 'draft') {
         const plainTextContent = newContentForAI.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
-        if (plainTextContent) { // Only run categorization if there's actual text content
+        if (plainTextContent) {
             const categorizationInput: CategorizeContentInput = { content: plainTextContent };
             try {
                 const categorizationResult = await categorizeContent(categorizationInput);
@@ -265,12 +265,11 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
       if (updateData.status === 'scheduled' && updateData.scheduledAt) {
         updatePayloadSet.scheduledAt = new Date(updateData.scheduledAt).toISOString();
       } else if (updateData.status !== 'scheduled') {
-        if (updatePayloadUnset.scheduledAt === undefined) updatePayloadUnset.scheduledAt = ""; // Ensure it's always in $unset if not scheduled
+         updatePayloadUnset.scheduledAt = ""; // Ensure it's always in $unset if not scheduled
       }
-    }
-    if (updateData.scheduledAt === null && existingPost.scheduledAt) { // Explicitly clearing schedule
-        if (updatePayloadUnset.scheduledAt === undefined) updatePayloadUnset.scheduledAt = "";
-        if (updatePayloadSet.status === 'scheduled') { // If was being set to scheduled but date removed, revert to draft
+    } else if (updateData.scheduledAt === null && existingPost.scheduledAt) { // Explicitly clearing schedule
+        updatePayloadUnset.scheduledAt = "";
+        if (updatePayloadSet.status === 'scheduled') {
             updatePayloadSet.status = 'draft';
         }
     }
@@ -289,12 +288,10 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
         finalUpdateOperation.$unset = updatePayloadUnset;
     }
     
-    // Check if there are any actual changes beyond 'updatedAt' in $set or any $unset operations
     const hasMeaningfulSetChanges = Object.keys(updatePayloadSet).some(key => key !== 'updatedAt');
-    const hasUnsetChanges = Object.keys(updatePayloadUnset).length > 0;
+    const hasUnsetOperations = Object.keys(updatePayloadUnset).length > 0;
 
-    if (!hasMeaningfulSetChanges && !hasUnsetChanges) {
-        // No actual fields to update, so we can just re-fetch the post and return it.
+    if (!hasMeaningfulSetChanges && !hasUnsetOperations) {
         const getRequestUrl = new URL(request.url);
         const newSearchParams = new URLSearchParams(getRequestUrl.search);
         newSearchParams.set('forUserId', userId);
@@ -310,8 +307,9 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
       { returnDocument: 'after' }
     );
 
-    if (!result.value) { // Changed from !result to !result.value as findOneAndUpdate returns an object with a 'value' property
-      return NextResponse.json({ message: 'Post update failed. The document may not have been found or not modified.' }, { status: 500 });
+    if (!result.value) {
+      console.error(`Post update failed for post ${postId}. Final update operation:`, JSON.stringify(finalUpdateOperation));
+      return NextResponse.json({ message: 'Post update failed. The document may not have been found or effectively modified.' }, { status: 500 });
     }
 
     const newSearchParamsForResult = new URLSearchParams();
@@ -324,7 +322,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
 
   } catch (error) {
     console.error(`API Error updating post ${postId}:`, error);
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected server error occurred.';
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected server error occurred during post update.';
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
