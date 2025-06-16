@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview This file defines a Genkit flow for intelligent content moderation.
@@ -42,18 +43,26 @@ const prompt = ai.definePrompt({
   name: 'intelligentContentModerationPrompt',
   input: {schema: IntelligentContentModerationInputSchema},
   output: {schema: IntelligentContentModerationOutputSchema},
-  prompt: `You are an AI content moderator responsible for flagging potentially offensive or inappropriate content.
+  prompt: `You are an AI content moderator. Your primary goal is to identify and flag content that is harmful, offensive, or violates community guidelines.
 
   Content to moderate: {{{content}}}
-
   Sensitivity Level: {{{sensitivityLevel}}}
 
-  Based on the content and sensitivity level, determine if the content should be flagged for moderation.
+  Prioritize flagging content related to:
+  - Hate speech or discriminatory language
+  - Harassment or bullying
+  - Explicit or highly inappropriate adult content
+  - Threats or promotion of violence or illegal acts
+  - Spam or deceptive practices
+
+  While clear communication is important, do NOT flag content *solely* for minor grammatical errors or spelling mistakes unless these errors make the content unintelligible, are part of a clear spam attempt (e.g., keyword stuffing with gibberish), or significantly contribute to the harmful nature of the content.
+
+  Based on the content and sensitivity level, and focusing on the priorities above, determine if the content should be flagged for moderation.
 
   Return a JSON object with the following schema:
   {
     "isFlagged": boolean, // true if the content should be flagged, false otherwise
-    "reason": string // The reason for flagging the content.  If the content is not flagged, this should be an empty string.
+    "reason": string // The reason for flagging the content. If the content is not flagged, this should be an empty string.
   }
   `,
 });
