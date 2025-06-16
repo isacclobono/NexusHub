@@ -120,3 +120,4 @@ export async function POST(request: NextRequest, { params }: RsvpParams) {
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
+

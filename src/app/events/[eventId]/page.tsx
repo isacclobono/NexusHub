@@ -352,10 +352,15 @@ export default function EventDetailPage() {
                     )}
                 </div>
 
-                 <Button onClick={handleRSVP} size="lg" className="w-full btn-gradient" disabled={isRsvpLoading || isFull}>
+                 <Button onClick={handleRSVP} size="lg" className="w-full btn-gradient" disabled={isRsvpLoading || isFull || !isAuthenticated}>
                     {isRsvpLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ticket className="h-5 w-5 mr-2" />}
                     {hasRSVPd ? "You're Going!" : (isFull ? "Event Full" : (isFreeEvent ? "RSVP to this Event" : `Get Ticket (${displayPrice})`))}
                 </Button>
+                {!isAuthenticated && !isRsvpLoading && 
+                    <Button onClick={() => router.push(`/login?redirect=/events/${eventId}`)} size="lg" className="w-full mt-2">
+                        Login to RSVP
+                    </Button>
+                }
                 {!isFreeEvent && <p className="text-xs text-muted-foreground text-center mt-1">(Payment processing not implemented for this demo)</p>}
 
 
@@ -399,3 +404,4 @@ export default function EventDetailPage() {
     </div>
   );
 }
+

@@ -272,3 +272,4 @@ export async function DELETE(request: NextRequest, { params }: EventParams) {
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
+
