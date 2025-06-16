@@ -8,7 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, Loader2, Send, Share2, AlertTriangle, CalendarDays, Edit, Trash2, Star, UsersRound } from 'lucide-react';
+import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, Loader2, Send, Share2, AlertTriangle, CalendarDays, Edit, Trash2, Star, UsersRound, FileText, Video as VideoIcon } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
@@ -153,7 +153,7 @@ export default function PostPage() {
         throw new Error(errorData.message || 'Failed to fetch post');
       }
       const postData: Post = await res.json();
-      setPost(postData);
+      setPost({...postData, media: Array.isArray(postData.media) ? postData.media : []});
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load post.');
       setPost(null);
@@ -172,7 +172,6 @@ export default function PostPage() {
       setComments(commentsData);
     } catch (e) {
       console.error("Error fetching comments:", e);
-      // Not setting main page error for comment fetch failure
     } finally {
       setIsLoadingComments(false);
     }
@@ -207,7 +206,7 @@ export default function PostPage() {
       const result = await response.json();
       if (!response.ok) throw new Error(result.message);
       toast.success(result.message);
-      await refreshUser(); // Refresh user context which holds bookmark list
+      await refreshUser();
     } catch (err) {
       setPost(p => p ? { ...p, isBookmarkedByCurrentUser: originalIsBookmarked } : null);
       toast.error(err instanceof Error ? err.message : 'Error bookmarking.');
@@ -241,7 +240,7 @@ export default function PostPage() {
       });
       const result = await response.json();
       if (!response.ok || !result.post) throw new Error(result.message);
-      setPost(result.post); // Update with server response
+      setPost({...result.post, media: Array.isArray(result.post.media) ? result.post.media : []});
       toast.success(result.message);
     } catch (err) {
       setPost(p => p ? { ...p, isLikedByCurrentUser: originalIsLiked, likeCount: originalLikeCount } : null);
@@ -382,11 +381,26 @@ export default function PostPage() {
             dangerouslySetInnerHTML={{ __html: sanitizedContent }}
           />
           {post.media && post.media.length > 0 && (
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            <div className="space-y-4 mb-6">
               {post.media.map((item, index) => (
-                <div key={index} className="relative aspect-video rounded-lg overflow-hidden border shadow-sm">
-                  {item.type === 'image' && <Image src={item.url} alt={item.name || post.title || `Post media ${index + 1}`} layout="fill" objectFit="cover" data-ai-hint="post media content" />}
-                  {/* Video/doc display could be enhanced here */}
+                <div key={index} className="rounded-lg overflow-hidden border shadow-sm">
+                  {item.type === 'image' && (
+                    <div className="relative aspect-video">
+                        <Image src={item.url} alt={item.name || post.title || `Post media ${index + 1}`} layout="fill" objectFit="contain" data-ai-hint="post media content"/>
+                    </div>
+                  )}
+                  {item.type === 'video' && (
+                     <video controls src={item.url} className="w-full max-h-[500px] aspect-video bg-black" title={item.name || post.title || `Video ${index+1}`}/>
+                  )}
+                  {item.type === 'document' && (
+                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="flex items-center space-x-2 p-3 bg-muted hover:bg-muted/80 transition-colors">
+                      <FileText className="h-6 w-6 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm text-foreground truncate" title={item.name || `Document ${index+1}`}>
+                        {item.name || `Document ${index+1}`}
+                      </span>
+                      <span className="text-xs text-primary ml-auto hover:underline">View/Download</span>
+                    </a>
+                  )}
                 </div>
               ))}
             </div>
@@ -482,3 +496,4 @@ export default function PostPage() {
     </div>
   );
 }
+

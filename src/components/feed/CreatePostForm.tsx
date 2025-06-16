@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Calendar as CalendarIcon, UsersRound, Sparkles, UploadCloud, Image as ImageIcon, Trash2, X } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, UsersRound, Sparkles, UploadCloud, Image as ImageIcon, FileText, Video as VideoIcon, Trash2, X } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
@@ -38,7 +38,7 @@ import type { Community, PostMedia } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import dynamic from 'next/dynamic';
 import { categorizeContent } from '@/ai/flows/smart-content-categorization';
-import NextImage from 'next/image'; // Renamed to avoid conflict with ImageIcon
+import NextImage from 'next/image';
 
 const DynamicQuillEditor = dynamic(() => import('@/components/editor/QuillEditor'), {
   ssr: false,
@@ -48,7 +48,13 @@ const DynamicQuillEditor = dynamic(() => import('@/components/editor/QuillEditor
 
 const NO_COMMUNITY_VALUE = "__NONE__";
 const MAX_FILES = 5;
-const MAX_FILE_SIZE_MB = 5;
+const MAX_FILE_SIZE_MB = 10; // Increased for potential small videos/docs
+
+const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ACCEPTED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/ogg'];
+const ACCEPTED_DOCUMENT_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'application/rtf'];
+const ALL_ACCEPTED_TYPES_STRING = [...ACCEPTED_IMAGE_TYPES, ...ACCEPTED_VIDEO_TYPES, ...ACCEPTED_DOCUMENT_TYPES].join(',');
+
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
@@ -78,7 +84,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
 
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
-  const [filePreviews, setFilePreviews] = useState<string[]>([]);
+  const [filePreviews, setFilePreviews] = useState<{ url: string; type: 'image' | 'video' | 'document'; name: string }[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -138,41 +144,49 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
     }
   }, [authLoading, isAuthenticated, user, router]);
 
+  const getFileType = (file: File): 'image' | 'video' | 'document' | 'other' => {
+    if (ACCEPTED_IMAGE_TYPES.includes(file.type)) return 'image';
+    if (ACCEPTED_VIDEO_TYPES.includes(file.type)) return 'video';
+    if (ACCEPTED_DOCUMENT_TYPES.includes(file.type)) return 'document';
+    return 'other';
+  };
+
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (files) {
       const newFiles = Array.from(files);
       const currentFileCount = selectedFiles.length;
       if (currentFileCount + newFiles.length > MAX_FILES) {
-        toast.error(`You can upload a maximum of ${MAX_FILES} images.`);
+        toast.error(`You can upload a maximum of ${MAX_FILES} files.`);
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
 
       const validFiles: File[] = [];
-      const newPreviews: string[] = [];
+      const newPreviews: { url: string; type: 'image' | 'video' | 'document'; name: string }[] = [];
 
       for (const file of newFiles) {
         if (file.size > MAX_FILE_SIZE_MB * 1024 * 1024) {
           toast.error(`File "${file.name}" is too large. Max ${MAX_FILE_SIZE_MB}MB allowed.`);
           continue;
         }
-        if (!file.type.startsWith('image/')) {
-          toast.error(`File "${file.name}" is not a valid image type.`);
+        const fileType = getFileType(file);
+        if (fileType === 'other') {
+          toast.error(`File "${file.name}" is not a valid image, video, or document type.`);
           continue;
         }
         validFiles.push(file);
-        newPreviews.push(URL.createObjectURL(file));
+        newPreviews.push({ url: URL.createObjectURL(file), type: fileType, name: file.name });
       }
 
       setSelectedFiles(prev => [...prev, ...validFiles]);
       setFilePreviews(prev => [...prev, ...newPreviews]);
     }
-    if (fileInputRef.current) fileInputRef.current.value = ""; // Reset input to allow re-selecting same file if removed
+    if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const handleRemoveFile = (index: number) => {
-    URL.revokeObjectURL(filePreviews[index]); // Clean up object URL
+    URL.revokeObjectURL(filePreviews[index].url);
     setSelectedFiles(prev => prev.filter((_, i) => i !== index));
     setFilePreviews(prev => prev.filter((_, i) => i !== index));
   };
@@ -216,9 +230,11 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
 
     if (selectedFiles.length > 0) {
       setIsUploadingFiles(true);
-      toast.loading(`Uploading ${selectedFiles.length} image(s)...`, { id: 'upload-toast' });
+      toast.loading(`Uploading ${selectedFiles.length} file(s)...`, { id: 'upload-toast' });
       
-      for (const file of selectedFiles) {
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const file = selectedFiles[i];
+        const previewInfo = filePreviews[i];
         const formData = new FormData();
         formData.append('file', file);
         try {
@@ -230,7 +246,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
           if (!uploadResponse.ok || !uploadResult.success) {
             throw new Error(uploadResult.message || `Failed to upload ${file.name}.`);
           }
-          uploadedMedia.push({ type: 'image', url: uploadResult.url, name: file.name });
+          uploadedMedia.push({ type: previewInfo.type, url: uploadResult.url, name: file.name });
         } catch (uploadError) {
           toast.dismiss('upload-toast');
           toast.error(uploadError instanceof Error ? uploadError.message : `Could not upload ${file.name}.`);
@@ -240,7 +256,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
         }
       }
       toast.dismiss('upload-toast');
-      toast.success(`${uploadedMedia.length} image(s) uploaded successfully!`);
+      toast.success(`${uploadedMedia.length} file(s) uploaded successfully!`);
       setIsUploadingFiles(false);
     }
 
@@ -344,12 +360,12 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
 
             <FormItem>
               <FormLabel htmlFor="file-upload" className="flex items-center">
-                <UploadCloud className="mr-2 h-4 w-4 text-muted-foreground"/> Add Images (Optional, max {MAX_FILES}, {MAX_FILE_SIZE_MB}MB each)
+                <UploadCloud className="mr-2 h-4 w-4 text-muted-foreground"/> Add Media (Optional, max {MAX_FILES}, {MAX_FILE_SIZE_MB}MB each)
               </FormLabel>
               <Input
                 id="file-upload"
                 type="file"
-                accept="image/*"
+                accept={ALL_ACCEPTED_TYPES_STRING}
                 multiple 
                 onChange={handleFileChange}
                 ref={fileInputRef}
@@ -364,16 +380,30 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
               )}
               {filePreviews.length > 0 && (
                 <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {filePreviews.map((previewUrl, index) => (
-                    <div key={index} className="relative group aspect-square">
-                      <NextImage src={previewUrl} alt={`Selected image ${index + 1} preview`} layout="fill" className="rounded-md border object-cover" data-ai-hint="user image upload small"/>
+                  {filePreviews.map((preview, index) => (
+                    <div key={index} className="relative group aspect-square border rounded-md flex flex-col items-center justify-center p-2">
+                      {preview.type === 'image' && (
+                        <NextImage src={preview.url} alt={`Selected file ${index + 1} preview`} layout="fill" className="rounded-md object-cover" data-ai-hint="user image upload small"/>
+                      )}
+                      {preview.type === 'video' && (
+                        <div className="text-center">
+                          <VideoIcon className="h-8 w-8 text-muted-foreground mx-auto mb-1" />
+                          <p className="text-xs text-muted-foreground truncate w-full" title={preview.name}>{preview.name}</p>
+                        </div>
+                      )}
+                       {preview.type === 'document' && (
+                        <div className="text-center">
+                          <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-1" />
+                           <p className="text-xs text-muted-foreground truncate w-full" title={preview.name}>{preview.name}</p>
+                        </div>
+                      )}
                       <Button
                         type="button"
                         variant="destructive"
                         size="icon"
                         className="absolute top-1 right-1 h-6 w-6 opacity-70 group-hover:opacity-100 transition-opacity"
                         onClick={() => handleRemoveFile(index)}
-                        title="Remove image"
+                        title="Remove file"
                       >
                         <X className="h-3 w-3" />
                       </Button>
@@ -381,7 +411,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                   ))}
                 </div>
               )}
-              <FormDescription>Attach up to {MAX_FILES} images to your post.</FormDescription>
+              <FormDescription>Attach up to {MAX_FILES} images, videos, or documents.</FormDescription>
             </FormItem>
 
 

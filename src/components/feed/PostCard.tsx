@@ -30,14 +30,14 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import DOMPurify from 'dompurify';
-import ReportDialog from '@/components/dialogs/ReportDialog'; // Import the new dialog
+import ReportDialog from '@/components/dialogs/ReportDialog';
 
 interface PostCardProps {
   post: Post;
   onToggleBookmark?: (postId: string, isCurrentlyBookmarked: boolean) => Promise<void> | void;
   onToggleLike?: (postId: string, isCurrentlyLiked: boolean, updatedPost: Post) => Promise<void> | void;
   onPostDeleted?: (postId: string) => void;
-  onPostUpdated?: (updatedPost: Post) => void; // For status changes like publishing a draft or general edits
+  onPostUpdated?: (updatedPost: Post) => void;
 }
 
 
@@ -82,7 +82,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
   const [isPublishingDraft, setIsPublishingDraft] = useState(false);
-  const [showReportDialog, setShowReportDialog] = useState(false); // State for report dialog
+  const [showReportDialog, setShowReportDialog] = useState(false);
 
 
   useEffect(() => {
@@ -91,6 +91,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       comments: Array.isArray(initialPost.comments) ? initialPost.comments : [],
       likedBy: Array.isArray(initialPost.likedBy) ? initialPost.likedBy : [],
       commentIds: Array.isArray(initialPost.commentIds) ? initialPost.commentIds : [],
+      media: Array.isArray(initialPost.media) ? initialPost.media : [],
     }));
   }, [initialPost]);
 
@@ -216,6 +217,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
         ...result.post,
         comments: Array.isArray(result.post.comments) ? result.post.comments : [],
         likedBy: Array.isArray(result.post.likedBy) ? result.post.likedBy : [],
+        media: Array.isArray(result.post.media) ? result.post.media : [],
       };
       setPost(updatedPostFromServer);
 
@@ -358,7 +360,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       const response = await fetch(`/api/posts/${post.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user!.id, status: 'published' }), // Assuming status update API
+        body: JSON.stringify({ userId: user!.id, status: 'published' }),
       });
       const result = await response.json();
       if (!response.ok || !result.id) { 
@@ -366,7 +368,6 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       }
       toast.success(`Draft "${result.title || 'Post'}" published successfully!`);
       if (onPostUpdated) {
-        // The result from PUT should be the full updated post object
         onPostUpdated(result as Post); 
       }
     } catch (err) {
@@ -468,13 +469,17 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
                 {item.type === 'image' && (
                    <Image src={item.url} alt={item.name || title || `Post media ${index + 1}`} layout="fill" objectFit="cover" data-ai-hint="social media content"/>
                 )}
-                 {(item.type === 'video' || item.type === 'document') && (
-                    <div className="flex flex-col items-center justify-center h-full bg-muted">
-                       {item.type === 'video' && <Video className="h-8 w-8 text-muted-foreground" />}
-                       {item.type === 'document' && <FileText className="h-8 w-8 text-muted-foreground" />}
-                      <span className="mt-2 text-sm text-muted-foreground">{item.name || item.type}</span>
-                    </div>
-                 )}
+                {item.type === 'video' && (
+                  <video controls src={item.url} className="w-full h-full object-cover" title={item.name || title || `Video ${index+1}`}/>
+                )}
+                {item.type === 'document' && (
+                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="flex flex-col items-center justify-center h-full bg-muted hover:bg-muted/80 transition-colors p-2">
+                    <FileText className="h-8 w-8 text-muted-foreground" />
+                    <span className="mt-2 text-sm text-muted-foreground text-center truncate w-full" title={item.name || `Document ${index+1}`}>
+                      {item.name || `Document ${index+1}`}
+                    </span>
+                  </a>
+                )}
               </div>
             ))}
           </div>
@@ -590,3 +595,4 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
     </>
   );
 }
+

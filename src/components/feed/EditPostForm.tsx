@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, UsersRound, Edit, Sparkles, Calendar as CalendarIcon, UploadCloud, Image as ImageIconLucide, Trash2, X } from 'lucide-react'; // Renamed ImageIcon to ImageIconLucide
+import { Loader2, UsersRound, Edit, Sparkles, Calendar as CalendarIcon, UploadCloud, Image as ImageIconLucide, FileText, Video as VideoIcon, Trash2, X } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
@@ -39,7 +39,7 @@ import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
 import dynamic from 'next/dynamic';
 import { categorizeContent } from '@/ai/flows/smart-content-categorization';
-import NextImage from 'next/image'; // Using NextImage for clarity with lucide-react Image icon
+import NextImage from 'next/image';
 
 
 const DynamicQuillEditor = dynamic(() => import('@/components/editor/QuillEditor'), {
@@ -51,7 +51,12 @@ const DynamicQuillEditor = dynamic(() => import('@/components/editor/QuillEditor
 const NO_COMMUNITY_VALUE = "__NONE__";
 const NO_CATEGORY_SELECTED_VALUE = "__NONE__";
 const MAX_FILES_EDIT = 5;
-const MAX_FILE_SIZE_MB_EDIT = 5;
+const MAX_FILE_SIZE_MB_EDIT = 10; // Increased for potential small videos/docs
+
+const ACCEPTED_IMAGE_TYPES_EDIT = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+const ACCEPTED_VIDEO_TYPES_EDIT = ['video/mp4', 'video/webm', 'video/ogg'];
+const ACCEPTED_DOCUMENT_TYPES_EDIT = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'application/rtf'];
+const ALL_ACCEPTED_TYPES_STRING_EDIT = [...ACCEPTED_IMAGE_TYPES_EDIT, ...ACCEPTED_VIDEO_TYPES_EDIT, ...ACCEPTED_DOCUMENT_TYPES_EDIT].join(',');
 
 
 const postEditSchema = z.object({
@@ -76,28 +81,27 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
   const router = useRouter();
   const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
   const [loadingCommunities, setLoadingCommunities] = useState(false);
-  const [showSchedule, setShowSchedule] = useState(false); // Initialized by useEffect
+  const [showSchedule, setShowSchedule] = useState(false);
 
   const [isSuggestingCategories, setIsSuggestingCategories] = useState(false);
   const [suggestionError, setSuggestionError] = useState<string | null>(null);
   
   const [currentMedia, setCurrentMedia] = useState<PostMedia[]>([]);
   const [newlySelectedFiles, setNewlySelectedFiles] = useState<File[]>([]);
-  const [newFilePreviews, setNewFilePreviews] = useState<string[]>([]);
+  const [newFilePreviews, setNewFilePreviews] = useState<{ url: string; type: 'image' | 'video' | 'document'; name: string }[]>([]);
   const [isUploadingFiles, setIsUploadingFiles] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
 
   const form = useForm<PostEditFormValues>({
     resolver: zodResolver(postEditSchema),
-    // Default values are set in useEffect below
   });
 
   useEffect(() => {
     if (existingPost) {
         form.reset({
             title: existingPost.title || '',
-            content: existingPost.content || '', // This is the key for Quill content
+            content: existingPost.content || '',
             category: existingPost.category || '',
             tags: (Array.isArray(existingPost.tags) ? existingPost.tags.join(', ') : null) || '',
             communityId: existingPost.communityId?.toString() || NO_COMMUNITY_VALUE,
@@ -141,6 +145,14 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     }
   }, [isAuthenticated, user]);
 
+  const getFileType = (file: File): 'image' | 'video' | 'document' | 'other' => {
+    if (ACCEPTED_IMAGE_TYPES_EDIT.includes(file.type)) return 'image';
+    if (ACCEPTED_VIDEO_TYPES_EDIT.includes(file.type)) return 'video';
+    if (ACCEPTED_DOCUMENT_TYPES_EDIT.includes(file.type)) return 'document';
+    return 'other';
+  };
+
+
   const handleSuggestCategories = async () => {
     const contentValue = form.getValues('content');
     if (!contentValue || contentValue.trim() === "<p><br></p>" || contentValue.trim().length < 20) {
@@ -176,25 +188,26 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
       const currentTotalFiles = currentMedia.length + newlySelectedFiles.length;
       
       if (currentTotalFiles + newFilesArray.length > MAX_FILES_EDIT) {
-        toast.error(`You can upload a maximum of ${MAX_FILES_EDIT} images in total.`);
+        toast.error(`You can upload a maximum of ${MAX_FILES_EDIT} files in total.`);
         if (fileInputRef.current) fileInputRef.current.value = "";
         return;
       }
 
       const validNewFiles: File[] = [];
-      const newLocalPreviews: string[] = [];
+      const newLocalPreviews: { url: string; type: 'image' | 'video' | 'document'; name: string }[] = [];
 
       for (const file of newFilesArray) {
         if (file.size > MAX_FILE_SIZE_MB_EDIT * 1024 * 1024) {
           toast.error(`File "${file.name}" is too large. Max ${MAX_FILE_SIZE_MB_EDIT}MB allowed.`);
           continue;
         }
-        if (!file.type.startsWith('image/')) {
-          toast.error(`File "${file.name}" is not a valid image type.`);
+        const fileType = getFileType(file);
+        if (fileType === 'other') {
+          toast.error(`File "${file.name}" is not a valid image, video, or document type.`);
           continue;
         }
         validNewFiles.push(file);
-        newLocalPreviews.push(URL.createObjectURL(file));
+        newLocalPreviews.push({ url: URL.createObjectURL(file), type: fileType, name: file.name });
       }
 
       setNewlySelectedFiles(prev => [...prev, ...validNewFiles]);
@@ -208,7 +221,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
   };
 
   const handleRemoveNewFile = (indexToRemove: number) => {
-    URL.revokeObjectURL(newFilePreviews[indexToRemove]); // Clean up object URL
+    URL.revokeObjectURL(newFilePreviews[indexToRemove].url);
     setNewlySelectedFiles(prev => prev.filter((_, index) => index !== indexToRemove));
     setNewFilePreviews(prev => prev.filter((_, index) => index !== indexToRemove));
   };
@@ -228,9 +241,11 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
 
     if (newlySelectedFiles.length > 0) {
       setIsUploadingFiles(true);
-      toast.loading(`Uploading ${newlySelectedFiles.length} new image(s)...`, { id: 'edit-upload-toast' });
+      toast.loading(`Uploading ${newlySelectedFiles.length} new file(s)...`, { id: 'edit-upload-toast' });
       
-      for (const file of newlySelectedFiles) {
+      for (let i = 0; i < newlySelectedFiles.length; i++) {
+        const file = newlySelectedFiles[i];
+        const previewInfo = newFilePreviews[i];
         const formData = new FormData();
         formData.append('file', file);
         try {
@@ -239,7 +254,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
           if (!uploadResponse.ok || !uploadResult.success) {
             throw new Error(uploadResult.message || `Failed to upload ${file.name}.`);
           }
-          uploadedNewMediaItems.push({ type: 'image', url: uploadResult.url, name: file.name });
+          uploadedNewMediaItems.push({ type: previewInfo.type, url: uploadResult.url, name: file.name });
         } catch (uploadError) {
           toast.dismiss('edit-upload-toast');
           toast.error(uploadError instanceof Error ? uploadError.message : `Could not upload ${file.name}.`);
@@ -249,21 +264,19 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
         }
       }
       toast.dismiss('edit-upload-toast');
-      toast.success(`${uploadedNewMediaItems.length} new image(s) uploaded successfully!`);
+      toast.success(`${uploadedNewMediaItems.length} new file(s) uploaded successfully!`);
       setIsUploadingFiles(false);
     }
 
     const finalMediaPayload = [...currentMedia, ...uploadedNewMediaItems];
     
-    // Determine status based on draft and schedule settings
-    let statusToSet = existingPost.status || 'published'; // Default to current status or published if undefined
-    if (existingPost.status !== 'published') { // Only allow status change if not already published
+    let statusToSet = existingPost.status || 'published';
+    if (existingPost.status !== 'published') {
         if (data.isDraft) {
             statusToSet = 'draft';
         } else if (showSchedule && data.scheduledAt && isValid(new Date(data.scheduledAt))) {
             statusToSet = 'scheduled';
         } else if (existingPost.status === 'draft' && !data.isDraft && !(showSchedule && data.scheduledAt)) {
-            // If it was a draft, and now isDraft is false, and not scheduled, publish it
             statusToSet = 'published';
         }
     }
@@ -275,10 +288,10 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
       content: data.content,
       category: data.category === NO_CATEGORY_SELECTED_VALUE ? null : data.category,
       tags: data.tags, 
-      communityId: data.communityId === NO_COMMUNITY_VALUE ? NO_COMMUNITY_VALUE : (data.communityId || null), // API handles __NONE__ to unset
+      communityId: data.communityId === NO_COMMUNITY_VALUE ? NO_COMMUNITY_VALUE : (data.communityId || null),
       status: statusToSet,
       scheduledAt: statusToSet === 'scheduled' && data.scheduledAt ? new Date(data.scheduledAt).toISOString() : null,
-      media: finalMediaPayload.length > 0 ? finalMediaPayload : null, // Send null if no media
+      media: finalMediaPayload.length > 0 ? finalMediaPayload : null,
     };
 
     try {
@@ -373,8 +386,22 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
               {currentMedia.length > 0 ? (
                 <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
                   {currentMedia.map((mediaItem, index) => (
-                    <div key={index} className="relative group aspect-square">
-                      <NextImage src={mediaItem.url} alt={mediaItem.name || `Media ${index+1}`} layout="fill" className="rounded-md border object-cover" data-ai-hint="user image post"/>
+                    <div key={index} className="relative group aspect-square border rounded-md flex flex-col items-center justify-center p-1">
+                      {mediaItem.type === 'image' && (
+                        <NextImage src={mediaItem.url} alt={mediaItem.name || `Media ${index+1}`} layout="fill" className="rounded-md object-cover" data-ai-hint="user image post"/>
+                      )}
+                      {mediaItem.type === 'video' && (
+                        <div className="text-center">
+                           <VideoIcon className="h-8 w-8 text-muted-foreground mx-auto mb-1" />
+                           <p className="text-xs text-muted-foreground truncate w-full" title={mediaItem.name}>{mediaItem.name}</p>
+                        </div>
+                      )}
+                       {mediaItem.type === 'document' && (
+                        <div className="text-center">
+                          <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-1" />
+                           <p className="text-xs text-muted-foreground truncate w-full" title={mediaItem.name}>{mediaItem.name}</p>
+                        </div>
+                      )}
                       <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6 opacity-70 group-hover:opacity-100 transition-opacity" onClick={() => handleRemoveExistingMedia(index)} title="Remove this media">
                         <X className="h-3 w-3" />
                       </Button>
@@ -388,12 +415,12 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
             
             <FormItem>
               <FormLabel htmlFor="file-upload-edit" className="flex items-center">
-                <UploadCloud className="mr-2 h-4 w-4 text-muted-foreground"/> Add New Images ({newlySelectedFiles.length} selected, {MAX_FILES_EDIT - currentMedia.length - newlySelectedFiles.length} remaining)
+                <UploadCloud className="mr-2 h-4 w-4 text-muted-foreground"/> Add New Media ({newlySelectedFiles.length} selected, {MAX_FILES_EDIT - currentMedia.length - newlySelectedFiles.length} remaining)
               </FormLabel>
               <Input
                 id="file-upload-edit"
                 type="file"
-                accept="image/*"
+                accept={ALL_ACCEPTED_TYPES_STRING_EDIT}
                 multiple
                 onChange={handleFileChange}
                 ref={fileInputRef}
@@ -407,17 +434,31 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
               )}
               {newFilePreviews.length > 0 && (
                 <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                  {newFilePreviews.map((previewUrl, index) => (
-                    <div key={index} className="relative group aspect-square">
-                      <NextImage src={previewUrl} alt={`New image ${index + 1} preview`} layout="fill" className="rounded-md border object-cover" data-ai-hint="image preview edit"/>
-                      <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6 opacity-70 group-hover:opacity-100 transition-opacity" onClick={() => handleRemoveNewFile(index)} title="Remove new image">
+                  {newFilePreviews.map((preview, index) => (
+                    <div key={index} className="relative group aspect-square border rounded-md flex flex-col items-center justify-center p-1">
+                       {preview.type === 'image' && (
+                        <NextImage src={preview.url} alt={`New file ${index + 1} preview`} layout="fill" className="rounded-md object-cover" data-ai-hint="image preview edit"/>
+                      )}
+                      {preview.type === 'video' && (
+                         <div className="text-center">
+                           <VideoIcon className="h-8 w-8 text-muted-foreground mx-auto mb-1" />
+                           <p className="text-xs text-muted-foreground truncate w-full" title={preview.name}>{preview.name}</p>
+                        </div>
+                      )}
+                       {preview.type === 'document' && (
+                         <div className="text-center">
+                          <FileText className="h-8 w-8 text-muted-foreground mx-auto mb-1" />
+                           <p className="text-xs text-muted-foreground truncate w-full" title={preview.name}>{preview.name}</p>
+                        </div>
+                      )}
+                      <Button type="button" variant="destructive" size="icon" className="absolute top-1 right-1 h-6 w-6 opacity-70 group-hover:opacity-100 transition-opacity" onClick={() => handleRemoveNewFile(index)} title="Remove new file">
                         <X className="h-3 w-3" />
                       </Button>
                     </div>
                   ))}
                 </div>
               )}
-              <FormDescription>Add new images or replace existing ones. Max {MAX_FILES_EDIT} total images.</FormDescription>
+              <FormDescription>Add new images, videos, or documents. Max {MAX_FILES_EDIT} total files.</FormDescription>
             </FormItem>
 
 

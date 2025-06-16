@@ -6,6 +6,19 @@ import { randomUUID } from 'crypto';
 
 const UPLOAD_DIR = path.join(process.cwd(), 'public', 'uploads', 'posts');
 
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB general limit
+
+const ALLOWED_MIME_TYPES = [
+  'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+  'video/mp4', 'video/webm', 'video/ogg',
+  'application/pdf', 
+  'application/msword', // .doc
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+  'text/plain', // .txt
+  'application/rtf', // .rtf
+];
+
+
 export async function POST(request: NextRequest) {
   try {
     const formData = await request.formData();
@@ -15,20 +28,21 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: 'No file uploaded.' }, { status: 400 });
     }
 
-    // Basic validation for image type (can be more robust)
-    if (!file.type.startsWith('image/')) {
-        return NextResponse.json({ success: false, message: 'Invalid file type. Only images are allowed.' }, { status: 400 });
+    // Validate file type
+    if (!ALLOWED_MIME_TYPES.includes(file.type)) {
+        console.log(`Upload attempt with invalid type: ${file.type}, name: ${file.name}`);
+        return NextResponse.json({ success: false, message: `Invalid file type: ${file.type}. Allowed types: images, videos, pdf, doc, docx, txt, rtf.` }, { status: 400 });
     }
-    // Basic size validation (e.g., 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-        return NextResponse.json({ success: false, message: 'File is too large. Maximum 5MB allowed.' }, { status: 400 });
+    
+    // Validate file size
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+        return NextResponse.json({ success: false, message: `File is too large. Maximum ${MAX_FILE_SIZE_BYTES / (1024*1024)}MB allowed.` }, { status: 400 });
     }
 
 
     const bytes = await file.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
-    // Ensure upload directory exists
     try {
       await mkdir(UPLOAD_DIR, { recursive: true });
     } catch (mkdirError) {
@@ -36,7 +50,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: 'Could not create upload directory.' }, { status: 500 });
     }
 
-    // Generate a unique filename to prevent overwrites and ensure URL safety
     const fileExtension = path.extname(file.name);
     const uniqueFilename = `${randomUUID()}${fileExtension}`;
     const filePath = path.join(UPLOAD_DIR, uniqueFilename);
