@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2, Send, Share2, Trash2, Edit, SendHorizonal, Star, Flag } from 'lucide-react';
+import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, FileText, Video, Image as ImageIcon, Loader2, Send, Share2, Trash2, Edit, SendHorizonal, Star, Flag, CheckSquare } from 'lucide-react'; // Added CheckSquare for Poll
 import { formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import DOMPurify from 'dompurify';
 import ReportDialog from '@/components/dialogs/ReportDialog';
+import { Badge } from '@/components/ui/badge'; // Import Badge
 
 interface PostCardProps {
   post: Post;
@@ -92,11 +93,11 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       likedBy: Array.isArray(initialPost.likedBy) ? initialPost.likedBy : [],
       commentIds: Array.isArray(initialPost.commentIds) ? initialPost.commentIds : [],
       media: Array.isArray(initialPost.media) ? initialPost.media : [],
+      pollOptions: Array.isArray(initialPost.pollOptions) ? initialPost.pollOptions : undefined,
     }));
   }, [initialPost]);
 
   const sanitizedContent = useMemo(() => {
-    // Ensure DOMPurify runs only on the client-side
     if (typeof window === 'undefined' || !post.content) return '';
     return DOMPurify.sanitize(post.content);
   }, [post.content]);
@@ -113,7 +114,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
 
   const canCurrentUserManagePost = isAuthenticated && user && user.id === post.author?.id;
 
-  const { author: postAuthorData, title, media, category, tags, createdAt } = post;
+  const { author: postAuthorData, title, media, category, tags, createdAt, postType } = post;
   const postComments = post.comments || [];
   const commentCount = post.commentCount || 0;
 
@@ -219,6 +220,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
         comments: Array.isArray(result.post.comments) ? result.post.comments : [],
         likedBy: Array.isArray(result.post.likedBy) ? result.post.likedBy : [],
         media: Array.isArray(result.post.media) ? result.post.media : [],
+        pollOptions: Array.isArray(result.post.pollOptions) ? result.post.pollOptions : undefined,
       };
       setPost(updatedPostFromServer);
 
@@ -284,9 +286,11 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
 
   const handleShare = async () => {
     const postUrl = `${window.location.origin}/posts/${post.id}`;
+    const shareText = post.postType === 'poll' ? (post.title || 'Check out this poll!') : (post.content ? post.content.substring(0, 100) + (post.content.length > 100 ? '...' : '') : 'Interesting content from NexusHub.');
+
     const shareData = {
       title: post.title || 'Check out this post on NexusHub!',
-      text: post.content ? post.content.substring(0, 100) + (post.content.length > 100 ? '...' : '') : 'Interesting content from NexusHub.',
+      text: shareText,
       url: postUrl,
     };
 
@@ -361,7 +365,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       const response = await fetch(`/api/posts/${post.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ userId: user!.id, status: 'published' }),
+        body: JSON.stringify({ userId: user!.id, status: 'published' }), // Send only status to publish
       });
       const result = await response.json();
       if (!response.ok || !result.id) { 
@@ -392,9 +396,16 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
             </Avatar>
           </Link>
           <div className="flex-grow">
-            <Link href={`/profile/${postAuthor.id}`} className="font-semibold text-sm font-headline hover:underline group">
-              {postAuthor.name}
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link href={`/profile/${postAuthor.id}`} className="font-semibold text-sm font-headline hover:underline group">
+                {postAuthor.name}
+              </Link>
+              {post.postType === 'poll' && (
+                <Badge variant="outline" className="text-xs border-primary/50 text-primary">
+                  <CheckSquare className="h-3 w-3 mr-1" /> Poll
+                </Badge>
+              )}
+            </div>
             <div className="text-xs text-muted-foreground flex items-center flex-wrap">
               <span>{createdAt ? formatDistanceToNow(new Date(createdAt), { addSuffix: true }) : 'Recently'}</span>
               {postAuthor.reputation !== undefined && (
@@ -458,10 +469,12 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
       <CardContent className="p-4 pt-0">
         {title && <CardTitle className="text-xl mb-2 font-headline"><Link href={`/posts/${post.id}`}>{title}</Link></CardTitle>}
         
-        <div
+        {post.postType !== 'poll' && (
+          <div
             className="prose dark:prose-invert max-w-none break-words mb-3"
             dangerouslySetInnerHTML={{ __html: sanitizedContent }}
-        />
+          />
+        )}
         
         {media && Array.isArray(media) && media.length > 0 && (
           <div className={`grid gap-2 ${media.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} mb-3`}>
@@ -511,7 +524,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
           </div>
         )}
 
-        {isAuthenticated && (
+        {isAuthenticated && post.postType !== 'poll' && ( // Only show comment form for standard posts in card
             <form onSubmit={handleCommentSubmit} className="mt-4 pt-4 border-t">
                 <div className="flex items-start space-x-3">
                     <Avatar className="h-9 w-9 mt-1">
@@ -550,8 +563,10 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
             {isLiking ? <Loader2 className="h-5 w-5 mr-1 animate-spin" /> : <ThumbsUp className="h-5 w-5 mr-1" />}
              {(post.likeCount || 0) > 0 ? post.likeCount : 'Like'}
           </Button>
-          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary">
-            <MessageCircle className="h-5 w-5 mr-1" /> {commentCount || 0}
+          <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary" asChild>
+            <Link href={`/posts/${post.id}#comments`}>
+              <MessageCircle className="h-5 w-5 mr-1" /> {commentCount || 0}
+            </Link>
           </Button>
         </div>
         <Button
@@ -596,4 +611,3 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
     </>
   );
 }
-

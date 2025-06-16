@@ -2,7 +2,7 @@
 'use client';
 
 import { zodResolver } from '@hookform/resolvers/zod';
-import { useForm, Controller } from 'react-hook-form';
+import { useForm, Controller, useFieldArray } from 'react-hook-form';
 import * as z from 'zod';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,7 +17,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { Loader2, Calendar as CalendarIcon, UsersRound, Sparkles, UploadCloud, Image as ImageIcon, FileText, Video as VideoIcon, Trash2, X } from 'lucide-react';
+import { Loader2, Calendar as CalendarIcon, UsersRound, Sparkles, UploadCloud, Image as ImageIcon, FileText, Video as VideoIcon, Trash2, X, ListChecks, PlusCircle } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
@@ -34,11 +34,13 @@ import { format } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { useAuth } from '@/hooks/use-auth-provider';
 import { useRouter } from 'next/navigation';
-import type { Community, PostMedia } from '@/lib/types';
+import type { Community, PostMedia, PollOption } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import dynamic from 'next/dynamic';
 import { categorizeContent } from '@/ai/flows/smart-content-categorization';
 import NextImage from 'next/image';
+import { ObjectId } from 'mongodb';
+
 
 const DynamicQuillEditor = dynamic(() => import('@/components/editor/QuillEditor'), {
   ssr: false,
@@ -48,13 +50,17 @@ const DynamicQuillEditor = dynamic(() => import('@/components/editor/QuillEditor
 
 const NO_COMMUNITY_VALUE = "__NONE__";
 const MAX_FILES = 5;
-const MAX_FILE_SIZE_MB = 10; // Increased for potential small videos/docs
+const MAX_FILE_SIZE_MB = 10;
 
 const ACCEPTED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 const ACCEPTED_VIDEO_TYPES = ['video/mp4', 'video/webm', 'video/ogg'];
 const ACCEPTED_DOCUMENT_TYPES = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', 'text/plain', 'application/rtf'];
 const ALL_ACCEPTED_TYPES_STRING = [...ACCEPTED_IMAGE_TYPES, ...ACCEPTED_VIDEO_TYPES, ...ACCEPTED_DOCUMENT_TYPES].join(',');
 
+
+const pollOptionSchema = z.object({
+  optionText: z.string().min(1, "Option text cannot be empty.").max(100, "Option text too long."),
+});
 
 const postFormSchema = z.object({
   title: z.string().max(150, "Title can't exceed 150 characters.").optional(),
@@ -64,6 +70,12 @@ const postFormSchema = z.object({
   isDraft: z.boolean().default(false),
   scheduledAt: z.date().optional(),
   communityId: z.string().optional(),
+  postType: z.enum(['standard', 'poll', 'question']).default('standard'),
+  pollOptions: z.array(pollOptionSchema).optional().refine(options => {
+    // If postType is poll, require at least 2 options
+    if (options && options.length > 0 && options.length < 2) return false;
+    return true;
+  }, { message: "Polls must have at least 2 options." }),
 });
 
 type PostFormValues = z.infer<typeof postFormSchema>;
@@ -99,8 +111,26 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
       isDraft: false,
       communityId: preselectedCommunityId || NO_COMMUNITY_VALUE,
       scheduledAt: undefined,
+      postType: 'standard',
+      pollOptions: [{ optionText: '' }, { optionText: '' }], // Start with 2 empty options for polls
     },
   });
+
+  const { fields: pollOptionFields, append: appendPollOption, remove: removePollOption } = useFieldArray({
+    control: form.control,
+    name: "pollOptions",
+  });
+
+  const watchPostType = form.watch('postType');
+
+  useEffect(() => {
+    if (watchPostType !== 'poll' && pollOptionFields.length > 0) {
+      // form.setValue('pollOptions', []); // Clear options if not a poll
+    } else if (watchPostType === 'poll' && pollOptionFields.length === 0) {
+      form.setValue('pollOptions', [{ optionText: '' }, { optionText: '' }]);
+    }
+  }, [watchPostType, pollOptionFields.length, form]);
+
 
   useEffect(() => {
     if (preselectedCommunityId) {
@@ -225,6 +255,12 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
       toast.error('Authentication error or user ID is missing. Please log in again.');
       return;
     }
+    if (data.postType === 'poll' && (!data.pollOptions || data.pollOptions.length < 2 || data.pollOptions.some(opt => !opt.optionText.trim()))){
+      form.setError("pollOptions", { type: "manual", message: "Polls must have at least two options, and each option must have text."});
+      toast.error("Please ensure all poll options are filled and there are at least two.");
+      return;
+    }
+
     setIsSubmitting(true);
     let uploadedMedia: PostMedia[] = [];
 
@@ -266,7 +302,9 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
       scheduledAt: (showSchedule && data.scheduledAt) ? data.scheduledAt.toISOString() : undefined,
       communityId: data.communityId === NO_COMMUNITY_VALUE ? undefined : data.communityId,
       media: uploadedMedia.length > 0 ? uploadedMedia : undefined,
+      pollOptions: data.postType === 'poll' ? data.pollOptions?.map(opt => ({ ...opt, votes: 0, votedBy: [] as ObjectId[] })) : undefined,
     };
+    
 
     try {
       const response = await fetch('/api/posts', {
@@ -282,7 +320,12 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
            toast.error(result.message || "Post flagged by moderation, please revise.", { duration: 7000 });
         } else {
           if (result.errors) {
-            let errorMessages = Object.values(result.errors).flat().join('\n');
+            let errorMessages = Object.entries(result.errors).map(([key, value]) => {
+              if (key === 'pollOptions' && Array.isArray(value)) { // Handle nested errors for pollOptions
+                return (value as any[]).map((err, index) => err && err.optionText ? `Poll Option ${index + 1}: ${err.optionText._errors.join(', ')}` : `Poll Option ${index + 1}: Invalid`).join('\n');
+              }
+              return `${key}: ${(value as any)._errors.join(', ')}`;
+            }).join('\n');
             toast.error(`Post creation failed:\n${errorMessages}`, { duration: 6000 });
           } else {
             throw new Error(result.message || `Error: ${response.status}`);
@@ -290,7 +333,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
         }
       } else {
         toast.success(`Your post "${result.post?.title || 'Untitled'}" has been successfully created.`);
-        form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined });
+        form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined, postType: 'standard', pollOptions: [{ optionText: '' }, { optionText: '' }] });
         setSelectedFiles([]);
         setFilePreviews([]);
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -328,13 +371,22 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
             <FormField
               control={form.control}
-              name="title"
+              name="postType"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Title (Optional)</FormLabel>
-                  <FormControl>
-                    <Input placeholder="Your amazing post title" {...field} />
-                  </FormControl>
+                  <FormLabel>Post Type</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select post type" />
+                      </SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="standard">Standard Post</SelectItem>
+                      <SelectItem value="poll">Poll</SelectItem>
+                      {/* <SelectItem value="question">Question (Q&A)</SelectItem> */}
+                    </SelectContent>
+                  </Select>
                   <FormMessage />
                 </FormItem>
               )}
@@ -342,21 +394,73 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
 
             <FormField
               control={form.control}
-              name="content"
+              name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Content</FormLabel>
+                  <FormLabel>{watchPostType === 'poll' ? 'Poll Question' : 'Title (Optional)'}</FormLabel>
                   <FormControl>
-                    <DynamicQuillEditor
-                        value={field.value}
-                        onChange={field.onChange}
-                        placeholder="Share your thoughts..."
-                    />
+                    <Input placeholder={watchPostType === 'poll' ? 'What do you want to ask?' : 'Your amazing post title'} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+
+            {watchPostType === 'poll' && (
+              <div className="space-y-4 p-4 border rounded-md bg-muted/30">
+                <FormLabel>Poll Options</FormLabel>
+                {pollOptionFields.map((item, index) => (
+                  <FormField
+                    key={item.id}
+                    control={form.control}
+                    name={`pollOptions.${index}.optionText`}
+                    render={({ field }) => (
+                      <FormItem>
+                        <div className="flex items-center gap-2">
+                          <FormControl>
+                            <Input placeholder={`Option ${index + 1}`} {...field} />
+                          </FormControl>
+                          {pollOptionFields.length > 2 && (
+                            <Button type="button" variant="ghost" size="icon" onClick={() => removePollOption(index)} title="Remove option">
+                              <Trash2 className="h-4 w-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                ))}
+                {pollOptionFields.length < 10 && ( // Max 10 options for a poll
+                  <Button type="button" variant="outline" size="sm" onClick={() => appendPollOption({ optionText: '' })}>
+                    <PlusCircle className="mr-2 h-4 w-4" /> Add Option
+                  </Button>
+                )}
+                 {form.formState.errors.pollOptions?.message && <FormMessage>{form.formState.errors.pollOptions.message}</FormMessage>}
+
+              </div>
+            )}
+            
+            {watchPostType !== 'poll' && (
+              <FormField
+                control={form.control}
+                name="content"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Content</FormLabel>
+                    <FormControl>
+                      <DynamicQuillEditor
+                          value={field.value}
+                          onChange={field.onChange}
+                          placeholder="Share your thoughts..."
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+
 
             <FormItem>
               <FormLabel htmlFor="file-upload" className="flex items-center">
@@ -512,7 +616,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
                 <div className="space-y-0.5">
                 <FormLabel>Schedule Post (Optional)</FormLabel>
                 <FormDescription>
-                    Publish this post at a future date and time. A backend process (not implemented in this prototype) would be needed for automatic publishing.
+                    Publish this post at a future date and time.
                 </FormDescription>
                 </div>
                 <FormControl>
@@ -601,7 +705,7 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
 
             <div className="flex justify-end space-x-2 pt-4">
                <Button type="button" variant="outline" onClick={() => {
-                  form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined });
+                  form.reset({ title: '', content: '', isDraft: false, category: '', tags: '', communityId: preselectedCommunityId || NO_COMMUNITY_VALUE, scheduledAt: undefined, postType: 'standard', pollOptions: [{ optionText: '' }, { optionText: '' }] });
                   setSelectedFiles([]);
                   setFilePreviews([]);
                   if (fileInputRef.current) fileInputRef.current.value = "";
@@ -620,4 +724,3 @@ export function CreatePostForm({ preselectedCommunityId }: CreatePostFormProps) 
     </Card>
   );
 }
-

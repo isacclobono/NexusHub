@@ -47,6 +47,13 @@ export interface PostMedia {
   name?: string;
 }
 
+export interface PollOption {
+  _id?: ObjectId; // Added for easier identification if needed
+  optionText: string;
+  votes: number;
+  votedBy?: ObjectId[];
+}
+
 export interface Post {
   _id?: ObjectId;
   id?: string;
@@ -74,6 +81,13 @@ export interface Post {
 
   communityId?: ObjectId;
   communityName?: string;
+
+  // New fields for Polls & Post Types
+  postType?: 'standard' | 'poll' | 'question';
+  pollOptions?: PollOption[];
+  totalVotes?: number;
+  // Client-side helper, not stored in DB directly on post, but can be derived
+  userVotedOptionId?: string | ObjectId;
 }
 
 export interface Event {
@@ -186,4 +200,3 @@ export interface Report {
   reviewedAt?: string;
   reviewerId?: ObjectId; // Admin/Moderator who reviewed
 }
-

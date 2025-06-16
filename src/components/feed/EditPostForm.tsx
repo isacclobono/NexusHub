@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Loader2, UsersRound, Edit, Sparkles, Calendar as CalendarIcon, UploadCloud, Image as ImageIconLucide, FileText, Video as VideoIcon, Trash2, X } from 'lucide-react';
+import { Loader2, UsersRound, Edit, Sparkles, Calendar as CalendarIcon, UploadCloud, Image as ImageIconLucide, FileText, Video as VideoIcon, Trash2, X, ListChecks } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import toast from 'react-hot-toast';
 import { CATEGORIES } from '@/lib/constants';
@@ -67,6 +67,8 @@ const postEditSchema = z.object({
   communityId: z.string().optional().nullable(),
   isDraft: z.boolean().optional(),
   scheduledAt: z.date().optional().nullable(),
+  postType: z.enum(['standard', 'poll', 'question']).default('standard').optional(), // Added postType
+  // pollOptions are not directly editable in this form for simplicity in this iteration
 });
 
 type PostEditFormValues = z.infer<typeof postEditSchema>;
@@ -95,19 +97,19 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
 
   const form = useForm<PostEditFormValues>({
     resolver: zodResolver(postEditSchema),
-    // Default values are set in useEffect once existingPost is available
   });
 
   useEffect(() => {
     if (existingPost) {
         form.reset({
             title: existingPost.title || '',
-            content: existingPost.content || '', // This should provide the initial value to Quill
+            content: existingPost.content || '',
             category: existingPost.category || NO_CATEGORY_SELECTED_VALUE,
             tags: (Array.isArray(existingPost.tags) ? existingPost.tags.join(', ') : null) || '',
             communityId: existingPost.communityId?.toString() || NO_COMMUNITY_VALUE,
             isDraft: existingPost.status === 'draft',
             scheduledAt: existingPost.scheduledAt && isValid(new Date(existingPost.scheduledAt)) ? new Date(existingPost.scheduledAt) : undefined,
+            postType: existingPost.postType || 'standard',
         });
         setCurrentMedia(existingPost.media || []);
         setShowSchedule(!!existingPost.scheduledAt && existingPost.status === 'scheduled');
@@ -272,13 +274,12 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     const finalMediaPayload = [...currentMedia, ...uploadedNewMediaItems];
     
     let statusToSet = existingPost.status || 'published';
-    if (existingPost.status !== 'published') { // Only allow status change if not already published
+    if (existingPost.status !== 'published') {
         if (data.isDraft) {
             statusToSet = 'draft';
         } else if (showSchedule && data.scheduledAt && isValid(new Date(data.scheduledAt))) {
             statusToSet = 'scheduled';
         } else if (existingPost.status === 'draft' && !data.isDraft && !(showSchedule && data.scheduledAt)) {
-            // Explicitly publishing a draft by unchecking "Save as Draft" and not scheduling
             statusToSet = 'published';
         }
     }
@@ -294,6 +295,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
       status: statusToSet,
       scheduledAt: statusToSet === 'scheduled' && data.scheduledAt ? new Date(data.scheduledAt).toISOString() : null,
       media: finalMediaPayload.length > 0 ? finalMediaPayload : null,
+      // postType is not editable after creation for simplicity in this iteration
     };
 
     try {
@@ -324,7 +326,6 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
       toast.error(`An unexpected error occurred: ${errorMessage}`);
     } finally {
       setIsSubmitting(false);
-      // Do not reset newlySelectedFiles and newFilePreviews here if submit fails, so user doesn't lose them
     }
   }
 
@@ -333,12 +334,13 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
   }
 
   const isPublished = existingPost.status === 'published';
+  const isPoll = existingPost.postType === 'poll';
 
 
   return (
     <Card className="w-full max-w-2xl mx-auto shadow-lg">
       <CardHeader>
-        <CardTitle className="font-headline text-2xl flex items-center"><Edit className="mr-2 h-6 w-6 text-primary"/> Edit Post</CardTitle>
+        <CardTitle className="font-headline text-2xl flex items-center"><Edit className="mr-2 h-6 w-6 text-primary"/> Edit {isPoll ? 'Poll' : 'Post'}</CardTitle>
       </CardHeader>
       <CardContent>
         <p className="text-sm text-muted-foreground mb-4">You are editing: <Link href={`/posts/${existingPost.id}`} className="text-primary hover:underline">{existingPost.title || "Untitled Post"}</Link></p>
@@ -349,35 +351,49 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
               name="title"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Title (Optional)</FormLabel>
+                  <FormLabel>{isPoll ? 'Poll Question' : 'Title (Optional)'}</FormLabel>
                   <FormControl>
-                    <Input placeholder="Your amazing post title" {...field} />
+                    <Input placeholder={isPoll ? 'Your poll question...' : 'Your amazing post title'} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
-            <Controller
-              name="content"
-              control={form.control}
-              render={({ field }) => (
-                <FormItem>
-                    <FormLabel>Content</FormLabel>
-                    <FormControl>
-                        <DynamicQuillEditor
-                            key={existingPost.id} // Key to help re-render if post changes, though unlikely here
-                            value={field.value}
-                            onChange={field.onChange}
-                            placeholder="Share your thoughts..."
-                        />
-                    </FormControl>
-                    <FormDescription>
-                        Your post content.
-                    </FormDescription>
-                    <FormMessage />
-                </FormItem>
-              )}
-            />
+            {!isPoll && ( // Content field only for non-poll posts
+              <Controller
+                name="content"
+                control={form.control}
+                render={({ field }) => (
+                  <FormItem>
+                      <FormLabel>Content</FormLabel>
+                      <FormControl>
+                          <DynamicQuillEditor
+                              key={existingPost.id} 
+                              value={field.value}
+                              onChange={field.onChange}
+                              placeholder="Share your thoughts..."
+                          />
+                      </FormControl>
+                      <FormDescription>
+                          Your post content.
+                      </FormDescription>
+                      <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
+             {isPoll && existingPost.pollOptions && (
+              <div className="space-y-3 p-4 border rounded-md bg-muted/30">
+                <FormLabel className="text-md font-medium">Poll Options (Cannot be edited after creation)</FormLabel>
+                {existingPost.pollOptions.map((option, index) => (
+                  <div key={option.id || option._id?.toString()} className="p-2 border-b text-sm text-muted-foreground">
+                    {index + 1}. {option.optionText}
+                  </div>
+                ))}
+                 <FormDescription>Poll options cannot be changed once the poll is created to maintain integrity of votes.</FormDescription>
+              </div>
+            )}
+
 
             <FormItem>
               <FormLabel className="flex items-center">
@@ -534,14 +550,14 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                     </FormItem>
                 )}
                 />
-                <Button type="button" variant="outline" onClick={handleSuggestCategories} disabled={isSuggestingCategories} className="w-full sm:w-auto">
+                <Button type="button" variant="outline" onClick={handleSuggestCategories} disabled={isSuggestingCategories || isPoll} className="w-full sm:w-auto">
                     {isSuggestingCategories ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
                     {isSuggestingCategories ? 'Getting Suggestions...' : 'AI Suggest Category & Tags'}
                 </Button>
                 {suggestionError && <p className="text-sm text-destructive">{suggestionError}</p>}
             </div>
 
-            {!isPublished && ( // Options to change status only if not already published
+            {!isPublished && ( 
               <>
                 <FormField
                   control={form.control}
@@ -559,7 +575,7 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                           checked={field.value}
                           onCheckedChange={(checked) => {
                             field.onChange(checked);
-                            if (checked) { // If saving as draft
+                            if (checked) { 
                               setShowSchedule(false); 
                               form.setValue("scheduledAt", undefined, { shouldValidate: true });
                             }
@@ -583,9 +599,9 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
                         checked={showSchedule}
                         onCheckedChange={(checked) => {
                             setShowSchedule(checked);
-                            if (!checked) { // If turning off schedule
+                            if (!checked) { 
                                 form.setValue("scheduledAt", undefined, { shouldValidate: true });
-                            } else { // If turning on schedule, ensure it's not a draft
+                            } else { 
                                 form.setValue("isDraft", false, { shouldValidate: true }); 
                             }
                         }}
@@ -680,5 +696,3 @@ export function EditPostForm({ existingPost }: EditPostFormProps) {
     </Card>
   );
 }
-    
-    

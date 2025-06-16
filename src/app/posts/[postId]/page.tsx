@@ -3,12 +3,12 @@
 
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import type { Post, Comment as CommentType, User } from '@/lib/types';
+import type { Post, Comment as CommentType, User, PollOption } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
-import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, Loader2, Send, Share2, AlertTriangle, CalendarDays, Edit, Trash2, Star, UsersRound, FileText, Video as VideoIcon } from 'lucide-react';
+import { MessageCircle, ThumbsUp, Bookmark, MoreHorizontal, Loader2, Send, Share2, AlertTriangle, CalendarDays, Edit, Trash2, Star, UsersRound, FileText, Video as VideoIcon, CheckSquare } from 'lucide-react';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import toast from 'react-hot-toast';
@@ -17,6 +17,8 @@ import Link from 'next/link';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { ObjectId } from 'mongodb';
 import DOMPurify from 'dompurify';
+import { Progress } from "@/components/ui/progress"; // For poll results
+import ReportDialog from '@/components/dialogs/ReportDialog';
 
 import {
   DropdownMenu,
@@ -48,15 +50,16 @@ const PostPageSkeleton = () => (
             <Skeleton className="h-4 w-32" />
           </div>
         </div>
-        <Skeleton className="h-8 w-3/4 mb-2" />
+        <Skeleton className="h-8 w-3/4 mb-2" /> {/* For title/poll question */}
       </CardHeader>
       <CardContent className="p-6">
+        {/* For Poll Options or Content */}
         <div className="space-y-3 mb-6">
-          <Skeleton className="h-6 w-full" />
-          <Skeleton className="h-6 w-5/6" />
-          <Skeleton className="h-6 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-5/6" />
         </div>
-        <Skeleton className="h-48 w-full rounded-md mb-6" />
+        <Skeleton className="h-48 w-full rounded-md mb-6" /> {/* For media */}
         <div className="flex flex-wrap gap-2 mb-6">
           <Skeleton className="h-6 w-20 rounded-full" />
           <Skeleton className="h-6 w-24 rounded-full" />
@@ -138,6 +141,8 @@ export default function PostPage() {
   const [isLiking, setIsLiking] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
+  const [isVoting, setIsVoting] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
   
   const [error, setError] = useState<string | null>(null);
 
@@ -153,7 +158,11 @@ export default function PostPage() {
         throw new Error(errorData.message || 'Failed to fetch post');
       }
       const postData: Post = await res.json();
-      setPost({...postData, media: Array.isArray(postData.media) ? postData.media : []});
+      setPost({
+        ...postData, 
+        media: Array.isArray(postData.media) ? postData.media : [],
+        pollOptions: Array.isArray(postData.pollOptions) ? postData.pollOptions : undefined,
+      });
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load post.');
       setPost(null);
@@ -240,7 +249,7 @@ export default function PostPage() {
       });
       const result = await response.json();
       if (!response.ok || !result.post) throw new Error(result.message);
-      setPost({...result.post, media: Array.isArray(result.post.media) ? result.post.media : []});
+      setPost({...result.post, media: Array.isArray(result.post.media) ? result.post.media : [], pollOptions: Array.isArray(result.post.pollOptions) ? result.post.pollOptions : undefined});
       toast.success(result.message);
     } catch (err) {
       setPost(p => p ? { ...p, isLikedByCurrentUser: originalIsLiked, likeCount: originalLikeCount } : null);
@@ -283,11 +292,24 @@ export default function PostPage() {
   const handleShare = async () => {
     if (!post) return;
     const postUrl = `${window.location.origin}/posts/${post.id}`;
+    const shareText = post.postType === 'poll' ? (post.title || 'Check out this poll!') : (post.content ? post.content.substring(0, 100) + (post.content.length > 100 ? '...' : '') : 'Interesting content from NexusHub.');
     if (navigator.share) {
       try {
-        await navigator.share({ title: post.title || 'NexusHub Post', text: post.content.substring(0, 100) + '...', url: postUrl });
+        await navigator.share({ title: post.title || 'NexusHub Post', text: shareText, url: postUrl });
         toast.success('Post shared!');
-      } catch (err) { console.error('Share API error:', err); toast.error('Could not share post.'); }
+      } catch (err) { 
+        const shareError = err as Error;
+        if (shareError.name === 'AbortError') {
+            console.log('Share action cancelled by user.');
+        } else if (shareError.name === 'NotAllowedError') {
+             console.warn('Web Share API permission denied:', shareError);
+             toast('Sharing via system dialog failed. Trying to copy link...');
+             await navigator.clipboard.writeText(postUrl).then(() => toast.success('Post link copied to clipboard!')).catch(() => toast.error('Could not copy link.'));
+        } else {
+            console.error('Share API error:', err); 
+            toast.error('Could not share post.'); 
+        }
+      }
     } else {
       try {
         await navigator.clipboard.writeText(postUrl);
@@ -311,6 +333,40 @@ export default function PostPage() {
       setShowDeleteDialog(false);
     }
   };
+
+  const handleVote = async (optionId: string | ObjectId) => {
+    if (!isAuthenticated || !user || !post || !post.id) {
+      toast.error("Please log in to vote.");
+      return;
+    }
+    if (isVoting || post.userVotedOptionId) {
+      toast.info(post.userVotedOptionId ? "You have already voted in this poll." : "Processing previous vote...");
+      return;
+    }
+    setIsVoting(true);
+    try {
+      const response = await fetch(`/api/posts/${post.id}/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, optionId: typeof optionId === 'string' ? optionId : optionId.toString() }),
+      });
+      const result = await response.json();
+      if (!response.ok || !result.post) {
+        throw new Error(result.message || "Failed to record vote.");
+      }
+      setPost({ // Update local post state with new poll data
+        ...result.post, 
+        media: Array.isArray(result.post.media) ? result.post.media : [],
+        pollOptions: Array.isArray(result.post.pollOptions) ? result.post.pollOptions : undefined,
+      });
+      toast.success("Your vote has been recorded!");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Could not record vote.");
+    } finally {
+      setIsVoting(false);
+    }
+  };
+
 
   if (authLoading || isLoadingPost) return <PostPageSkeleton />;
   if (error) return <div className="container mx-auto py-8 text-center text-destructive"><AlertTriangle className="inline-block mr-2"/>{error}</div>;
@@ -360,6 +416,9 @@ export default function PostPage() {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                         <DropdownMenuItem onClick={handleShare}><Share2 className="mr-2 h-4 w-4" /> Share Post</DropdownMenuItem>
+                         <DropdownMenuItem onClick={() => setShowReportDialog(true)} disabled={!isAuthenticated}>
+                            <Flag className="mr-2 h-4 w-4" /> Report Post
+                        </DropdownMenuItem>
                         {canCurrentUserManagePost && (
                         <>
                             <DropdownMenuItem asChild><Link href={`/posts/${post.id}/edit`}><Edit className="mr-2 h-4 w-4" /> Edit Post</Link></DropdownMenuItem>
@@ -376,10 +435,50 @@ export default function PostPage() {
           {post.title && <CardTitle className="text-2xl md:text-3xl mt-4 font-headline text-primary">{post.title}</CardTitle>}
         </CardHeader>
         <CardContent className="p-4 md:p-6">
-          <div 
-            className="prose dark:prose-invert max-w-none break-words mb-6 text-foreground/90"
-            dangerouslySetInnerHTML={{ __html: sanitizedContent }}
-          />
+          {post.postType !== 'poll' && post.content && (
+            <div 
+              className="prose dark:prose-invert max-w-none break-words mb-6 text-foreground/90"
+              dangerouslySetInnerHTML={{ __html: sanitizedContent }}
+            />
+          )}
+
+          {post.postType === 'poll' && post.pollOptions && (
+            <div className="space-y-3 mb-6">
+              {post.pollOptions.map((option) => {
+                const votePercentage = post.totalVotes && post.totalVotes > 0 ? (option.votes / post.totalVotes) * 100 : 0;
+                const isVotedByUser = post.userVotedOptionId === option.id || (option._id && post.userVotedOptionId === option._id.toString());
+                return (
+                  <div key={option.id || option._id?.toString()} className="space-y-1.5">
+                    <Button
+                      variant={isVotedByUser ? "default" : "outline"}
+                      className={`w-full justify-start text-left h-auto py-2.5 px-3 ${isVotedByUser ? 'border-primary ring-2 ring-primary' : ''}`}
+                      onClick={() => handleVote(option.id || option._id!)}
+                      disabled={isVoting || !!post.userVotedOptionId || !isAuthenticated}
+                    >
+                      <span className="flex-1">{option.optionText}</span>
+                      {!!post.userVotedOptionId && ( // Show votes only if user has voted or poll ended (not implemented)
+                        <span className="text-xs text-muted-foreground ml-2">{option.votes} vote{option.votes !== 1 ? 's' : ''} ({votePercentage.toFixed(0)}%)</span>
+                      )}
+                    </Button>
+                    {!!post.userVotedOptionId && (
+                      <Progress value={votePercentage} className="h-2" />
+                    )}
+                  </div>
+                );
+              })}
+              {post.totalVotes !== undefined && post.userVotedOptionId && (
+                 <p className="text-sm text-muted-foreground mt-2 text-right">{post.totalVotes} total vote{post.totalVotes !== 1 ? 's' : ''}</p>
+              )}
+              {!post.userVotedOptionId && isAuthenticated && (
+                <p className="text-xs text-muted-foreground mt-1">Click an option to cast your vote.</p>
+              )}
+               {!isAuthenticated && (
+                <p className="text-xs text-muted-foreground mt-1">Please <Link href={`/login?redirect=/posts/${post.id}`} className="underline text-primary">log in</Link> to vote.</p>
+              )}
+            </div>
+          )}
+
+
           {post.media && post.media.length > 0 && (
             <div className="space-y-4 mb-6">
               {post.media.map((item, index) => (
@@ -431,7 +530,7 @@ export default function PostPage() {
         </CardFooter>
       </Card>
 
-      <Card className="w-full max-w-3xl mx-auto mt-8 shadow-lg rounded-lg">
+      <Card className="w-full max-w-3xl mx-auto mt-8 shadow-lg rounded-lg" id="comments">
         <CardHeader className="p-4 md:p-6">
           <CardTitle className="text-xl font-headline">Comments ({post.commentCount || 0})</CardTitle>
         </CardHeader>
@@ -493,7 +592,15 @@ export default function PostPage() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {showReportDialog && user && post.id && (
+        <ReportDialog
+          isOpen={showReportDialog}
+          onClose={() => setShowReportDialog(false)}
+          itemId={post.id}
+          itemType="post"
+          reporterUserId={user.id!}
+        />
+      )}
     </div>
   );
 }
-
