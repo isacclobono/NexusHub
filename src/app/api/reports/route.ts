@@ -90,3 +90,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message: errorMessage }, { status: 500 });
   }
 }
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const reporterUserId = searchParams.get('userId');
+
+    if (!reporterUserId || !ObjectId.isValid(reporterUserId)) {
+      return NextResponse.json({ message: 'Valid Reporter User ID is required as a query parameter.' }, { status: 400 });
+    }
+
+    const db = await getDb();
+    const reportsCollection = db.collection<Report>('reports');
+    
+    const userReports = await reportsCollection
+      .find({ reporterUserId: new ObjectId(reporterUserId) })
+      .sort({ createdAt: -1 })
+      .toArray();
+
+    const reportsForClient = userReports.map(report => ({
+      ...report,
+      id: report._id!.toHexString(),
+      reportedItemId: report.reportedItemId.toHexString(),
+      reporterUserId: report.reporterUserId.toHexString(),
+      reviewerId: report.reviewerId?.toHexString(),
+    }));
+      
+    return NextResponse.json(reportsForClient, { status: 200 });
+  } catch (error) {
+    console.error('API Error fetching reports:', error);
+    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred while fetching reports.';
+    return NextResponse.json({ message: errorMessage }, { status: 500 });
+  }
+}

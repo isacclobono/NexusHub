@@ -23,7 +23,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { useAuth } from '@/hooks/use-auth-provider';
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { PlusCircle, LogOut, UserCircle, Settings as SettingsIcon, LogIn, UserPlus } from 'lucide-react';
+import { PlusCircle, LogOut, UserCircle, Settings as SettingsIcon, LogIn, UserPlus, Flag } from 'lucide-react';
 import type { NavItem } from '@/lib/types';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
