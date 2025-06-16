@@ -96,6 +96,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
   }, [initialPost]);
 
   const sanitizedContent = useMemo(() => {
+    // Ensure DOMPurify runs only on the client-side
     if (typeof window === 'undefined' || !post.content) return '';
     return DOMPurify.sanitize(post.content);
   }, [post.content]);
@@ -304,7 +305,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
           return; 
         } else if (shareError.name === 'NotAllowedError') {
           console.warn('Web Share API permission denied:', shareError);
-          toast.info('Sharing via system dialog failed. Trying to copy link...');
+          toast('Sharing via system dialog failed. Trying to copy link...');
         } else {
           console.error('Web Share API error:', shareError);
           toast.error('Could not share using system dialog. Trying to copy link...');
@@ -444,7 +445,7 @@ export function PostCard({ post: initialPost, onToggleBookmark: onToggleBookmark
                           </DropdownMenuItem>
                         )}
                         <DropdownMenuSeparator />
-                        <DropdownMenuItem onClick={() => setShowDeleteDialog(true)} className="text-destructive focus:text-destructive" disabled={isDeletingPost || isPublishingDraft}>
+                        <DropdownMenuItem onClick={() => setShowDeleteDialog(true)} className="text-destructive focus:text-destructive focus:bg-destructive/10" disabled={isDeletingPost || isPublishingDraft}>
                             <Trash2 className="mr-2 h-4 w-4" /> Delete Post
                         </DropdownMenuItem>
                       </>
