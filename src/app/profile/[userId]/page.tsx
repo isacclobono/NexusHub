@@ -3,12 +3,12 @@
 
 import { useParams, useRouter } from 'next/navigation';
 import { useEffect, useState, useCallback } from 'react';
-import type { User, Post, Comment as CommentType, Event as EventType, Badge as BadgeType } from '@/lib/types';
+import type { User, Post, Comment as CommentType, Event as EventType, Badge as BadgeType, Community } from '@/lib/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { CalendarDays, Edit3, Star, Loader2, AlertTriangle, MessageSquare, Activity, Award, Calendar as CalendarIconLucide, DollarSign, EyeOff, Users } from 'lucide-react';
+import { CalendarDays, Edit3, Star, Loader2, AlertTriangle, MessageSquare, Activity, Award, Calendar as CalendarIconLucide, DollarSign, EyeOff, Users, UsersRound as CommunitiesIcon } from 'lucide-react';
 import { PostCard } from '@/components/feed/PostCard';
 import { format, formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
@@ -55,7 +55,8 @@ const ProfileSkeleton = () => (
       </CardContent>
     </Card>
     <Tabs defaultValue="posts" className="w-full">
-      <TabsList className="grid w-full grid-cols-2 md:grid-cols-4 mb-6">
+      <TabsList className="grid w-full grid-cols-2 md:grid-cols-5 mb-6"> {/* Adjusted grid-cols */}
+        <Skeleton className="h-10 w-full rounded-md" />
         <Skeleton className="h-10 w-full rounded-md" />
         <Skeleton className="h-10 w-full rounded-md" />
         <Skeleton className="h-10 w-full rounded-md" />
@@ -156,6 +157,37 @@ const OrganizedEventCard = ({ event }: { event: EventType }) => {
  );
 };
 
+const UserCommunityCard = ({ community }: { community: Community }) => (
+  <Card className="shadow-sm hover:shadow-xl transition-all duration-300 ease-in-out transform hover:-translate-y-1 flex flex-col group">
+    <Link href={`/communities/${community.id}`} className="block relative h-32 w-full">
+      <Image 
+        src={community.coverImageUrl || `https://placehold.co/800x300.png?text=${encodeURIComponent(community.name)}`} 
+        alt={community.name} 
+        layout="fill" 
+        objectFit="cover"
+        data-ai-hint="community banner card"
+        className="rounded-t-lg transition-transform duration-300 group-hover:scale-105"
+      />
+    </Link>
+    <CardHeader className="p-3">
+      <CardTitle className="font-headline text-md group-hover:text-primary transition-colors">
+        <Link href={`/communities/${community.id}`}>{community.name}</Link>
+      </CardTitle>
+    </CardHeader>
+    <CardContent className="p-3 pt-0 flex-grow">
+      <p className="text-xs text-muted-foreground line-clamp-2 mb-2">{community.description}</p>
+      <div className="text-xs text-muted-foreground flex items-center">
+        <Users className="h-3.5 w-3.5 mr-1.5" /> {community.memberCount || 0} members
+      </div>
+    </CardContent>
+    <CardFooter className="p-3 border-t">
+      <Button asChild size="xs" variant="link" className="p-0 h-auto text-primary">
+        <Link href={`/communities/${community.id}`}>Visit Community</Link>
+      </Button>
+    </CardFooter>
+  </Card>
+);
+
 
 export default function UserProfilePage() {
   const params = useParams();
@@ -184,6 +216,11 @@ export default function UserProfilePage() {
   const [userBadges, setUserBadges] = useState<BadgeType[]>([]); 
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [profileError, setProfileError] = useState<string | null>(null);
+  
+  const [memberCommunities, setMemberCommunities] = useState<Community[]>([]);
+  const [loadingMemberCommunities, setLoadingMemberCommunities] = useState(true);
+  const [memberCommunitiesError, setMemberCommunitiesError] = useState<string | null>(null);
+
 
   const userIdToFetch = routeUserId === 'me' && authUser ? authUser.id : routeUserId;
 
@@ -201,7 +238,6 @@ export default function UserProfilePage() {
       setProfileUser(foundUser);
 
       if (foundUser.privacy === 'public' || (authUser && authUser.id === foundUser.id)) {
-        // Simulate fetching badges if they were dynamic. For now, using static or a placeholder.
         const badgesData: BadgeType[] = [
             { id: '1', name: 'Early Adopter', description: 'Joined within the first month!', iconUrl: 'https://placehold.co/64x64/8B5CF6/FFFFFF.png?text=EA' },
             { id: '2', name: 'Community Starter', description: 'Created 5+ posts.', iconUrl: 'https://placehold.co/64x64/10B981/FFFFFF.png?text=CS' },
@@ -213,7 +249,7 @@ export default function UserProfilePage() {
         setUserBadges([]);
       }
 
-      return foundUser; // Return fetched user for chaining
+      return foundUser; 
     } catch (e) {
       console.error("Failed to fetch profile user data:", e);
       setProfileError(e instanceof Error ? e.message : "Failed to load profile.");
@@ -293,6 +329,34 @@ export default function UserProfilePage() {
         setLoadingOrganizedEvents(false);
     }
   }, []);
+  
+  const fetchMemberCommunities = useCallback(async (userToFetch: User) => {
+    if (!userToFetch || !userToFetch.communityIds || userToFetch.communityIds.length === 0) {
+      setMemberCommunities([]);
+      setLoadingMemberCommunities(false);
+      return;
+    }
+    setLoadingMemberCommunities(true);
+    setMemberCommunitiesError(null);
+    try {
+      const communityPromises = userToFetch.communityIds.map(id =>
+        fetch(`/api/communities/${id.toString()}`).then(res => {
+          if (!res.ok) {
+             console.warn(`Failed to fetch community ${id.toString()}`);
+             return null; // Return null for failed fetches
+          }
+          return res.json();
+        })
+      );
+      const communitiesData = await Promise.all(communityPromises);
+      setMemberCommunities(communitiesData.filter(c => c !== null) as Community[]);
+    } catch (e) {
+      console.error("Failed to fetch member communities:", e);
+      setMemberCommunitiesError(e instanceof Error ? e.message : "Failed to load communities.");
+    } finally {
+      setLoadingMemberCommunities(false);
+    }
+  }, []);
 
 
   useEffect(() => {
@@ -303,18 +367,20 @@ export default function UserProfilePage() {
             fetchUserComments(userIdToFetch);
             fetchRsvpdEvents(userIdToFetch);
             fetchOrganizedEvents(userIdToFetch);
+            fetchMemberCommunities(fetchedProfile); 
         } else if (fetchedProfile?.isPrivatePlaceholder) {
             setLoadingPosts(false); setUserPosts([]);
             setLoadingComments(false); setUserComments([]);
             setLoadingRsvpdEvents(false); setRsvpdEvents([]);
             setLoadingOrganizedEvents(false); setOrganizedEvents([]);
+            setLoadingMemberCommunities(false); setMemberCommunities([]);
         }
       });
     } else if (routeUserId === 'me' && !authUser && !authLoading) {
         toast.error("Please log in to view your profile.");
         router.push(`/login?redirect=/profile/me`);
     }
-  }, [userIdToFetch, authLoading, authUser, fetchProfileData, fetchUserPosts, fetchUserComments, fetchRsvpdEvents, fetchOrganizedEvents, router, routeUserId]);
+  }, [userIdToFetch, authLoading, authUser, fetchProfileData, fetchUserPosts, fetchUserComments, fetchRsvpdEvents, fetchOrganizedEvents, fetchMemberCommunities, router, routeUserId]);
 
 
   if (authLoading || loadingProfile) {
@@ -414,9 +480,10 @@ export default function UserProfilePage() {
         </Card>
       ) : (
         <Tabs defaultValue="posts" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 mb-6 bg-muted/50 rounded-lg shadow-inner">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-3 md:grid-cols-5 mb-6 bg-muted/50 rounded-lg shadow-inner"> {/* Adjusted grid-cols */}
             <TabsTrigger value="posts" className="data-[state=active]:bg-card data-[state=active]:shadow-md">Posts ({loadingPosts ? '...' : userPosts.length})</TabsTrigger>
             <TabsTrigger value="activity" className="data-[state=active]:bg-card data-[state=active]:shadow-md">Activity</TabsTrigger>
+            <TabsTrigger value="communities" className="data-[state=active]:bg-card data-[state=active]:shadow-md">Communities ({loadingMemberCommunities ? '...' : memberCommunities.length})</TabsTrigger> {/* New Tab */}
             <TabsTrigger value="badges" className="data-[state=active]:bg-card data-[state=active]:shadow-md">Badges ({userBadges.length})</TabsTrigger>
             <TabsTrigger value="events" className="data-[state=active]:bg-card data-[state=active]:shadow-md">My Events ({loadingOrganizedEvents ? '...' : organizedEvents.length})</TabsTrigger>
           </TabsList>
@@ -465,6 +532,25 @@ export default function UserProfilePage() {
               </div>
           </TabsContent>
 
+          <TabsContent value="communities" className="bg-card/30 p-4 sm:p-6 rounded-lg shadow-sm">
+            <h3 className="text-xl font-semibold mb-6 font-headline flex items-center"><CommunitiesIcon className="mr-2 h-5 w-5 text-primary"/>Member Of</h3>
+            {loadingMemberCommunities && <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"><Skeleton className="h-48 w-full rounded-md"/><Skeleton className="h-48 w-full rounded-md"/><Skeleton className="h-48 w-full rounded-md"/></div>}
+            {memberCommunitiesError && <p className="text-destructive text-center py-10">{memberCommunitiesError}</p>}
+            {!loadingMemberCommunities && !memberCommunitiesError && memberCommunities.length > 0 ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {memberCommunities.map(community => (
+                  <UserCommunityCard key={community.id} community={community} />
+                ))}
+              </div>
+            ) : (
+              !loadingMemberCommunities && !memberCommunitiesError && 
+              <p className="text-muted-foreground text-center py-10 flex flex-col items-center">
+                  <CommunitiesIcon className="h-12 w-12 mb-3 text-muted-foreground/50"/>
+                  This user is not a member of any communities yet.
+              </p>
+            )}
+          </TabsContent>
+
            <TabsContent value="badges" className="bg-card/30 p-4 sm:p-6 rounded-lg shadow-sm">
             <h3 className="text-xl font-semibold mb-6 font-headline flex items-center"><Award className="mr-2 h-5 w-5 text-primary"/>Achievements & Badges</h3>
             {userBadges.length > 0 ? (
@@ -504,3 +590,5 @@ export default function UserProfilePage() {
     </div>
   );
 }
+
+    
