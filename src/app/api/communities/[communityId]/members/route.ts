@@ -3,6 +3,11 @@ import getDb from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import type { Community, User } from '@/lib/types';
 
+type RouteParams = {
+  params: {
+    communityId: string;
+  };
+};
 // Database document type for Community
 type DbCommunity = Omit<Community, 'id' | 'creator' | 'memberCount' | 'joinRequests'> & {
   _id: ObjectId;
@@ -17,8 +22,8 @@ type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
 };
 
 export async function GET(
-  request: NextRequest,
-  context: { params: { communityId: string } }
+  req: NextRequest,
+  context: RouteParams
 ) {
   const { communityId } = context.params;
   if (!communityId || !ObjectId.isValid(communityId)) {
@@ -27,40 +32,35 @@ export async function GET(
 
   try {
     const db = await getDb();
-    const communitiesCollection = db.collection<DbCommunity>('communities');
-    const usersCollection = db.collection<DbUser>('users');
+    const communitiesCollection = db.collection('communities');
+    const usersCollection = db.collection('users');
 
-    const communityObjectId = new ObjectId(communityId);
-    const community = await communitiesCollection.findOne({ _id: communityObjectId });
+    const community = await communitiesCollection.findOne({ _id: new ObjectId(communityId) });
 
     if (!community) {
       return NextResponse.json({ message: 'Community not found.' }, { status: 404 });
     }
 
-    if (!community.memberIds || community.memberIds.length === 0) {
-      return NextResponse.json([], { status: 200 }); // Return empty array if no members
-    }
+    const memberObjectIds = (community.memberIds || []).map((id: any) =>
+      typeof id === 'string' ? new ObjectId(id) : id
+    );
 
-    const memberObjectIds = community.memberIds.map(id => typeof id === 'string' ? new ObjectId(id) : id);
+    const memberDocs = await usersCollection
+      .find({ _id: { $in: memberObjectIds } }, { projection: { passwordHash: 0 } })
+      .toArray();
 
-    const memberDocs = await usersCollection.find(
-      { _id: { $in: memberObjectIds } },
-      { projection: { passwordHash: 0 } }
-    ).toArray();
-
-    const membersForClient: User[] = memberDocs.map(doc => ({
+    const members: User[] = memberDocs.map(doc => ({
       ...doc,
       id: doc._id.toHexString(),
       bookmarkedPostIds: doc.bookmarkedPostIds || [],
       communityIds: doc.communityIds || [],
     }));
 
-    return NextResponse.json(membersForClient, { status: 200 });
+    return NextResponse.json(members, { status: 200 });
 
   } catch (error) {
-    console.error(`API Error fetching members for community ${communityId}:`, error);
-    const errorMessage = error instanceof Error ? error.message : 'An unexpected error occurred.';
-    return NextResponse.json({ message: errorMessage }, { status: 500 });
+    console.error(error);
+    return NextResponse.json({ message: 'Server error.' }, { status: 500 });
   }
 }
 
