@@ -1,3 +1,4 @@
+
 import { NextRequest, NextResponse } from 'next/server';
 import getDb from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
@@ -19,7 +20,7 @@ type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
 };
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { communityId: string } }
 ) {
   const { communityId } = params;
@@ -69,7 +70,7 @@ export async function GET(
 }
 
 export async function POST(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { communityId: string } }
 ) {
   const { communityId } = params;
@@ -78,7 +79,7 @@ export async function POST(
   }
 
   try {
-    const { userId } = await _request.json();
+    const { userId } = await request.json();
     if (!userId || !ObjectId.isValid(userId)) {
       return NextResponse.json({ message: 'Valid User ID is required.' }, { status: 400 });
     }
@@ -144,7 +145,7 @@ export async function POST(
 }
 
 export async function DELETE(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { communityId: string } }
 ) {
   const { communityId } = params;
@@ -153,8 +154,8 @@ export async function DELETE(
   }
 
   try {
-    const { searchParams } = new URL(_request.url);
-    const userId = searchParams.get('userId');
+    const { searchParams: nextUrlSearchParams } = new URL(request.url);
+    const userId = nextUrlSearchParams.get('userId');
 
     if (!userId || !ObjectId.isValid(userId)) {
       return NextResponse.json({ message: 'Valid User ID (as query param userId) is required to leave.' }, { status: 400 });
