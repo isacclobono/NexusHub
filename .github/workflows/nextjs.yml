@@ -8,9 +8,6 @@ on:
   push:
     branches: ["main"] # Change to "master" if that's your default branch
   workflow_dispatch:
-  # Ensures deployments on every change to the published branch
-  pages-build-deployment:
-    types: [created]
 
 permissions:
   contents: read
