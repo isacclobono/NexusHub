@@ -7,7 +7,7 @@ import type { Community, User } from '@/lib/types';
 type DbCommunity = Omit<Community, 'id' | 'creator' | 'memberCount' | 'joinRequests'> & {
   _id: ObjectId;
   pendingMemberIds?: ObjectId[];
-  memberIds?: ObjectId[]; // Add this line if not present in your Community type!
+  memberIds?: ObjectId[];
 };
 
 type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
@@ -19,9 +19,9 @@ type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { communityId: string } }
+  context: { params: { communityId: string } }
 ) {
-  const { communityId } = params;
+  const { communityId } = context.params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
   }
@@ -67,9 +67,9 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { communityId: string } }
+  context: { params: { communityId: string } }
 ) {
-  const { communityId } = params;
+  const { communityId } = context.params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
   }
@@ -142,9 +142,9 @@ export async function POST(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { communityId: string } }
+  context: { params: { communityId: string } }
 ) {
-  const { communityId } = params;
+  const { communityId } = context.params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
   }
