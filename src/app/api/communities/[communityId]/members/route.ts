@@ -18,8 +18,15 @@ type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
   communityIds?: ObjectId[];
 };
 
-export async function GET(request: NextRequest, { params }: { params: { communityId: string } }) {
-  const { communityId } = params;
+// Define a type for the context object containing route parameters
+type RouteContext = {
+  params: {
+    communityId: string; // Ensure no semicolon here
+  };
+};
+
+export async function GET(request: NextRequest, context: RouteContext) {
+  const { communityId } = context.params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
   }
@@ -64,8 +71,8 @@ export async function GET(request: NextRequest, { params }: { params: { communit
 }
 
 
-export async function POST(request: NextRequest, { params }: { params: { communityId: string } }) { // Join or Request to Join
-  const { communityId } = params;
+export async function POST(request: NextRequest, context: RouteContext) { // Join or Request to Join
+  const { communityId } = context.params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
   }
@@ -138,8 +145,8 @@ export async function POST(request: NextRequest, { params }: { params: { communi
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: { params: { communityId: string } }) { // Leave a community
-  const { communityId } = params;
+export async function DELETE(request: NextRequest, context: RouteContext) { // Leave a community
+  const { communityId } = context.params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
   }
