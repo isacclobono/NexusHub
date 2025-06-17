@@ -7,6 +7,7 @@ import type { Community, User } from '@/lib/types';
 type DbCommunity = Omit<Community, 'id' | 'creator' | 'memberCount' | 'joinRequests'> & {
   _id: ObjectId;
   pendingMemberIds?: ObjectId[];
+  memberIds?: ObjectId[]; // Add this line if not present in your Community type!
 };
 
 type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
@@ -38,7 +39,7 @@ export async function GET(
     }
 
     if (!community.memberIds || community.memberIds.length === 0) {
-      return NextResponse.json([], { status: 200 }); // Return empty array if no members
+      return NextResponse.json([], { status: 200 });
     }
 
     const memberObjectIds = community.memberIds.map(id => typeof id === 'string' ? new ObjectId(id) : id);
@@ -96,13 +97,11 @@ export async function POST(
       return NextResponse.json({ message: 'User not found.' }, { status: 404 });
     }
 
-    // Check if already a member
     if (community.memberIds?.some(id => id.equals(userObjectId))) {
       return NextResponse.json({ message: 'User is already a member of this community.' }, { status: 200 });
     }
 
     if (community.privacy === 'private') {
-      // Check if already pending
       if (community.pendingMemberIds?.some(id => id.equals(userObjectId))) {
         return NextResponse.json({ message: 'Your request to join is already pending.' }, { status: 200 });
       }
@@ -114,7 +113,7 @@ export async function POST(
         return NextResponse.json({ message: 'Community not found or failed to add join request.' }, { status: 404 });
       }
       return NextResponse.json({ message: 'Your request to join has been submitted.' }, { status: 200 });
-    } else { // Public community - direct join
+    } else {
       const updateCommunityResult = await communitiesCollection.updateOne(
         { _id: communityObjectId },
         { $addToSet: { memberIds: userObjectId } }
@@ -174,7 +173,6 @@ export async function DELETE(
       return NextResponse.json({ message: 'Creator cannot leave the community. Consider deleting it or transferring ownership (not implemented).' }, { status: 403 });
     }
 
-    // Remove from members, admins (if they were one), and pending requests (if they had one)
     const updateCommunityResult = await communitiesCollection.updateOne(
       { _id: communityObjectId },
       {
