@@ -152,13 +152,33 @@ export interface Notification {
   _id?: ObjectId;
   id?: string;
   userId: ObjectId;
-  type: 'new_comment' | 'new_post' | 'event_reminder' | 'mention' | 'system' | 'event_rsvp' | 'bookmark_milestone' | 'new_follower' | 'new_like' | 'community_join_request' | 'community_post_approved' | 'new_community_post' | 'new_community_event' | 'community_join_approved' | 'community_join_denied' | 'community_ownership_transfer' | 'new_post_subscribed_tag' | 'new_post_subscribed_category';
+  type:
+    | 'new_comment'
+    | 'new_post'
+    | 'event_reminder'
+    | 'mention'
+    | 'system'
+    | 'event_rsvp'
+    | 'bookmark_milestone'
+    | 'new_follower'
+    | 'new_like'
+    | 'community_join_request'
+    | 'community_post_approved'
+    | 'new_community_post'
+    | 'new_community_event'
+    | 'community_join_approved'
+    | 'community_join_denied'
+    | 'community_ownership_transfer'
+    | 'new_post_subscribed_tag'
+    | 'new_post_subscribed_category'
+    | 'report_reviewed_action_taken'  // New type
+    | 'report_reviewed_no_action';  // New type
   title: string;
   message: string;
   link?: string;
   isRead: boolean;
   createdAt: string;
-  relatedEntityId?: ObjectId;
+  relatedEntityId?: ObjectId; // Can be postId, commentId, userId, communityId, eventId, reportId
   actor?: {
     _id: ObjectId;
     id: string;
@@ -199,4 +219,6 @@ export interface Report {
   createdAt: string;
   reviewedAt?: string;
   reviewerId?: ObjectId; // Admin/Moderator who reviewed
+  reviewNotes?: string; // Notes from the reviewer
 }
+

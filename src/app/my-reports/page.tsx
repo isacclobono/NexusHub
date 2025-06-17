@@ -2,15 +2,17 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import type { Report } from '@/lib/types';
+import type { Report, ReportReasonCategory } from '@/lib/types'; // Ensure ReportReasonCategory is imported
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Flag, AlertTriangle, Loader2, Eye, Info, Tag, FileText, MessageSquare, User } from 'lucide-react';
+import { Flag, AlertTriangle, Loader2, Eye, Info, Tag, FileText, MessageSquare, User as UserIconLucide, ShieldCheck, ShieldX, ShieldQuestion } from 'lucide-react';
 import Link from 'next/link';
 import { format, formatDistanceToNow } from 'date-fns';
 import { useAuth } from '@/hooks/use-auth-provider';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Badge } from '@/components/ui/badge';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+
 
 const ReportItemSkeleton = () => (
   <Card className="shadow-sm">
@@ -30,22 +32,28 @@ const ReportItemSkeleton = () => (
 );
 
 const ReportStatusBadge = ({ status }: { status: Report['status'] }) => {
-  let variant: "default" | "secondary" | "destructive" | "outline" = "secondary";
+  let variant: "default" | "secondary" | "destructive" | "outline" = "outline";
   let text = status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  let IconComponent = ShieldQuestion;
 
   switch (status) {
     case 'pending':
       variant = 'outline';
+      text = "Pending Review";
+      IconComponent = ShieldQuestion;
       break;
     case 'reviewed_action_taken':
       variant = 'destructive';
+      text = "Action Taken";
+      IconComponent = ShieldCheck; // Or ShieldAlert if more appropriate
       break;
     case 'reviewed_no_action':
-      variant = 'default'; // Using primary for "no action" as a neutral-positive resolution
+      variant = 'default'; 
       text = "Reviewed: No Action";
+      IconComponent = ShieldCheck;
       break;
   }
-  return <Badge variant={variant}>{text}</Badge>;
+  return <Badge variant={variant} className="flex items-center gap-1.5"><IconComponent className="h-3.5 w-3.5"/>{text}</Badge>;
 };
 
 const ReportedItemIcon = ({ itemType }: { itemType: Report['itemType']}) => {
@@ -55,57 +63,83 @@ const ReportedItemIcon = ({ itemType }: { itemType: Report['itemType']}) => {
     case 'comment':
       return <MessageSquare className="h-4 w-4 mr-1.5 text-muted-foreground" />;
     case 'user':
-      return <User className="h-4 w-4 mr-1.5 text-muted-foreground" />;
+      return <UserIconLucide className="h-4 w-4 mr-1.5 text-muted-foreground" />;
     default:
       return <Info className="h-4 w-4 mr-1.5 text-muted-foreground" />;
   }
 }
 
 const ReportItem = ({ report }: { report: Report }) => {
-  let itemLink = '#';
+  let itemLink: string | undefined = undefined;
   if (report.itemType === 'post') {
     itemLink = `/posts/${report.reportedItemId}`;
   } else if (report.itemType === 'user') {
     itemLink = `/profile/${report.reportedItemId}`;
+  } else if (report.itemType === 'comment') {
+    // Comments don't have dedicated pages, link to the post containing it for context.
+    // Need to ensure report.relatedEntityId (e.g., postId) is available if we want this.
+    // For now, comments may not have a direct link here.
+    // Assuming reportedItemId for comments is the comment ID, not post ID.
+    // To link to the post, the API would need to store postId for comment reports.
+    // For simplicity, we'll disable link for comments for now if a direct postId isn't in Report type.
   }
-  // Comment links are not implemented as comments don't have individual pages
 
   return (
     <Card className="shadow-sm hover:shadow-md transition-shadow">
-      <CardHeader className="pb-3">
-        <div className="flex justify-between items-start">
-            <div>
+      <CardHeader className="pb-3 border-b">
+        <div className="flex justify-between items-start gap-2">
+            <div className="flex-grow">
                 <CardTitle className="text-lg font-headline flex items-center">
                     <ReportedItemIcon itemType={report.itemType} />
                     Report for {report.itemType}
                 </CardTitle>
-                <CardDescription className="text-xs">
+                <CardDescription className="text-xs mt-1">
                     Reported on: {format(new Date(report.createdAt), "MMM d, yyyy 'at' h:mm a")}
                 </CardDescription>
             </div>
             <ReportStatusBadge status={report.status} />
         </div>
       </CardHeader>
-      <CardContent>
-        <div className="mb-2">
-          <span className="font-semibold text-sm">Reason:</span>
+      <CardContent className="pt-4">
+        <div className="mb-3">
+          <span className="font-semibold text-sm text-foreground/90">Reason:</span>
           <Badge variant="secondary" className="ml-2 text-xs">{report.reasonCategory.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}</Badge>
         </div>
         {report.reasonText && (
-          <p className="text-sm text-muted-foreground bg-muted/30 p-2 rounded-md">
-            <span className="font-medium text-foreground">Details:</span> {report.reasonText}
+          <p className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md mb-3">
+            <span className="font-medium text-foreground">Details you provided:</span> {report.reasonText}
           </p>
         )}
-        <p className="text-xs text-muted-foreground mt-3">
-          Reported Item ID: {' '}
-          {report.itemType === 'post' || report.itemType === 'user' ? (
-            <Link href={itemLink} className="text-primary hover:underline break-all">
-              {report.reportedItemId.toString()}
-            </Link>
-          ) : (
-            <span className="break-all">{report.reportedItemId.toString()}</span>
-          )}
-        </p>
+        {report.reviewNotes && (
+           <p className="text-sm text-foreground bg-blue-500/10 p-3 rounded-md border border-blue-500/20">
+            <span className="font-medium text-blue-700 dark:text-blue-400">Moderator Notes:</span> {report.reviewNotes}
+          </p>
+        )}
+        <div className="text-xs text-muted-foreground mt-3 flex items-center justify-between">
+            <p>
+                Reported Item ID: {' '}
+                {itemLink ? (
+                    <Link href={itemLink} className="text-primary hover:underline break-all">
+                    {report.reportedItemId.toString()}
+                    </Link>
+                ) : (
+                    <span className="break-all">{report.reportedItemId.toString()}</span>
+                )}
+            </p>
+            {report.reviewedAt && (
+                 <TooltipProvider>
+                    <Tooltip>
+                        <TooltipTrigger asChild>
+                             <span className="text-primary/80">Reviewed {formatDistanceToNow(new Date(report.reviewedAt), { addSuffix: true })}</span>
+                        </TooltipTrigger>
+                        <TooltipContent>
+                             <p>{format(new Date(report.reviewedAt), "MMM d, yyyy 'at' h:mm a")}</p>
+                        </TooltipContent>
+                    </Tooltip>
+                 </TooltipProvider>
+            )}
+        </div>
+
       </CardContent>
     </Card>
   );
@@ -214,3 +248,4 @@ export default function MyReportsPage() {
     </div>
   );
 }
+
