@@ -3,11 +3,12 @@ import getDb from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import type { Community, User } from '@/lib/types';
 
-// Database document type for Community
 type DbCommunity = Omit<Community, 'id' | 'creator' | 'memberCount' | 'joinRequests'> & {
   _id: ObjectId;
   pendingMemberIds?: ObjectId[];
   memberIds?: ObjectId[];
+  creatorId: ObjectId;
+  privacy?: string;
 };
 
 type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
@@ -17,11 +18,13 @@ type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
   communityIds?: ObjectId[];
 };
 
+type Params = { params: { communityId: string } };
+
 export async function GET(
-  request: NextRequest,
-  context: { params: { communityId: string } }
+  _request: NextRequest,
+  { params }: Params
 ) {
-  const { communityId } = context.params;
+  const { communityId } = params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
   }
@@ -42,14 +45,16 @@ export async function GET(
       return NextResponse.json([], { status: 200 });
     }
 
-    const memberObjectIds = community.memberIds.map(id => typeof id === 'string' ? new ObjectId(id) : id);
+    const memberObjectIds = community.memberIds.map(id =>
+      typeof id === 'string' ? new ObjectId(id) : id
+    );
 
     const memberDocs = await usersCollection.find(
       { _id: { $in: memberObjectIds } },
       { projection: { passwordHash: 0 } }
     ).toArray();
 
-    const membersForClient: User[] = memberDocs.map(doc => ({
+    const membersForClient = memberDocs.map(doc => ({
       ...doc,
       id: doc._id.toHexString(),
       bookmarkedPostIds: doc.bookmarkedPostIds || [],
@@ -66,23 +71,23 @@ export async function GET(
 }
 
 export async function POST(
-  request: NextRequest,
-  context: { params: { communityId: string } }
+  _request: NextRequest,
+  { params }: Params
 ) {
-  const { communityId } = context.params;
+  const { communityId } = params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
   }
 
   try {
-    const { userId } = await request.json();
+    const { userId } = await _request.json();
     if (!userId || !ObjectId.isValid(userId)) {
       return NextResponse.json({ message: 'Valid User ID is required.' }, { status: 400 });
     }
 
     const db = await getDb();
     const communitiesCollection = db.collection<DbCommunity>('communities');
-    const usersCollection = db.collection('users');
+    const usersCollection = db.collection<DbUser>('users');
 
     const communityObjectId = new ObjectId(communityId);
     const userObjectId = new ObjectId(userId);
@@ -141,16 +146,16 @@ export async function POST(
 }
 
 export async function DELETE(
-  request: NextRequest,
-  context: { params: { communityId: string } }
+  _request: NextRequest,
+  { params }: Params
 ) {
-  const { communityId } = context.params;
+  const { communityId } = params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
   }
 
   try {
-    const { searchParams } = new URL(request.url);
+    const { searchParams } = new URL(_request.url);
     const userId = searchParams.get('userId');
 
     if (!userId || !ObjectId.isValid(userId)) {
@@ -159,7 +164,7 @@ export async function DELETE(
 
     const db = await getDb();
     const communitiesCollection = db.collection<DbCommunity>('communities');
-    const usersCollection = db.collection('users');
+    const usersCollection = db.collection<DbUser>('users');
 
     const communityObjectId = new ObjectId(communityId);
     const userObjectId = new ObjectId(userId);
