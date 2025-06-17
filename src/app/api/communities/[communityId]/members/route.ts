@@ -18,11 +18,9 @@ type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
   communityIds?: ObjectId[];
 };
 
-type Params = { params: { communityId: string } };
-
 export async function GET(
   _request: NextRequest,
-  { params }: Params
+  { params }: { params: { communityId: string } }
 ) {
   const { communityId } = params;
   if (!communityId || !ObjectId.isValid(communityId)) {
@@ -72,7 +70,7 @@ export async function GET(
 
 export async function POST(
   _request: NextRequest,
-  { params }: Params
+  { params }: { params: { communityId: string } }
 ) {
   const { communityId } = params;
   if (!communityId || !ObjectId.isValid(communityId)) {
@@ -147,7 +145,7 @@ export async function POST(
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: Params
+  { params }: { params: { communityId: string } }
 ) {
   const { communityId } = params;
   if (!communityId || !ObjectId.isValid(communityId)) {
