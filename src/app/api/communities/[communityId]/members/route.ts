@@ -4,10 +4,6 @@ import getDb from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
 import type { Community, User } from '@/lib/types';
 
-interface CommunityMemberParams {
-  params: { communityId: string };
-}
-
 // Database document type for Community
 type DbCommunity = Omit<Community, 'id' | 'creator' | 'memberCount' | 'joinRequests'> & {
   _id: ObjectId;
@@ -22,7 +18,7 @@ type DbUser = Omit<User, 'id' | 'bookmarkedPostIds' | 'communityIds'> & {
   communityIds?: ObjectId[];
 };
 
-export async function GET(request: NextRequest, { params }: CommunityMemberParams) {
+export async function GET(request: NextRequest, { params }: { params: { communityId: string } }) {
   const { communityId } = params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
@@ -68,7 +64,7 @@ export async function GET(request: NextRequest, { params }: CommunityMemberParam
 }
 
 
-export async function POST(request: NextRequest, { params }: CommunityMemberParams) { // Join or Request to Join
+export async function POST(request: NextRequest, { params }: { params: { communityId: string } }) { // Join or Request to Join
   const { communityId } = params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
@@ -142,7 +138,7 @@ export async function POST(request: NextRequest, { params }: CommunityMemberPara
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: CommunityMemberParams) { // Leave a community
+export async function DELETE(request: NextRequest, { params }: { params: { communityId: string } }) { // Leave a community
   const { communityId } = params;
   if (!communityId || !ObjectId.isValid(communityId)) {
     return NextResponse.json({ message: 'Valid Community ID is required.' }, { status: 400 });
