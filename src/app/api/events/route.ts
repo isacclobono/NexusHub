@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import type { Event, User, Community, Notification } from '@/lib/types';
-import getDb from '@/lib/mongodb';
+import type { Event, User, Community, Notification } from '../../../lib/types'; // Changed path
+import getDb from '../../../lib/mongodb'; // Changed path
 import { ObjectId } from 'mongodb';
 
 const eventFormSchema = z.object({

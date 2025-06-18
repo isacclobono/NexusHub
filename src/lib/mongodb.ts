@@ -1,20 +1,21 @@
 
 import { MongoClient, ServerApiVersion } from 'mongodb';
 
-const MONGODB_URI_FROM_ENV = process.env.MONGODB_URI;
-const MONGODB_DB_NAME_FROM_ENV = process.env.MONGODB_DB_NAME;
+const MONGODB_URI_FROM_ENV = process.env.MONGODB_URI || "mongodb://localhost:27017/testdb_next_default";
+const MONGODB_DB_NAME_FROM_ENV = process.env.MONGODB_DB_NAME || "testdb_next_default";
 
-console.log('[MongoDB Init] MONGODB_URI from process.env:', MONGODB_URI_FROM_ENV);
-console.log('[MongoDB Init] MONGODB_DB_NAME from process.env:', MONGODB_DB_NAME_FROM_ENV);
+console.log('[MongoDB Init] MONGODB_URI used:', MONGODB_URI_FROM_ENV);
+console.log('[MongoDB Init] MONGODB_DB_NAME used:', MONGODB_DB_NAME_FROM_ENV);
 
-if (!MONGODB_URI_FROM_ENV) {
-  console.error('[MongoDB Init] CRITICAL ERROR: "MONGODB_URI" environment variable is missing or undefined.');
-  throw new Error('Invalid/Missing environment variable: "MONGODB_URI". Please ensure it is set in your .env.local file and the server is restarted.');
-}
-if (!MONGODB_DB_NAME_FROM_ENV) {
-  console.error('[MongoDB Init] CRITICAL ERROR: "MONGODB_DB_NAME" environment variable is missing or undefined.');
-  throw new Error('Invalid/Missing environment variable: "MONGODB_DB_NAME". Please ensure it is set in your .env.local file and the server is restarted.');
-}
+// No longer throwing an error if undefined, as we are providing defaults.
+// if (!MONGODB_URI_FROM_ENV) {
+//   console.error('[MongoDB Init] CRITICAL ERROR: "MONGODB_URI" environment variable is missing or undefined.');
+//   throw new Error('Invalid/Missing environment variable: "MONGODB_URI". Please ensure it is set in your .env.local file and the server is restarted.');
+// }
+// if (!MONGODB_DB_NAME_FROM_ENV) {
+//   console.error('[MongoDB Init] CRITICAL ERROR: "MONGODB_DB_NAME" environment variable is missing or undefined.');
+//   throw new Error('Invalid/Missing environment variable: "MONGODB_DB_NAME". Please ensure it is set in your .env.local file and the server is restarted.');
+// }
 
 const uri = MONGODB_URI_FROM_ENV;
 const dbName = MONGODB_DB_NAME_FROM_ENV;

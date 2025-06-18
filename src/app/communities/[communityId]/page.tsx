@@ -457,7 +457,12 @@ export default function CommunityDetailPage() {
                         {requestsError && <p className="text-destructive text-center py-5">{requestsError}</p>}
                         {!loadingRequests && !requestsError && joinRequests.length > 0 ? (
                           <div className="space-y-3">
-                            {joinRequests.map(reqUser => <JoinRequestCard key={reqUser.id} userRequest={reqUser} onApprove={handleManageRequest} onDeny={handleManageRequest} isProcessing={processingRequestId === reqUser.id}/>)}
+                            {joinRequests.map(reqUser => <JoinRequestCard
+                              key={reqUser.id}
+                              userRequest={reqUser}
+                              onApprove={(userId) => handleManageRequest(userId, 'approve')}
+                              onDeny={(userId) => handleManageRequest(userId, 'deny')}
+                              isProcessing={processingRequestId === reqUser.id}/>)}
                           </div>
                         ) : (
                           !loadingRequests && !requestsError && <p className="text-muted-foreground text-center py-10">No pending join requests.</p>

@@ -91,9 +91,9 @@ export async function POST(request: NextRequest, { params }: { params: { communi
       type: 'community_ownership_transfer',
       title: `You are now the owner of ${community.name}`,
       message: `${oldOwner?.name || 'The previous owner'} has transferred ownership of the community "${community.name}" to you.`,
-      link: `/communities/${community.id}`,
+      link: `/communities/${community._id.toHexString()}`,
       relatedEntityId: community._id,
-      actor: { _id: oldOwner?._id || currentUserIdObj, id: oldOwner?.id || currentUserId, name: oldOwner?.name || "Previous Owner", avatarUrl: oldOwner?.avatarUrl },
+      actor: { _id: oldOwner?._id || currentUserIdObj, id: oldOwner?._id.toHexString() || currentUserId, name: oldOwner?.name || "Previous Owner", avatarUrl: oldOwner?.avatarUrl },
       isRead: false,
       createdAt: new Date().toISOString(),
     };
@@ -105,9 +105,9 @@ export async function POST(request: NextRequest, { params }: { params: { communi
         type: 'community_ownership_transfer',
         title: `Ownership of ${community.name} transferred`,
         message: `You have successfully transferred ownership of "${community.name}" to ${newOwner.name}.`,
-        link: `/communities/${community.id}`,
+        link: `/communities/${community._id.toHexString()}`,
         relatedEntityId: community._id,
-        actor: { _id: newOwner._id, id: newOwner.id || newOwnerId, name: newOwner.name, avatarUrl: newOwner.avatarUrl }, // Actor is the new owner
+        actor: { _id: newOwner._id, id: newOwner._id.toHexString() || newOwnerId, name: newOwner.name, avatarUrl: newOwner.avatarUrl }, // Actor is the new owner
         isRead: false,
         createdAt: new Date().toISOString(),
     };

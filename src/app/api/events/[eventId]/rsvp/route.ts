@@ -65,9 +65,9 @@ export async function POST(request: NextRequest, { params }: RsvpParams) {
         const enrichedEvent = {
             ...event,
             id: event._id.toHexString(),
-            organizerId: event.organizerId.toHexString(),
+            organizerId: event.organizerId, // Keep as ObjectId
             organizer: organizerForClient || { id: 'unknown', _id: new ObjectId(), name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [] },
-            rsvpIds: event.rsvpIds.map(id => id.toHexString()),
+            rsvpIds: event.rsvpIds, // Keep as ObjectId[]
             rsvps: rsvpsForClient,
         };
       return NextResponse.json({ message: 'User already RSVP\'d to this event.', event: enrichedEvent }, { status: 200 });
@@ -106,9 +106,9 @@ export async function POST(request: NextRequest, { params }: RsvpParams) {
     const enrichedEventForClient: Event = {
         ...updatedEventDoc,
         id: updatedEventDoc._id.toHexString(),
-        organizerId: updatedEventDoc.organizerId.toHexString(),
+        organizerId: updatedEventDoc.organizerId, // Keep as ObjectId
         organizer: organizerForClient || { id: 'unknown', _id: new ObjectId(), name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [] },
-        rsvpIds: updatedEventDoc.rsvpIds.map(id => id.toHexString()),
+        rsvpIds: updatedEventDoc.rsvpIds, // Keep as ObjectId[]
         rsvps: rsvpsForClient,
     };
 

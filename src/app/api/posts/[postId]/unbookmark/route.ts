@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import getDb from '@/lib/mongodb';
 import { ObjectId } from 'mongodb';
+import type { User } from '@/lib/types'; // Import User type
 
 interface UnbookmarkParams {
   params: { postId: string };
@@ -20,7 +21,7 @@ export async function POST(request: NextRequest, { params }: UnbookmarkParams) {
     }
 
     const db = await getDb();
-    const usersCollection = db.collection('users');
+    const usersCollection = db.collection<User>('users'); // Provide User type
     
     const postObjectId = new ObjectId(postId);
     const userObjectId = new ObjectId(userId);

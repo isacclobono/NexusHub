@@ -78,7 +78,7 @@ export async function PATCH(request: NextRequest, { params }: ReportStatusParams
     }
 
     // Create Notification for the original reporter
-    let itemPreview = report.itemType;
+    let itemPreview: string = report.itemType; // Explicitly type as string
     let itemLink: string | undefined = undefined;
 
     if (report.itemType === 'post') {
@@ -100,7 +100,7 @@ export async function PATCH(request: NextRequest, { params }: ReportStatusParams
     
     const notification: Omit<Notification, '_id' | 'id'> = {
       userId: report.reporterUserId,
-      type: newStatus, // 'report_reviewed_action_taken' or 'report_reviewed_no_action'
+      type: `report_${newStatus}` as Notification['type'], // Add prefix and cast
       title: notificationTitle,
       message: notificationMessage,
       link: itemLink,

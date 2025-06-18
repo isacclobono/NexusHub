@@ -1,9 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import getDb from '@/lib/mongodb';
+import getDb from '../../../lib/mongodb'; // Changed path
 import { ObjectId } from 'mongodb';
 import { z } from 'zod';
-import type { Report, ReportReasonCategory } from '@/lib/types';
+import type { Report, ReportReasonCategory } from '../../../lib/types'; // Changed path
 
 const reportReasonCategories: [ReportReasonCategory, ...ReportReasonCategory[]] = [
   'spam',

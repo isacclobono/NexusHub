@@ -11,7 +11,7 @@
  * @function intelligentContentModeration - A function that moderates content and returns a moderation result.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai} from '../genkit'; // Changed path
 import {z} from 'genkit';
 
 const IntelligentContentModerationInputSchema = z.object({

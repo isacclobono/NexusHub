@@ -1,10 +1,10 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import type { Post, User, Comment, Community, Notification, PostMedia, PollOption } from '@/lib/types';
-import { categorizeContent, CategorizeContentInput } from '@/ai/flows/smart-content-categorization';
-import { intelligentContentModeration, IntelligentContentModerationInput } from '@/ai/flows/intelligent-content-moderation';
-import getDb from '@/lib/mongodb';
+import type { Post, User, Comment, Community, Notification, PostMedia, PollOption } from '../../../lib/types'; // Changed path
+import { categorizeContent, CategorizeContentInput } from '../../../ai/flows/smart-content-categorization'; // Changed path
+import { intelligentContentModeration, IntelligentContentModerationInput } from '../../../ai/flows/intelligent-content-moderation'; // Changed path
+import getDb from '../../../lib/mongodb'; // Changed path
 import { ObjectId } from 'mongodb';
 
 const pollOptionSchema = z.object({
@@ -116,7 +116,7 @@ export async function POST(request: NextRequest) {
                 finalCategory = categorizationResult.category;
             }
             if (finalTagsArray.length === 0 && categorizationResult.tags && categorizationResult.tags.length > 0) {
-                finalTagsArray = [...new Set([...finalTagsArray, ...categorizationResult.tags])];
+                finalTagsArray = Array.from(new Set([...finalTagsArray, ...categorizationResult.tags])); // Changed to Array.from
             }
         } catch (aiError) {
             console.warn("AI categorization failed, proceeding with user input or defaults:", aiError);
@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
       authorId: new ObjectId(data.userId),
       title: data.title,
       content: data.content, // Content is always stored, might be empty for polls
-      media: data.media || [],
+      media: data.media ? data.media.map(m => ({ type: m.type, url: m.url, name: m.name })) : [],
       category: finalCategory,
       tags: finalTagsArray,
       createdAt: new Date().toISOString(),
@@ -244,7 +244,7 @@ export async function POST(request: NextRequest) {
 
             usersSubscribedToTags.forEach(subscribedUser => {
                 if (!notifiedUserIds.has(subscribedUser._id.toHexString())) {
-                    const matchedTag = subscribedUser.subscribedTags?.find(subTag => createdPostForClient.tags!.includes(subTag));
+                    const matchedTag = subscribedUser.subscribedTags?.find((subTag: string) => createdPostForClient.tags!.includes(subTag));
                     notificationsToInsert.push({
                         userId: subscribedUser._id,
                         type: 'new_post_subscribed_tag',
@@ -353,7 +353,7 @@ export async function GET(request: NextRequest) {
         const postsFromDbViaAgg = await postsCollection.aggregate(aggregationPipeline).toArray();
 
          const enrichedPostsViaAgg: Post[] = await Promise.all(
-            postsFromDbViaAgg.map(async (postDoc: any) => {
+            postsFromDbViaAgg.map(async (postDoc: DbPost) => { // Changed postDoc: any to postDoc: DbPost
                 const authorDoc = await usersCollection.findOne({ _id: new ObjectId(postDoc.authorId) }, {projection: {passwordHash: 0}});
                 const authorForClient: User | undefined = authorDoc ? {
                 ...authorDoc,

@@ -7,7 +7,7 @@
  * - CategorizeContentOutput - The return type for the categorizeContent function.
  */
 
-import {ai} from '@/ai/genkit';
+import {ai} from '../genkit'; // Changed path
 import {z} from 'genkit';
 
 const CategorizeContentInputSchema = z.object({

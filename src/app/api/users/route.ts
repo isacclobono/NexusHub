@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import getDb from '@/lib/mongodb';
-import type { User } from '@/lib/types';
+import getDb from '../../../lib/mongodb'; // Changed path
+import type { User } from '../../../lib/types'; // Changed path
 import { ObjectId } from 'mongodb';
 
 // Server-side user document type including passwordHash

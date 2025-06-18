@@ -185,17 +185,21 @@ export async function PUT(request: NextRequest, { params }: EventParams) {
     }
     // Location
     if (updateData.location !== undefined) {
-        if (updateData.location === null && existingEvent.location) {
-            updatePayloadUnset.location = ""; hasMeaningfulChange = true;
-        } else if (updateData.location !== existingEvent.location) {
+        if (updateData.location === null) {
+            if (existingEvent.location) { // Only unset if it existed
+                updatePayloadUnset.location = ""; hasMeaningfulChange = true;
+            }
+        } else if (updateData.location !== existingEvent.location) { // string value
             updatePayloadSet.location = updateData.location; hasMeaningfulChange = true;
         }
     }
     // Category
     if (updateData.category !== undefined) {
-        if (updateData.category === null && existingEvent.category) {
-            updatePayloadUnset.category = ""; hasMeaningfulChange = true;
-        } else if (updateData.category !== existingEvent.category) {
+        if (updateData.category === null) {
+            if (existingEvent.category) { // Only unset if it existed
+                updatePayloadUnset.category = ""; hasMeaningfulChange = true;
+            }
+        } else if (updateData.category !== existingEvent.category) { // string value
             updatePayloadSet.category = updateData.category; hasMeaningfulChange = true;
         }
     }
@@ -214,9 +218,11 @@ export async function PUT(request: NextRequest, { params }: EventParams) {
     }
     // MaxAttendees
     if (updateData.maxAttendees !== undefined) {
-        if (updateData.maxAttendees === null && existingEvent.maxAttendees !== undefined) { // Check if existing had a value
-            updatePayloadUnset.maxAttendees = ""; hasMeaningfulChange = true;
-        } else if (updateData.maxAttendees !== existingEvent.maxAttendees) {
+        if (updateData.maxAttendees === null) {
+            if (existingEvent.maxAttendees !== undefined) { // Only unset if it existed and had a value
+                updatePayloadUnset.maxAttendees = ""; hasMeaningfulChange = true;
+            }
+        } else if (updateData.maxAttendees !== existingEvent.maxAttendees) { // number value
             updatePayloadSet.maxAttendees = updateData.maxAttendees; hasMeaningfulChange = true;
         }
     }
@@ -299,7 +305,7 @@ export async function PUT(request: NextRequest, { params }: EventParams) {
       { returnDocument: 'after' }
     );
 
-    if (!result.value) {
+    if (!result) { // Changed from result.value
       console.error(`[API Event PUT ${eventId}] Event update failed. MongoDB did not return an updated document. Operation:`, JSON.stringify(finalUpdateOperation), "Existing Event:", JSON.stringify(existingEvent));
       return NextResponse.json({ message: 'Event update failed. The document may not have been found or effectively modified.' }, { status: 500 });
     }

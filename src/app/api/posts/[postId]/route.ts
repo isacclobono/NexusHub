@@ -188,7 +188,8 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
     }
 
     const setOps: Partial<DbPost> = {};
-    const unsetOps: Partial<Record<keyof Omit<DbPost, '_id' | 'authorId' | 'likedBy' | 'likeCount' | 'commentIds' | 'commentCount' | 'createdAt'>, string>> = {};
+    // Correctly type unsetOps for MongoDB $unset operation
+    const unsetOps: Partial<Record<keyof DbPost, "" | true | 1>> = {};
     let contentChanged = false;
     let newContentForAI = existingPost.content;
 
@@ -306,7 +307,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
         return await GET(getRequest, { params });
     }
     
-    const finalUpdateOperation: { $set?: Partial<DbPost>, $unset?: Partial<Record<string, string>> } = {};
+    const finalUpdateOperation: { $set?: Partial<DbPost>, $unset?: Partial<Record<keyof DbPost, "" | true | 1>> } = {}; // Corrected $unset type
     finalUpdateOperation.$set = { ...setOps, updatedAt: new Date().toISOString() }; // Always set updatedAt if any other change
 
     if (unsetOpCount > 0) {
@@ -319,7 +320,7 @@ export async function PUT(request: NextRequest, { params }: PostParams) {
       { returnDocument: 'after' }
     );
 
-    if (!result.value) {
+    if (!result) { // Changed from result.value
       console.error(`[API Post PUT ${postId}] Post update failed. Document not found or not effectively modified. Operation:`, JSON.stringify(finalUpdateOperation), "Existing Post Title:", existingPost.title);
       return NextResponse.json({ message: 'Post update failed. The document may not have been found or effectively modified.' }, { status: 500 });
     }

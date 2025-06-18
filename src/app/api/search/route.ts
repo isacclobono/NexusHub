@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import getDb from '@/lib/mongodb';
+import getDb from '../../../lib/mongodb'; // Changed path
 import { ObjectId } from 'mongodb';
-import type { Post, Event as EventType, User } from '@/lib/types';
+import type { Post, Event as EventType, User } from '../../../lib/types'; // Changed path
 
 export async function GET(request: NextRequest) {
   try {
@@ -64,11 +64,13 @@ export async function GET(request: NextRequest) {
       const postsFromDb = await postsCollection.find(postsQuery).sort(sortOption).limit(20).toArray();
       foundPosts = await Promise.all(postsFromDb.map(async (p) => {
         const authorDoc = await usersCollection.findOne({ _id: new ObjectId(p.authorId) }, { projection: { passwordHash: 0 }});
+        const authorObjectId = new ObjectId(p.authorId);
         return { 
           ...p, 
           id: p._id!.toHexString(), 
-          author: authorDoc ? { ...authorDoc, id: authorDoc._id.toHexString() } : undefined,
-          authorId: p.authorId.toHexString() as any, // Ensure string ID for client
+          author: authorDoc ? { ...authorDoc, _id: authorDoc._id, id: authorDoc._id.toHexString() } :
+                              { _id: authorObjectId, id: authorObjectId.toHexString(), name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString() },
+          authorId: authorObjectId.toHexString() as any, // Ensure string ID for client
         };
       }));
     }
@@ -77,11 +79,13 @@ export async function GET(request: NextRequest) {
       const eventsFromDb = await eventsCollection.find(eventsQuery).sort(sortBy === 'newest' ? { startTime: -1 } : sortBy === 'oldest' ? { startTime: 1 } : {}).limit(20).toArray();
       foundEvents = await Promise.all(eventsFromDb.map(async (e) => {
         const organizerDoc = await usersCollection.findOne({ _id: new ObjectId(e.organizerId) }, { projection: { passwordHash: 0 }});
+        const organizerObjectId = new ObjectId(e.organizerId);
         return { 
           ...e, 
           id: e._id!.toHexString(), 
-          organizer: organizerDoc ? { ...organizerDoc, id: organizerDoc._id.toHexString() } : undefined,
-          organizerId: e.organizerId.toHexString() as any, // Ensure string ID for client
+          organizer: organizerDoc ? { ...organizerDoc, _id: organizerDoc._id, id: organizerDoc._id.toHexString() } :
+                                  { _id: organizerObjectId, id: organizerObjectId.toHexString(), name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString() },
+          organizerId: organizerObjectId.toHexString() as any, // Ensure string ID for client
           rsvpIds: e.rsvpIds.map(id => id.toHexString() as any),
         };
       }));

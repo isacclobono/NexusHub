@@ -128,12 +128,16 @@ export async function PUT(request: NextRequest, { params }: CommunityParams) {
       { returnDocument: 'after' }
     );
 
-    if (!result.value) {
-      return NextResponse.json({ message: 'Community update failed.' }, { status: 500 });
+    if (!result) { // Changed from result.value
+      return NextResponse.json({ message: 'Community update failed or community not found.' }, { status: 500 });
     }
     
+    // If findOneAndUpdate returns the document directly, 'result' is the community document.
+    const updatedCommunityDoc = result;
+
     const usersCollection = db.collection<User>('users');
-    const creatorDoc = await usersCollection.findOne({ _id: result.value.creatorId }, { projection: { passwordHash: 0 } });
+    // Use updatedCommunityDoc instead of result.value
+    const creatorDoc = await usersCollection.findOne({ _id: updatedCommunityDoc.creatorId }, { projection: { passwordHash: 0 } });
     const creatorForClient: User | undefined = creatorDoc ? { 
       ...creatorDoc, 
       id: creatorDoc._id.toHexString(),
@@ -141,10 +145,10 @@ export async function PUT(request: NextRequest, { params }: CommunityParams) {
     } : undefined;
 
     const updatedCommunityForClient: Community = {
-      ...result.value,
-      id: result.value._id.toHexString(),
+      ...updatedCommunityDoc, // Use updatedCommunityDoc
+      id: updatedCommunityDoc._id.toHexString(), // Use updatedCommunityDoc
       creator: creatorForClient,
-      memberCount: result.value.memberIds.length,
+      memberCount: updatedCommunityDoc.memberIds.length, // Use updatedCommunityDoc
     };
 
     return NextResponse.json({ message: 'Community updated successfully!', community: updatedCommunityForClient }, { status: 200 });

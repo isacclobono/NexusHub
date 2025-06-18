@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import getDb from '@/lib/mongodb';
+import getDb from '../../../lib/mongodb'; // Changed path
 import { ObjectId } from 'mongodb';
-import type { Notification } from '@/lib/types';
+import type { Notification } from '../../../lib/types'; // Changed path
 
 export async function GET(request: NextRequest) {
   try {
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
         id: n._id!.toHexString(),
         userId: n.userId.toHexString(),
         relatedEntityId: n.relatedEntityId?.toHexString(),
-        actor: n.actor ? { ...n.actor, id: n.actor.id.toHexString() } : undefined,
+        actor: n.actor ? { ...n.actor, id: n.actor.id } : undefined,
     }));
       
 

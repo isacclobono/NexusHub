@@ -73,12 +73,13 @@ export async function GET(request: NextRequest, { params }: UserParams) {
       const privateUserForClient: User = {
         id: userDoc._id.toHexString(),
         _id: userDoc._id,
-        name: userDoc.name,
-        avatarUrl: userDoc.avatarUrl,
+        name: userDoc.name, // Or a placeholder like "Private User"
+        email: '', // Add missing email property
+        avatarUrl: userDoc.avatarUrl, // Or a default placeholder avatar
         privacy: 'private',
         isPrivatePlaceholder: true, 
         reputation: 0, 
-        joinedDate: userDoc.joinedDate, 
+        joinedDate: userDoc.joinedDate, // Consider if joinedDate should also be hidden or generalized
       };
       return NextResponse.json(privateUserForClient, { status: 200 });
     }

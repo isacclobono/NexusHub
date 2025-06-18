@@ -1,7 +1,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import getDb from '@/lib/mongodb';
-import { ObjectId } from 'mongodb';
+import { ObjectId, type Db } from 'mongodb'; // Import Db type
 import type { Post, User, Comment } from '@/lib/types';
 
 interface LikeParams {
@@ -22,28 +22,30 @@ type DbComment = Omit<Comment, 'id' | 'author' | 'authorId' | 'postId'> & {
 };
 
 
-async function getPopulatedPost(db: any, postId: ObjectId, currentUserId?: ObjectId): Promise<Post | null> {
+async function getPopulatedPost(db: Db, postId: ObjectId, currentUserId?: ObjectId): Promise<Post | null> { // Changed db: any to db: Db
     const postsCollection = db.collection<DbPost>('posts');
-    const usersCollection = db.collection<User>('users');
+    const usersCollection = db.collection<DbUser>('users'); // Changed User to DbUser to match local type
     const commentsCollection = db.collection<DbComment>('comments');
 
     const postDoc = await postsCollection.findOne({ _id: postId });
     if (!postDoc) return null;
 
     const authorDoc = await usersCollection.findOne({ _id: postDoc.authorId }, { projection: { passwordHash: 0 } });
-    const authorForClient: User | undefined = authorDoc ? { ...authorDoc, id: authorDoc._id.toHexString(), bookmarkedPostIds: authorDoc.bookmarkedPostIds || [] } : undefined;
+    // Ensure authorForClient matches User type, especially _id if it's expected
+    const authorForClient: User | undefined = authorDoc ? { ...authorDoc, _id: authorDoc._id, id: authorDoc._id.toHexString(), bookmarkedPostIds: authorDoc.bookmarkedPostIds || [] } : undefined;
     
     const recentCommentsDocs = await commentsCollection.find({ postId: postDoc._id }).sort({ createdAt: -1 }).limit(2).toArray();
     const recentCommentsPopulated: Comment[] = await Promise.all(
-        recentCommentsDocs.map(async (commentDoc) => {
+        recentCommentsDocs.map(async (commentDoc: DbComment) => { // Explicitly type commentDoc
             const commentAuthorDoc = await usersCollection.findOne({ _id: commentDoc.authorId }, { projection: { passwordHash: 0 } });
+            const authorForComment: User | undefined = commentAuthorDoc ? { ...commentAuthorDoc, _id: commentAuthorDoc._id, id: commentAuthorDoc._id.toHexString() } : undefined;
             return {
                 ...commentDoc,
                 id: commentDoc._id.toHexString(),
-                postId: commentDoc.postId, 
-                authorId: commentDoc.authorId, 
-                author: commentAuthorDoc ? { ...commentAuthorDoc, id: commentAuthorDoc._id.toHexString() } : undefined,
-            } as Comment;
+                postId: commentDoc.postId,
+                authorId: commentDoc.authorId,
+                author: authorForComment, // Use the correctly typed author
+            } as Comment; // Cast to Comment, ensure all fields match
         })
     );
 
@@ -53,24 +55,27 @@ async function getPopulatedPost(db: any, postId: ObjectId, currentUserId?: Objec
     }
     
     const postLikedBy = Array.isArray(postDoc.likedBy) ? postDoc.likedBy : [];
-    const userBookmarkedPostIds = currentUser && Array.isArray(currentUser.bookmarkedPostIds) ? currentUser.bookmarkedPostIds : [];
+    const userBookmarkedPostIds = (currentUser && Array.isArray(currentUser.bookmarkedPostIds)) ? currentUser.bookmarkedPostIds.map(id => new ObjectId(id)) : [];
+
 
     const isLikedByCurrentUser = currentUser ? postLikedBy.some(id => id.equals(currentUser!._id!)) : false;
+    // Ensure postDoc._id is correctly compared with ObjectId array
     const isBookmarkedByCurrentUser = currentUser ? userBookmarkedPostIds.some(id => id.equals(postDoc._id)) : false;
+
 
     return {
         ...postDoc,
         id: postDoc._id.toHexString(),
-        author: authorForClient || { id: 'unknown', name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString() } as User,
-        likedBy: postLikedBy, 
-        likeCount: postDoc.likeCount || 0, // Ensure likeCount has a default
+        author: authorForClient || { _id: new ObjectId(), id: 'unknown', name: 'Unknown User', email: '', reputation: 0, joinedDate: new Date().toISOString(), bookmarkedPostIds: [] } as User,
+        likedBy: postLikedBy,
+        likeCount: postDoc.likeCount || 0,
         isLikedByCurrentUser,
         commentIds: postDoc.commentIds || [],
-        comments: recentCommentsPopulated.reverse(),
+        comments: recentCommentsPopulated.reverse(), // Ensure this map returns Comment[]
         commentCount: postDoc.commentCount || 0,
         isBookmarkedByCurrentUser,
-        authorId: postDoc.authorId, 
-    } as Post;
+        authorId: postDoc.authorId,
+    } as Post; // Ensure all Post fields are correctly assigned
 }
 
 

@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import getDb from '@/lib/mongodb';
-import { ObjectId } from 'mongodb';
-import type { Post, User } from '@/lib/types';
+import { ObjectId, type Db } from 'mongodb'; // Import Db
+import type { Post, User, Comment, Community } from '@/lib/types'; // Import Comment, Community
 
 interface VoteParams {
   params: { postId: string };
@@ -20,11 +20,11 @@ type DbPost = Omit<Post, 'id' | 'author' | 'comments' | 'isLikedByCurrentUser' |
 };
 
 
-async function getFullPostForClient(db: any, postId: ObjectId, currentAuthUserId?: ObjectId): Promise<Post | null> {
+async function getFullPostForClient(db: Db, postId: ObjectId, currentAuthUserId?: ObjectId): Promise<Post | null> { // Changed db: any to db: Db
     const postsCollection = db.collection<DbPost>('posts');
-    const usersCollection = db.collection<User>('users');
-    const commentsCollection = db.collection('comments'); // Simplified for now
-    const communitiesCollection = db.collection('communities');
+    const usersCollection = db.collection<User>('users'); // Assuming User from lib/types is suitable for DbUser here
+    const commentsCollection = db.collection<Comment>('comments'); // Typed
+    const communitiesCollection = db.collection<Community>('communities'); // Typed
 
     const postDoc = await postsCollection.findOne({ _id: postId });
     if (!postDoc) return null;

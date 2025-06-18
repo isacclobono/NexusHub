@@ -1,8 +1,8 @@
 
-import { genkit, type GenkitPlugin } from 'genkit';
+import { genkit } from 'genkit';
 import { googleAI } from '@genkit-ai/googleai';
 
-const plugins: GenkitPlugin[] = [];
+const plugins: any[] = [];
 const defaultModel = 'googleai/gemini-2.0-flash';
 
 // Check for the API key

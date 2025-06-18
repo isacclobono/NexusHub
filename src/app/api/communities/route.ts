@@ -1,9 +1,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
-import getDb from '@/lib/mongodb';
+import getDb from '../../../lib/mongodb'; // Changed path
 import { ObjectId } from 'mongodb';
-import type { Community, User } from '@/lib/types';
+import type { Community, User } from '../../../lib/types'; // Changed path
 
 const communityCreateSchema = z.object({
   creatorId: z.string().refine(val => ObjectId.isValid(val), { message: "Invalid Creator ID format." }),

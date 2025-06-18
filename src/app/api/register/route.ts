@@ -1,8 +1,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
-import getDb from '@/lib/mongodb';
-import bcrypt from 'bcryptjs';
-import type { User } from '@/lib/types';
+import getDb from '../../../lib/mongodb'; // Changed path
+import * as bcrypt from 'bcryptjs'; // Changed import style
+import type { User } from '../../../lib/types'; // Changed path
 import { ObjectId } from 'mongodb';
 
 // DB model for user creation, ensuring all fields are potentially present for insertion
